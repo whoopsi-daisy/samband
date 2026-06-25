@@ -4,6 +4,9 @@
  */
 
 :root {
+    /* Default theme ("system") tracks the OS light/dark preference. This also
+       lets native UI (form controls, scrollbars) follow the scheme. */
+    color-scheme: light dark;
     --radius: 14px;
     --radius-sm: 10px;
     --radius-xs: 6px;
@@ -37,7 +40,11 @@
     --border-strong: #d9d3c6;
     --spine-default: #d9d3c6;
     /* Serif display face for editorial structure */
-    --font-display: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+    --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    /* Brand signal red — the one saturated colour in the chrome, reserved for
+       the masthead mark and the live pulse. */
+    --brand: #d4142a;
+    --brand-bright: #e4002b;
     /* Spacing system for consistent gutters */
     --space-page: 40px;
     --space-section: 24px;
@@ -45,11 +52,13 @@
     --space-element: 12px;
 }
 
-/* Dark mode follows the OS preference. The explicit [data-theme] themes below
-   still win when a user opts in. */
+/* Warm charcoal dark palette — the ink/paper relationship inverted. Shared by
+   two cases: the default ("system") theme when the OS prefers dark, and the
+   explicit "dark" opt-in. The :not([data-theme]) guard means an explicit
+   light/dark/radar choice always wins over the OS preference. */
 @media (prefers-color-scheme: dark) {
-    :root {
-        /* Warm charcoal, not blue-black — the ink/paper relationship inverted */
+    :root:not([data-theme]) {
+        color-scheme: dark;
         --primary: #16140f;
         --primary-light: #221f18;
         --accent: #efe9dd;
@@ -76,6 +85,38 @@
         --border-strong: rgba(255, 255, 255, 0.18);
         --spine-default: rgba(255, 255, 255, 0.14);
     }
+}
+[data-theme="dark"] {
+    color-scheme: dark;
+    --primary: #16140f;
+    --primary-light: #221f18;
+    --accent: #efe9dd;
+    --accent-dark: #ffffff;
+    --accent-glow: rgba(255, 255, 255, 0.12);
+    --text: #ece7dd;
+    --text-muted: #9b958a;
+    --surface: #1d1b15;
+    --surface-solid: #1d1b15;
+    --surface-light: #262219;
+    --border: rgba(255, 255, 255, 0.1);
+    --border-accent: rgba(255, 255, 255, 0.28);
+    --success: #93c46a;
+    --danger: #e06a5f;
+    --warning: #d9a441;
+    --info: #efe9dd;
+    --shadow: rgba(0, 0, 0, 0.45);
+    --shadow-lg: rgba(0, 0, 0, 0.6);
+    --glass-bg: rgba(22, 20, 15, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --on-accent: #16140f;
+    --page-bg: #100e0a;
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --spine-default: rgba(255, 255, 255, 0.14);
+}
+/* Explicit light opt-in keeps the UI light even when the OS prefers dark. */
+[data-theme="light"] {
+    color-scheme: light;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -108,6 +149,7 @@ header {
     background: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 3px solid var(--brand);
     border-bottom: 1px solid var(--glass-border);
     margin: 0 calc(-1 * var(--space-page)) var(--space-section);
     padding: 20px var(--space-page) 18px;
@@ -152,53 +194,63 @@ header {
     flex-wrap: nowrap;
 }
 
-.logo { display: flex; align-items: center; gap: 12px; flex-shrink: 1; min-width: 0; text-decoration: none; color: inherit; }
+.logo { display: flex; align-items: center; gap: 13px; flex-shrink: 1; min-width: 0; text-decoration: none; color: inherit; }
+/* Solid ink "seal" badge carrying the live-pulse emblem — a confident brand
+   mark rather than a small icon in a box. Adapts: ink in light, paper in dark. */
 .logo-icon {
-    width: 44px; height: 44px; min-width: 44px; min-height: 44px;
-    background: var(--surface-solid);
-    border: 1px solid var(--border);
-    border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    font-size: 22px; box-shadow: 0 1px 2px var(--shadow);
-    transition: transform 0.3s, width 0.3s ease, height 0.3s ease, min-width 0.3s ease, min-height 0.3s ease, font-size 0.3s ease;
+    width: 46px; height: 46px; min-width: 46px; min-height: 46px;
+    background: var(--accent);
+    border-radius: 13px; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px -2px var(--shadow-lg);
+    transition: transform 0.3s, width 0.3s ease, height 0.3s ease, min-width 0.3s ease, min-height 0.3s ease;
     /* Fix Firefox Android rendering artifacts */
     transform: translateZ(0);
     isolation: isolate;
     -moz-appearance: none;
 }
-.logo-icon-default-svg {
+.logo-emblem {
     display: block;
-    width: 28px;
-    height: 28px;
-    animation: sirenPulse 2.5s ease-in-out infinite;
+    width: 30px;
+    height: 30px;
 }
-.logo-icon-default-svg .siren-ray {
-    animation: sirenRayPulse 2.5s ease-in-out infinite;
+.logo-emblem__ring {
+    fill: none;
+    stroke: var(--on-accent);
+    stroke-width: 2;
 }
-@keyframes sirenPulse {
-    0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 40, 40, 0.2)); }
-    50% { filter: drop-shadow(0 0 5px rgba(255, 40, 40, 0.45)); }
+.logo-emblem__ring--outer { opacity: 0.38; }
+.logo-emblem__ring--inner { opacity: 0.95; }
+.logo-emblem__core { fill: var(--brand-bright); }
+/* Gentle live pulse on the core, disabled for reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+    .logo-emblem__core { animation: logoPulse 2.4s ease-in-out infinite; transform-origin: 20px 20px; }
+    .logo-emblem__ring--inner { animation: logoRing 2.4s ease-in-out infinite; transform-origin: 20px 20px; }
 }
-@keyframes sirenRayPulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
-}
+@keyframes logoPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes logoRing { 0%, 100% { opacity: 0.95; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.06); } }
 .logo-icon.radio-playing { animation: radioGlow 1.5s ease-in-out infinite; }
 @keyframes radioGlow { 0%, 100% { box-shadow: 0 4px 16px var(--accent-glow); } 50% { box-shadow: 0 4px 24px var(--accent-glow), 0 0 30px var(--accent-glow); } }
 .logo-text { min-width: 0; overflow: hidden; }
 .logo-text h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 22px;
+    font-family: var(--font-display);
+    font-size: 24px;
     font-weight: 700;
-    line-height: 1.2;
+    letter-spacing: -0.015em;
+    line-height: 1.08;
+    color: var(--text);
     transition: font-size 0.3s ease;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .logo-text p {
-    font-size: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
     color: var(--text-muted);
     line-height: 1.3;
+    margin-top: 2px;
     transition: font-size 0.3s ease;
     white-space: nowrap;
     overflow: hidden;
@@ -461,6 +513,74 @@ header {
     margin-left: auto;
     margin-right: auto;
 }
+
+/* Compact at-a-glance tally above the feed: total + top incident types. */
+.feed-summary {
+    max-width: 920px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+.feed-summary__lead {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+}
+.feed-summary__num {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+.feed-summary__lead-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+}
+.feed-summary__day {
+    font-weight: 600;
+    color: var(--text);
+    text-transform: lowercase;
+}
+.feed-summary__list {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-left: auto;
+}
+.feed-summary__item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+}
+.feed-summary__dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex: none;
+    transform: translateY(-1px);
+}
+.feed-summary__count {
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+.feed-summary__type { color: var(--text-muted); }
+@media (max-width: 560px) {
+    .feed-summary__list { margin-left: 0; width: 100%; }
+    .feed-summary__num { font-size: 26px; }
+}
+
 .feed-group { position: relative; }
 .feed-group__header {
     position: sticky;

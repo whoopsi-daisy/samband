@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   keywords: ['polis', 'polishändelser', 'Sverige', 'realtid', 'brott', 'olyckor', 'karta'],
   manifest: '/manifest.json',
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚨</text></svg>",
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%2316140f'/><circle cx='20' cy='20' r='13' fill='none' stroke='%23faf8f3' stroke-width='2' opacity='0.4'/><circle cx='20' cy='20' r='8' fill='none' stroke='%23faf8f3' stroke-width='2' opacity='0.95'/><circle cx='20' cy='20' r='3.6' fill='%23e4002b'/></svg>",
   },
   appleWebApp: {
     capable: true,
@@ -26,7 +26,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0a1628',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f5f2ea' },
+    { media: '(prefers-color-scheme: dark)', color: '#100e0a' },
+  ],
 };
 
 export default function RootLayout({
@@ -39,13 +42,13 @@ export default function RootLayout({
       <head>
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&display=swap"
         />
       </head>
       <body>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='radar')document.documentElement.setAttribute('data-theme',t)}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'||t==='radar')document.documentElement.setAttribute('data-theme',t)}catch(e){}})()`,
           }}
         />
         <ServiceWorkerRegistration />

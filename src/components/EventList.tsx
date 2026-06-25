@@ -244,6 +244,21 @@ export default function EventList({
     return groups;
   }, [events]);
 
+  // Quick-glance tally for the most recent day, broken down by the top types.
+  const feedSummary = useMemo(() => {
+    const group = dayGroups[0];
+    if (!group || group.events.length === 0) return null;
+    const counts = new Map<string, { type: string; count: number; color: string }>();
+    for (const ev of group.events) {
+      const key = ev.type || 'Övrigt';
+      const existing = counts.get(key);
+      if (existing) existing.count += 1;
+      else counts.set(key, { type: key, count: 1, color: ev.color });
+    }
+    const top = [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 4);
+    return { label: group.label, total: group.events.length, top };
+  }, [dayGroups]);
+
   if (events.length === 0) {
     return (
       <section id="eventsGrid" className="events-grid">
@@ -278,6 +293,27 @@ export default function EventList({
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {feedSummary && (
+        <div className="feed-summary" aria-label="Sammanfattning">
+          <div className="feed-summary__lead">
+            <span className="feed-summary__num">{feedSummary.total}</span>
+            <span className="feed-summary__lead-text">
+              händelser
+              <span className="feed-summary__day">{feedSummary.label}</span>
+            </span>
+          </div>
+          <div className="feed-summary__list">
+            {feedSummary.top.map((t) => (
+              <span className="feed-summary__item" key={t.type}>
+                <span className="feed-summary__dot" style={{ background: t.color }} />
+                <span className="feed-summary__count">{t.count}</span>
+                <span className="feed-summary__type">{t.type}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
