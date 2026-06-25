@@ -39,7 +39,12 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const err = new Error(`HTTP error ${response.status}`);
+        // Client errors (4xx) won't succeed on retry — only 429 is worth retrying.
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          (err as Error & { retryable?: boolean }).retryable = false;
+        }
+        throw err;
       }
 
       const data = await response.json();
@@ -50,6 +55,9 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
       return data as RawEvent[];
     } catch (error) {
       lastError = error as Error;
+      if ((error as Error & { retryable?: boolean }).retryable === false) {
+        break;
+      }
       if (attempt < retries - 1) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
@@ -186,13 +194,13 @@ export function decodeHtmlEntities(text: string): string {
     return HTML_ENTITIES[entity] || match;
   });
 
-  // Decode numeric entities (&#xNN; hex and &#NNN; decimal)
-  decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) =>
-    String.fromCharCode(parseInt(hex, 16))
-  );
-  decoded = decoded.replace(/&#(\d+);/g, (_, dec) =>
-    String.fromCharCode(parseInt(dec, 10))
-  );
+  // Decode numeric entities (&#xNN; hex and &#NNN; decimal).
+  // Use fromCodePoint (not fromCharCode) so characters above U+FFFF — e.g.
+  // emoji — decode correctly instead of being truncated to 16 bits.
+  const fromCode = (match: string, code: number): string =>
+    code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (m, hex) => fromCode(m, parseInt(hex, 16)));
+  decoded = decoded.replace(/&#(\d+);/g, (m, dec) => fromCode(m, parseInt(dec, 10)));
 
   return decoded;
 }

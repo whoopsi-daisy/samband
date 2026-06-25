@@ -10,7 +10,7 @@ A real-time Swedish police event notification service built with Next.js. Fetche
 
 ## Features
 
-- **Real-time Events** - Automatically fetches police events every 30 minutes
+- **Real-time Events** - Automatically fetches police events every 10 minutes
 - **Multiple Views** - List, Map, and Statistics views
 - **Interactive Map** - Leaflet-powered map showing events from the last 24 hours
 - **Statistics Dashboard** - Visual charts showing event trends, top locations, and hourly distribution
@@ -207,12 +207,24 @@ CREATE TABLE fetch_log (
 
 No environment variables are required for basic operation. The application uses sensible defaults.
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_PROXY_HOPS` | `1` | Number of trusted reverse-proxy hops in front of the app. The client IP is read this many positions from the right of `X-Forwarded-For`, so a client cannot spoof it. Set to the number of proxies (e.g. Traefik, a CDN) ahead of the container. |
+
+### Background Refresh
+
+The app refreshes events lazily on incoming requests, and an in-process
+scheduler (`src/instrumentation.ts`) additionally refreshes every 10 minutes so
+data stays current even with no traffic. The scheduler runs once per server
+process; it relies on the database's last-fetch timestamp to avoid duplicate
+fetches, and also prunes `fetch_log` entries older than 30 days.
+
 ### Cache Settings
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| Page revalidation | 1800s | How often Server Components refetch data |
-| Police API cache | 1800s | Minimum time between API calls |
+| Page revalidation | 600s | How often Server Components refetch data |
+| Police API cache | 600s | Minimum time between API calls |
 
 ### Rate Limiting
 
@@ -220,6 +232,9 @@ API endpoints are protected by in-memory rate limiting:
 - 60 requests per minute per IP address
 - Returns 429 status with `Retry-After` header when exceeded
 - Includes `X-RateLimit-*` headers in responses
+- State is per-process: this suits the single-container deployment. Running
+  multiple replicas would give each its own counters — use a shared store
+  (e.g. Redis) before scaling horizontally.
 
 ### Next.js Config
 
@@ -347,7 +362,7 @@ npm run build
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Server Component (page.tsx)                │
-│  - Checks if data refresh needed (every 30 min)              │
+│  - Checks if data refresh needed (every 10 min)              │
 │  - Fetches from Police API if stale                          │
 │  - Queries SQLite database                                   │
 │  - Formats events for UI                                     │

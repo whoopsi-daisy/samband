@@ -58,6 +58,16 @@ describe('decodeHtmlEntities (additional edge cases)', () => {
     expect(decodeHtmlEntities('&#229;')).toBe('å');
   });
 
+  it('decodes astral-plane code points above U+FFFF (emoji)', () => {
+    // U+1F698 ONCOMING AUTOMOBILE — requires fromCodePoint, not fromCharCode.
+    expect(decodeHtmlEntities('&#128664;')).toBe('🚘');
+    expect(decodeHtmlEntities('&#x1F698;')).toBe('🚘');
+  });
+
+  it('leaves out-of-range numeric entities untouched', () => {
+    expect(decodeHtmlEntities('&#xFFFFFFFF;')).toBe('&#xFFFFFFFF;');
+  });
+
   it('handles multiple consecutive named entities', () => {
     expect(decodeHtmlEntities('&auml;&ouml;&aring;')).toBe('äöå');
   });

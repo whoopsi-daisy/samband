@@ -137,12 +137,15 @@ function extractEventTime(event: RawEvent): string | null {
         const apiDay = date.getDate();
 
         if (day !== apiDay) {
-          if (day < apiDay) {
-            date.setDate(day);
-          } else {
+          // Anchor to the 1st before changing month/day so we never overflow a
+          // short month (e.g. setMonth on the 31st rolling Feb -> Mar).
+          date.setDate(1);
+          if (day > apiDay) {
+            // Name's day is later than the API date's day -> event is from the
+            // previous month (published early the following month).
             date.setMonth(date.getMonth() - 1);
-            date.setDate(day);
           }
+          date.setDate(day);
         }
         date.setHours(hour, minute, 0, 0);
         return date.toISOString();
@@ -280,6 +283,16 @@ export function logFetch(eventsFetched: number, eventsNew: number, success: bool
   `).run(new Date().toISOString(), eventsFetched, eventsNew, success ? 1 : 0, error || null);
 }
 
+// Prune fetch_log entries older than the retention window to keep the
+// operational log from growing without bound (~144 rows/day at a 10-min
+// cadence). Events themselves are intentionally retained as the dataset.
+export function pruneFetchLog(retentionDays = 30): number {
+  const pdo = getDatabase();
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = pdo.prepare('DELETE FROM fetch_log WHERE fetched_at < ?').run(cutoff);
+  return result.changes;
+}
+
 // Get events from database with optional filters
 export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset = 0): EventWithMetadata[] {
   const pdo = getDatabase();
@@ -397,6 +410,12 @@ export function getDailyFetchCount(): number {
 
 // Get filter options
 export function getFilterOptions(column: 'location_name' | 'type'): string[] {
+  // Defensive allowlist: this value is interpolated into the SQL string, so
+  // guard against anything outside the known columns even though the type
+  // already constrains callers.
+  if (column !== 'location_name' && column !== 'type') {
+    throw new Error(`Invalid column for getFilterOptions: ${column}`);
+  }
   const pdo = getDatabase();
   const rows = pdo.prepare(`SELECT DISTINCT ${column} AS value FROM events WHERE ${column} != '' ORDER BY ${column} ASC`).all() as Array<{ value: string }>;
   return rows.map(row => row.value);
