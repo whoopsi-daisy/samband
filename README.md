@@ -26,7 +26,7 @@ A real-time Swedish police event notification service built with Next.js. Fetche
 ## Tech Stack
 
 - **Framework**: [Next.js 16](https://nextjs.org/) with App Router and Turbopack
-- **Language**: [TypeScript 5](https://www.typescriptlang.org/)
+- **Language**: [TypeScript 6](https://www.typescriptlang.org/)
 - **React**: [React 19](https://react.dev/)
 - **Database**: [SQLite](https://www.sqlite.org/) via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
 - **Maps**: [Leaflet](https://leafletjs.com/) (dynamic import, SSR-safe)
@@ -38,7 +38,7 @@ A real-time Swedish police event notification service built with Next.js. Fetche
 
 ### Prerequisites
 
-- Node.js 18.x or later
+- Node.js 22.x or later
 - npm or yarn
 
 ### Installation

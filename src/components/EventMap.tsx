@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState, memo } from 'react';
+import 'leaflet/dist/leaflet.css';
 import { FormattedEvent } from '@/types';
 
 interface EventMapProps {

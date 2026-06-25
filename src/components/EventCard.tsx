@@ -65,7 +65,6 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
     } else if (!isHighlighted) {
       setExpanded(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Only react to autoExpand toggle; details/loading are guards, not triggers
   }, [autoExpand, event.url, isHighlighted]);
 
   const typeClass = getTypeClass(event.type);
