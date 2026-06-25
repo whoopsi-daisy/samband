@@ -7,33 +7,37 @@
     --radius: 14px;
     --radius-sm: 10px;
     --radius-xs: 6px;
-    --primary: #ffffff;
-    --primary-light: #f1f5f9;
-    --accent: #2563eb;
-    --accent-dark: #1d4ed8;
-    --accent-glow: rgba(37, 99, 235, 0.18);
-    --text: #0f172a;
-    --text-muted: #64748b;
-    --surface: #ffffff;
-    --surface-solid: #ffffff;
-    --surface-light: #f1f5f9;
-    --border: #e5e7eb;
-    --border-accent: rgba(37, 99, 235, 0.35);
-    --success: #16a34a;
-    --danger: #dc2626;
-    --warning: #d97706;
-    --info: #2563eb;
-    --shadow: rgba(15, 23, 42, 0.08);
-    --shadow-lg: rgba(15, 23, 42, 0.14);
-    --glass-bg: rgba(255, 255, 255, 0.85);
-    --glass-border: #e5e7eb;
-    /* Always-light text/foreground placed on the accent or colored fills */
-    --on-accent: #ffffff;
+    /* Warm-monochrome editorial palette. The only saturated colour in the UI
+       comes from the incident-type nodes/tags — everything else is ink + paper. */
+    --primary: #fffefb;
+    --primary-light: #f0ece3;
+    --accent: #1b1712;
+    --accent-dark: #000000;
+    --accent-glow: rgba(27, 23, 18, 0.12);
+    --text: #19160f;
+    --text-muted: #6f6a60;
+    --surface: #fffdf9;
+    --surface-solid: #fffdf9;
+    --surface-light: #f1ede4;
+    --border: #e7e2d8;
+    --border-accent: rgba(27, 23, 18, 0.3);
+    --success: #4d7c2f;
+    --danger: #b3261e;
+    --warning: #b45309;
+    --info: #1b1712;
+    --shadow: rgba(40, 33, 22, 0.07);
+    --shadow-lg: rgba(40, 33, 22, 0.16);
+    --glass-bg: rgba(245, 242, 236, 0.82);
+    --glass-border: #e7e2d8;
+    /* Foreground placed on the ink accent / colored fills */
+    --on-accent: #faf8f3;
     /* Semantic surfaces so both color schemes share component rules */
-    --page-bg: #f6f7f9;
-    --hover-bg: rgba(15, 23, 42, 0.04);
-    --border-strong: #d1d5db;
-    --spine-default: #cbd5e1;
+    --page-bg: #f5f2ea;
+    --hover-bg: rgba(27, 23, 18, 0.045);
+    --border-strong: #d9d3c6;
+    --spine-default: #d9d3c6;
+    /* Serif display face for editorial structure */
+    --font-display: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
     /* Spacing system for consistent gutters */
     --space-page: 40px;
     --space-section: 24px;
@@ -45,25 +49,31 @@
    still win when a user opts in. */
 @media (prefers-color-scheme: dark) {
     :root {
-        --primary: #0b111d;
-        --primary-light: #162032;
-        --accent: #3b82f6;
-        --accent-dark: #2563eb;
-        --accent-glow: rgba(59, 130, 246, 0.3);
-        --text: #e6e8ec;
-        --text-muted: #94a3b8;
-        --surface: #121a28;
-        --surface-solid: #121a28;
-        --surface-light: #1b2536;
-        --border: rgba(255, 255, 255, 0.09);
-        --border-accent: rgba(59, 130, 246, 0.4);
-        --shadow: rgba(0, 0, 0, 0.4);
-        --shadow-lg: rgba(0, 0, 0, 0.55);
-        --glass-bg: rgba(13, 19, 30, 0.82);
+        /* Warm charcoal, not blue-black — the ink/paper relationship inverted */
+        --primary: #16140f;
+        --primary-light: #221f18;
+        --accent: #efe9dd;
+        --accent-dark: #ffffff;
+        --accent-glow: rgba(255, 255, 255, 0.12);
+        --text: #ece7dd;
+        --text-muted: #9b958a;
+        --surface: #1d1b15;
+        --surface-solid: #1d1b15;
+        --surface-light: #262219;
+        --border: rgba(255, 255, 255, 0.1);
+        --border-accent: rgba(255, 255, 255, 0.28);
+        --success: #93c46a;
+        --danger: #e06a5f;
+        --warning: #d9a441;
+        --info: #efe9dd;
+        --shadow: rgba(0, 0, 0, 0.45);
+        --shadow-lg: rgba(0, 0, 0, 0.6);
+        --glass-bg: rgba(22, 20, 15, 0.82);
         --glass-border: rgba(255, 255, 255, 0.08);
-        --page-bg: #0a0e16;
+        --on-accent: #16140f;
+        --page-bg: #100e0a;
         --hover-bg: rgba(255, 255, 255, 0.05);
-        --border-strong: rgba(255, 255, 255, 0.16);
+        --border-strong: rgba(255, 255, 255, 0.18);
         --spine-default: rgba(255, 255, 255, 0.14);
     }
 }
@@ -444,8 +454,15 @@ header {
 .events-grid.feed {
     display: block;
     width: 100%;
-    max-width: 860px;
+    max-width: 920px;
     margin: 0 auto;
+}
+/* Keep the search/filter bar on the same column as the feed so the side
+   margins read as an intentional editorial column, not dead space. */
+.view-list .filters-section {
+    max-width: 920px;
+    margin-left: auto;
+    margin-right: auto;
 }
 .feed-group { position: relative; }
 .feed-group__header {
@@ -459,10 +476,10 @@ header {
     background: linear-gradient(var(--page-bg) 78%, transparent);
 }
 .feed-group__label {
-    font-size: 12px;
+    font-family: var(--font-display);
+    font-size: 19px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.9px;
+    letter-spacing: -0.01em;
     color: var(--text);
 }
 .feed-group__count {
@@ -506,7 +523,19 @@ header {
     z-index: 2;
     transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.event-node__emoji { font-size: 18px; line-height: 1; }
+.event-node__emoji {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    font-size: 19px;
+    line-height: 1;
+    /* Normalise emoji glyph metrics so it sits dead-centre in the ring */
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    text-align: center;
+    transform: translateY(0.5px);
+}
 
 /* Card becomes a borderless timeline row; the header is the content bubble */
 .feed .event-card {
@@ -777,12 +806,13 @@ header {
 .event-type--default { --dot: #94a3b8; }
 .event-location-link {
     display: block;
-    font-size: 18px;
+    font-family: var(--font-display);
+    font-size: 21px;
     font-weight: 700;
     color: var(--text);
-    margin-top: 9px;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
+    margin-top: 8px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
 }
 .event-summary {
     color: var(--text-muted);
