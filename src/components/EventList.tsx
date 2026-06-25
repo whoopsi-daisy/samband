@@ -283,6 +283,11 @@ export default function EventList({
             'Ladda fler'
           )}
         </button>
+        {!hasMore && events.length > 0 && (
+          <p className="all-loaded-message" role="status">
+            Alla händelser visas
+          </p>
+        )}
       </div>
     </>
   );
