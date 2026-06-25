@@ -215,6 +215,35 @@ export default function EventList({
     }
   }, [loading, hasMore, page, filters]);
 
+  // Group events into day buckets for the timeline feed
+  const dayGroups = useMemo(() => {
+    const weekdays = ['Söndag', 'Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag'];
+    const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const today = startOfDay(new Date());
+
+    const label = (iso: string) => {
+      const d = new Date(iso);
+      const diffDays = Math.round((today - startOfDay(d)) / 86400000);
+      if (diffDays === 0) return 'Idag';
+      if (diffDays === 1) return 'Igår';
+      return `${weekdays[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+    };
+
+    const groups: { key: string; label: string; events: FormattedEvent[] }[] = [];
+    let current: { key: string; label: string; events: FormattedEvent[] } | null = null;
+    for (const ev of events) {
+      const iso = ev.date.iso || ev.datetime;
+      const key = iso.slice(0, 10);
+      if (!current || current.key !== key) {
+        current = { key, label: label(iso), events: [] };
+        groups.push(current);
+      }
+      current.events.push(ev);
+    }
+    return groups;
+  }, [events]);
+
   if (events.length === 0) {
     return (
       <section id="eventsGrid" className="events-grid">
@@ -252,17 +281,27 @@ export default function EventList({
         </div>
       )}
 
-      <section id="eventsGrid" className="events-grid">
-        {events.map((event, index) => (
-          <EventCard
-            key={event.id ?? index}
-            event={event}
-            currentView={currentView}
-            onShowMap={onShowMap}
-            isHighlighted={event.id === highlightedEventId}
-            autoExpand={expandSummaries}
-            density={density}
-          />
+      <section id="eventsGrid" className="events-grid feed">
+        {dayGroups.map((group) => (
+          <div className="feed-group" key={group.key}>
+            <div className="feed-group__header">
+              <span className="feed-group__label">{group.label}</span>
+              <span className="feed-group__count">{group.events.length}</span>
+            </div>
+            <div className="feed-group__items">
+              {group.events.map((event, index) => (
+                <EventCard
+                  key={event.id ?? `${group.key}-${index}`}
+                  event={event}
+                  currentView={currentView}
+                  onShowMap={onShowMap}
+                  isHighlighted={event.id === highlightedEventId}
+                  autoExpand={expandSummaries}
+                  density={density}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </section>
 
