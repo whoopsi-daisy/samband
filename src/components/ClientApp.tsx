@@ -15,7 +15,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { FormattedEvent, Statistics } from '@/types';
 
 export type Density = 'comfortable' | 'compact' | 'stream';
-export type Theme = 'default' | 'radar';
+export type Theme = 'system' | 'light' | 'dark' | 'radar';
 
 
 interface ClientAppProps {
@@ -49,7 +49,7 @@ function ClientAppContent({
   const searchParams = useSearchParams();
   const [currentView, setCurrentView] = useState(initialView);
   const [density, setDensity] = useState<Density>('comfortable');
-  const [theme, setTheme] = useState<Theme>('default');
+  const [theme, setTheme] = useState<Theme>('system');
   const [expandSummaries, setExpandSummaries] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [mapModal, setMapModal] = useState<{
@@ -72,10 +72,12 @@ function ClientAppContent({
         setDensity(saved);
       }
       const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'radar') {
+      if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'radar') {
         setTheme(savedTheme);
         document.documentElement.setAttribute('data-theme', savedTheme);
       }
+      // 'system' (and the legacy 'default') leave no attribute, so the
+      // prefers-color-scheme media query drives the palette.
       const savedExpand = localStorage.getItem('expandSummaries');
       if (savedExpand === 'true') {
         setExpandSummaries(true);
@@ -96,7 +98,7 @@ function ClientAppContent({
 
   const handleThemeChange = useCallback((t: Theme) => {
     setTheme(t);
-    if (t === 'default') {
+    if (t === 'system') {
       document.documentElement.removeAttribute('data-theme');
     } else {
       document.documentElement.setAttribute('data-theme', t);

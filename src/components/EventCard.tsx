@@ -187,7 +187,7 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
               {event.type}
             </span>
             <span className="stream-item__headline-location">
-              <span className="stream-item__sep">&mdash;</span>
+              <span className="stream-item__sep" aria-hidden="true"></span>
               <span className="stream-item__location">
                 {event.location}
               </span>
