@@ -241,14 +241,11 @@ header {
     transition: transform 0.2s ease;
 }
 .view-toggle button.active {
-    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    background: var(--accent);
     color: var(--on-accent);
-    box-shadow: 0 2px 12px var(--accent-glow);
+    box-shadow: 0 1px 2px var(--shadow);
     /* Fix Firefox Android rendering artifacts */
     transform: translateZ(0);
-}
-.view-toggle button.active svg {
-    transform: scale(1.1);
 }
 .view-toggle button:hover:not(.active) {
     color: var(--text);
@@ -1124,6 +1121,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .leaflet-container {
     background: var(--primary) !important;
 }
+/* Editorial map: gently warm and desaturate the tiles so the colour-coded
+   incident markers read as the only saturated thing on the map. Radar theme
+   overrides this with its own (more specific) tile filter. */
+.leaflet-tile-pane {
+    filter: grayscale(0.5) sepia(0.16) brightness(1.02) contrast(0.95) saturate(0.85);
+}
+@media (prefers-color-scheme: dark) {
+    .leaflet-tile-pane {
+        filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) grayscale(0.55) sepia(0.12);
+    }
+}
 /* Attribution styling */
 .leaflet-control-attribution {
     background: var(--glass-bg) !important;
@@ -1485,16 +1493,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     transition: border-color 0.2s ease;
 }
 .stats-metric:hover {
-    border-color: rgba(255, 255, 255, 0.16);
+    border-color: var(--border-accent);
 }
 .stats-metric--primary {
     grid-column: 1 / -1;
-    background: linear-gradient(135deg, var(--surface-solid), rgba(251, 191, 36, 0.08));
+    background: linear-gradient(135deg, var(--surface-solid), color-mix(in srgb, var(--accent) 6%, var(--surface-solid)));
     border-color: var(--border-accent);
 }
 .stats-metric--highlight {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), var(--surface-solid));
-    border-color: rgba(16, 185, 129, 0.25);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--success) 9%, var(--surface-solid)), var(--surface-solid));
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
 }
 .stats-metric__value {
     display: block;
@@ -1575,14 +1583,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .trend-chart__bar {
     width: 100%;
-    background: linear-gradient(to top, var(--accent-dark), var(--accent));
-    border-radius: 4px 4px 0 0;
+    background: color-mix(in srgb, var(--accent) 88%, transparent);
+    border-radius: 3px 3px 0 0;
     min-height: 4px;
     transition: height 0.3s ease, opacity 0.2s ease;
     cursor: help;
 }
 .trend-chart__bar:hover {
-    opacity: 0.85;
+    opacity: 0.78;
 }
 .trend-chart__value {
     font-size: 12px;
@@ -1629,14 +1637,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .bar-chart__bar {
     width: 100%;
-    background: linear-gradient(to top, var(--accent-dark), var(--accent));
-    border-radius: 3px 3px 0 0;
+    background: color-mix(in srgb, var(--accent) 82%, transparent);
+    border-radius: 2px 2px 0 0;
     min-height: 3px;
     transition: opacity 0.2s ease;
     cursor: help;
 }
 .bar-chart__bar:hover {
-    opacity: 0.8;
+    opacity: 0.7;
 }
 .bar-chart__label {
     font-size: 10px;
