@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { FormattedEvent, getTypeClass } from '@/types';
+import { TypeIcon } from './TypeIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import type { Density } from './ClientApp';
 
@@ -181,7 +182,10 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
         </div>
         <div className="stream-item__content">
           <div className="stream-item__headline">
-            <span className="stream-item__type">{event.icon} {event.type}</span>
+            <span className="stream-item__type">
+              <TypeIcon name={event.iconKey} size={14} color={event.color} className="stream-item__type-icon" />
+              {event.type}
+            </span>
             <span className="stream-item__headline-location">
               <span className="stream-item__sep">&mdash;</span>
               <span className="stream-item__location">
@@ -239,7 +243,9 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
         aria-hidden="true"
         style={{ '--node-color': event.color } as React.CSSProperties}
       >
-        <span className="event-node__emoji">{event.icon}</span>
+        <span className="event-node__icon" style={{ color: event.color }}>
+          <TypeIcon name={event.iconKey} size={20} />
+        </span>
       </div>
       <div
         className="event-card-header"

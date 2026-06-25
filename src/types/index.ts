@@ -30,6 +30,7 @@ export interface FormattedEvent {
   gps: string;
   color: string;
   icon: string;
+  iconKey: string;
   date: {
     day: string;
     month: string;
@@ -83,26 +84,27 @@ export interface Statistics {
 // Type style mapping
 export interface TypeStyle {
   icon: string;
+  iconKey: string;
   color: string;
   class: string;
 }
 
 export const TYPE_STYLES: Record<string, TypeStyle> = {
-  'Inbrott': { icon: '🔓', color: '#f97316', class: 'event-type--inbrott' },
-  'Brand': { icon: '🔥', color: '#ef4444', class: 'event-type--brand' },
-  'Rån': { icon: '💰', color: '#f59e0b', class: 'event-type--ran' },
-  'Trafikolycka': { icon: '🚗', color: '#3b82f6', class: 'event-type--trafikolycka' },
-  'Misshandel': { icon: '👊', color: '#ef4444', class: 'event-type--misshandel' },
-  'Skadegörelse': { icon: '🔨', color: '#f59e0b', class: 'event-type--skadegorelse' },
-  'Bedrägeri': { icon: '🕵️', color: '#8b5cf6', class: 'event-type--bedrageri' },
-  'Narkotikabrott': { icon: '💊', color: '#10b981', class: 'event-type--narkotikabrott' },
-  'Ofredande': { icon: '🚨', color: '#f43f5e', class: 'event-type--ofredande' },
-  'Sammanfattning': { icon: '📊', color: '#22c55e', class: 'event-type--sammanfattning' },
-  'Stöld': { icon: '🔓', color: '#f97316', class: 'event-type--stold' },
-  'Stöld/inbrott': { icon: '🔓', color: '#f97316', class: 'event-type--stold' },
-  'Mord/dråp': { icon: '⚠️', color: '#dc2626', class: 'event-type--mord' },
-  'Rattfylleri': { icon: '🚗', color: '#ef4444', class: 'event-type--ratta' },
-  'default': { icon: '📌', color: '#fcd34d', class: 'event-type--default' },
+  'Inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--inbrott' },
+  'Brand': { icon: '🔥', iconKey: 'flame', color: '#ef4444', class: 'event-type--brand' },
+  'Rån': { icon: '💰', iconKey: 'banknote', color: '#f59e0b', class: 'event-type--ran' },
+  'Trafikolycka': { icon: '🚗', iconKey: 'car', color: '#3b82f6', class: 'event-type--trafikolycka' },
+  'Misshandel': { icon: '👊', iconKey: 'shield', color: '#ef4444', class: 'event-type--misshandel' },
+  'Skadegörelse': { icon: '🔨', iconKey: 'hammer', color: '#f59e0b', class: 'event-type--skadegorelse' },
+  'Bedrägeri': { icon: '🕵️', iconKey: 'search', color: '#8b5cf6', class: 'event-type--bedrageri' },
+  'Narkotikabrott': { icon: '💊', iconKey: 'pill', color: '#10b981', class: 'event-type--narkotikabrott' },
+  'Ofredande': { icon: '🚨', iconKey: 'siren', color: '#f43f5e', class: 'event-type--ofredande' },
+  'Sammanfattning': { icon: '📊', iconKey: 'chart', color: '#22c55e', class: 'event-type--sammanfattning' },
+  'Stöld': { icon: '🔓', iconKey: 'bag', color: '#f97316', class: 'event-type--stold' },
+  'Stöld/inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--stold' },
+  'Mord/dråp': { icon: '⚠️', iconKey: 'octagon', color: '#dc2626', class: 'event-type--mord' },
+  'Rattfylleri': { icon: '🚗', iconKey: 'car', color: '#ef4444', class: 'event-type--ratta' },
+  'default': { icon: '📌', iconKey: 'pin', color: '#fcd34d', class: 'event-type--default' },
 };
 
 export function getTypeStyle(type: string): TypeStyle {

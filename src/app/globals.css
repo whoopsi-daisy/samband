@@ -241,14 +241,11 @@ header {
     transition: transform 0.2s ease;
 }
 .view-toggle button.active {
-    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    background: var(--accent);
     color: var(--on-accent);
-    box-shadow: 0 2px 12px var(--accent-glow);
+    box-shadow: 0 1px 2px var(--shadow);
     /* Fix Firefox Android rendering artifacts */
     transform: translateZ(0);
-}
-.view-toggle button.active svg {
-    transform: scale(1.1);
 }
 .view-toggle button:hover:not(.active) {
     color: var(--text);
@@ -523,19 +520,14 @@ header {
     z-index: 2;
     transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.event-node__emoji {
+.event-node__icon {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
-    font-size: 19px;
-    line-height: 1;
-    /* Normalise emoji glyph metrics so it sits dead-centre in the ring */
-    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-    text-align: center;
-    transform: translateY(0.5px);
 }
+.event-node__icon svg { display: block; }
 
 /* Card becomes a borderless timeline row; the header is the content bubble */
 .feed .event-card {
@@ -587,7 +579,7 @@ header {
     .feed-group__items::before { left: 22px; }
     .feed .event-card { padding-left: 52px; }
     .feed .event-node { left: 5px; width: 34px; height: 34px; }
-    .event-node__emoji { font-size: 16px; }
+    .event-node__icon svg { width: 17px; height: 17px; }
 }
 
 .event-card {
@@ -1129,6 +1121,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .leaflet-container {
     background: var(--primary) !important;
 }
+/* Editorial map: gently warm and desaturate the tiles so the colour-coded
+   incident markers read as the only saturated thing on the map. Radar theme
+   overrides this with its own (more specific) tile filter. */
+.leaflet-tile-pane {
+    filter: grayscale(0.5) sepia(0.16) brightness(1.02) contrast(0.95) saturate(0.85);
+}
+@media (prefers-color-scheme: dark) {
+    .leaflet-tile-pane {
+        filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) grayscale(0.55) sepia(0.12);
+    }
+}
 /* Attribution styling */
 .leaflet-control-attribution {
     background: var(--glass-bg) !important;
@@ -1159,7 +1162,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .map-popup { max-width: 280px; }
 .map-popup h3 { font-size: 13px; margin-bottom: 5px; }
 .map-popup p { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
-.map-popup .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.map-popup .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.map-popup .badge svg { flex: none; }
 .map-popup .popup-time { font-size: 10px; color: var(--success); margin-bottom: 6px; }
 .map-popup .popup-links { display: flex; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .map-popup .popup-links a { color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 500; }
@@ -1489,16 +1493,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     transition: border-color 0.2s ease;
 }
 .stats-metric:hover {
-    border-color: rgba(255, 255, 255, 0.16);
+    border-color: var(--border-accent);
 }
 .stats-metric--primary {
     grid-column: 1 / -1;
-    background: linear-gradient(135deg, var(--surface-solid), rgba(251, 191, 36, 0.08));
+    background: linear-gradient(135deg, var(--surface-solid), color-mix(in srgb, var(--accent) 6%, var(--surface-solid)));
     border-color: var(--border-accent);
 }
 .stats-metric--highlight {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), var(--surface-solid));
-    border-color: rgba(16, 185, 129, 0.25);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--success) 9%, var(--surface-solid)), var(--surface-solid));
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
 }
 .stats-metric__value {
     display: block;
@@ -1579,14 +1583,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .trend-chart__bar {
     width: 100%;
-    background: linear-gradient(to top, var(--accent-dark), var(--accent));
-    border-radius: 4px 4px 0 0;
+    background: color-mix(in srgb, var(--accent) 88%, transparent);
+    border-radius: 3px 3px 0 0;
     min-height: 4px;
     transition: height 0.3s ease, opacity 0.2s ease;
     cursor: help;
 }
 .trend-chart__bar:hover {
-    opacity: 0.85;
+    opacity: 0.78;
 }
 .trend-chart__value {
     font-size: 12px;
@@ -1633,14 +1637,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .bar-chart__bar {
     width: 100%;
-    background: linear-gradient(to top, var(--accent-dark), var(--accent));
-    border-radius: 3px 3px 0 0;
+    background: color-mix(in srgb, var(--accent) 82%, transparent);
+    border-radius: 2px 2px 0 0;
     min-height: 3px;
     transition: opacity 0.2s ease;
     cursor: help;
 }
 .bar-chart__bar:hover {
-    opacity: 0.8;
+    opacity: 0.7;
 }
 .bar-chart__label {
     font-size: 10px;
@@ -3366,7 +3370,11 @@ footer {
 .stream-item__type {
     color: var(--text);
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
+.stream-item__type-icon { flex: none; }
 .stream-item__location {
     color: var(--text-muted);
 }
