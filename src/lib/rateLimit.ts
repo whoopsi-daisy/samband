@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Simple in-memory rate limiter
-// Note: In production with multiple instances, use Redis or similar
+// Simple in-memory rate limiter.
+// NOTE: state is per-process. This is correct for the supported single-instance
+// (single container) deployment. Running multiple replicas would give each its
+// own counters — move this to a shared store (e.g. Redis) before scaling out.
 interface RateLimitEntry {
   count: number;
   resetTime: number;
@@ -13,6 +15,16 @@ const rateLimitMap = new Map<string, RateLimitEntry>();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute window
 const RATE_LIMIT_MAX_REQUESTS = 60;  // 60 requests per minute per IP
 const CLEANUP_INTERVAL = 5 * 60 * 1000; // Clean up every 5 minutes
+
+// Number of trusted reverse-proxy hops in front of the app (e.g. 1 for a single
+// Traefik/nginx). The client IP is read this many positions from the RIGHT of
+// X-Forwarded-For — the entries our own proxies append, which a client cannot
+// forge. Reading the leftmost value instead would let anyone bypass the limit
+// by sending a unique X-Forwarded-For per request.
+const TRUSTED_PROXY_HOPS = Math.max(
+  1,
+  parseInt(process.env.RATE_LIMIT_PROXY_HOPS || '1', 10) || 1
+);
 
 // Periodic cleanup of expired entries to prevent memory leaks
 let cleanupScheduled = false;
@@ -33,16 +45,20 @@ function scheduleCleanup(): void {
 
 // Get client IP from request headers
 function getClientIp(request: NextRequest): string {
-  // Check common proxy headers
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
-    // Take the first IP in the chain (original client)
-    return forwardedFor.split(',')[0].trim();
+    const ips = forwardedFor.split(',').map(ip => ip.trim()).filter(Boolean);
+    if (ips.length > 0) {
+      // Count TRUSTED_PROXY_HOPS in from the right; clamp to the leftmost entry
+      // if the chain is shorter than expected.
+      const index = Math.max(0, ips.length - TRUSTED_PROXY_HOPS);
+      return ips[index];
+    }
   }
 
   const realIp = request.headers.get('x-real-ip');
   if (realIp) {
-    return realIp;
+    return realIp.trim();
   }
 
   // Fallback - this won't work in production behind a proxy

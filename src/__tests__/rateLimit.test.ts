@@ -69,12 +69,24 @@ describe('checkRateLimit', () => {
     expect(result.remaining).toBe(59);
   });
 
-  it('extracts IP from x-forwarded-for header (first IP in chain)', () => {
+  it('uses the trusted proxy hop (rightmost) from x-forwarded-for', () => {
     const request = createMockRequest({ 'x-forwarded-for': '100.0.0.2, 192.168.1.1' });
     const result = checkRateLimit(request);
 
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(59);
+  });
+
+  it('cannot be bypassed by spoofing the leftmost x-forwarded-for entry', () => {
+    // A client behind one trusted proxy controls only the leftmost value; the
+    // proxy appends the real peer IP on the right. Requests that differ only in
+    // the spoofed leftmost entry must share a single rate-limit bucket.
+    for (let i = 0; i < 60; i++) {
+      const spoofed = createMockRequest({ 'x-forwarded-for': `10.0.0.${i}, 203.0.113.7` });
+      expect(checkRateLimit(spoofed).allowed).toBe(true);
+    }
+    const blocked = createMockRequest({ 'x-forwarded-for': '10.0.0.99, 203.0.113.7' });
+    expect(checkRateLimit(blocked).allowed).toBe(false);
   });
 
   it('extracts IP from x-real-ip header when x-forwarded-for is absent', () => {
