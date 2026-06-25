@@ -235,6 +235,13 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
       data-event-id={event.id ?? undefined}
     >
       <div
+        className="event-node"
+        aria-hidden="true"
+        style={{ '--node-color': event.color } as React.CSSProperties}
+      >
+        <span className="event-node__emoji">{event.icon}</span>
+      </div>
+      <div
         className="event-card-header"
         tabIndex={0}
         role="button"
@@ -281,7 +288,7 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
               className={`event-type ${typeClass}`}
               onClick={(e) => e.stopPropagation()}
             >
-              {event.icon} {event.type}
+              {event.type}
             </a>
             <span className="event-location-link">
               {event.location}
