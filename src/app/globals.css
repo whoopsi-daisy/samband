@@ -7,44 +7,45 @@
     /* Default theme ("system") tracks the OS light/dark preference. This also
        lets native UI (form controls, scrollbars) follow the scheme. */
     color-scheme: light dark;
-    --radius: 14px;
-    --radius-sm: 10px;
+    --radius: 12px;
+    --radius-sm: 9px;
     --radius-xs: 6px;
-    /* Warm-monochrome editorial palette. The only saturated colour in the UI
-       comes from the incident-type nodes/tags — everything else is ink + paper. */
-    --primary: #fffefb;
-    --primary-light: #f0ece3;
-    --accent: #1b1712;
-    --accent-dark: #000000;
-    --accent-glow: rgba(27, 23, 18, 0.12);
-    --text: #19160f;
-    --text-muted: #6f6a60;
-    --surface: #fffdf9;
-    --surface-solid: #fffdf9;
-    --surface-light: #f1ede4;
-    --border: #e7e2d8;
-    --border-accent: rgba(27, 23, 18, 0.3);
-    --success: #4d7c2f;
-    --danger: #b3261e;
-    --warning: #b45309;
-    --info: #1b1712;
-    --shadow: rgba(40, 33, 22, 0.07);
-    --shadow-lg: rgba(40, 33, 22, 0.16);
-    --glass-bg: rgba(245, 242, 236, 0.82);
-    --glass-border: #e7e2d8;
-    /* Foreground placed on the ink accent / colored fills */
-    --on-accent: #faf8f3;
+    /* High-contrast, near-monochrome neutrals with a single blue accent
+       (#165a9b). Flat surfaces, hairline borders, no heavy shadows. */
+    --primary: #ffffff;
+    --primary-light: #f4f5f7;
+    --accent: #165a9b;
+    --accent-dark: #114a82;
+    --accent-glow: rgba(22, 90, 155, 0.16);
+    --text: #0c0e12;
+    --text-muted: #5b626d;
+    --surface: #ffffff;
+    --surface-solid: #ffffff;
+    --surface-light: #f4f5f7;
+    --border: #e4e6ec;
+    --border-accent: rgba(22, 90, 155, 0.45);
+    --success: #1f8a4c;
+    --danger: #d0342c;
+    --warning: #b4690e;
+    --info: #165a9b;
+    --shadow: rgba(12, 16, 24, 0.05);
+    --shadow-lg: rgba(12, 16, 24, 0.10);
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-border: #e4e6ec;
+    /* Foreground placed on the accent / colored fills */
+    --on-accent: #ffffff;
     /* Semantic surfaces so both color schemes share component rules */
-    --page-bg: #f5f2ea;
-    --hover-bg: rgba(27, 23, 18, 0.045);
-    --border-strong: #d9d3c6;
-    --spine-default: #d9d3c6;
-    /* Serif display face for editorial structure */
-    --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
-    /* Brand signal red — the one saturated colour in the chrome, reserved for
-       the masthead mark and the live pulse. */
-    --brand: #d4142a;
-    --brand-bright: #e4002b;
+    --page-bg: #fbfbfc;
+    --hover-bg: rgba(12, 16, 24, 0.04);
+    --border-strong: #d2d6de;
+    --spine-default: #d2d6de;
+    /* Serif display face for editorial headlines + mono for technical meta.
+       Playfair (not Fraunces) per the project's serif policy. */
+    --font-display: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+    --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    /* Brand accent (blue) — reserved for the mark, links and active states. */
+    --brand: #165a9b;
+    --brand-bright: #2f7fc9;
     /* Spacing system for consistent gutters */
     --space-page: 40px;
     --space-section: 24px;
@@ -52,35 +53,35 @@
     --space-element: 12px;
 }
 
-/* Warm charcoal dark palette — the ink/paper relationship inverted. Shared by
-   two cases: the default ("system") theme when the OS prefers dark, and the
-   explicit "dark" opt-in. The :not([data-theme]) guard means an explicit
-   light/dark/radar choice always wins over the OS preference. */
+/* High-contrast near-black dark palette with a brightened blue accent for
+   legibility. Shared by the default ("system") theme when the OS prefers dark
+   and the explicit "dark" opt-in. The :not([data-theme]) guard means an
+   explicit light/dark/radar choice always wins over the OS preference. */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme]) {
         color-scheme: dark;
-        --primary: #16140f;
-        --primary-light: #221f18;
-        --accent: #efe9dd;
-        --accent-dark: #ffffff;
-        --accent-glow: rgba(255, 255, 255, 0.12);
-        --text: #ece7dd;
-        --text-muted: #9b958a;
-        --surface: #1d1b15;
-        --surface-solid: #1d1b15;
-        --surface-light: #262219;
-        --border: rgba(255, 255, 255, 0.1);
-        --border-accent: rgba(255, 255, 255, 0.28);
-        --success: #93c46a;
-        --danger: #e06a5f;
-        --warning: #d9a441;
-        --info: #efe9dd;
-        --shadow: rgba(0, 0, 0, 0.45);
+        --primary: #131519;
+        --primary-light: #1b1e24;
+        --accent: #3f8fd6;
+        --accent-dark: #5a9fdf;
+        --accent-glow: rgba(63, 143, 214, 0.22);
+        --text: #f1f3f5;
+        --text-muted: #949aa5;
+        --surface: #131519;
+        --surface-solid: #131519;
+        --surface-light: #1b1e24;
+        --border: rgba(255, 255, 255, 0.09);
+        --border-accent: rgba(63, 143, 214, 0.5);
+        --success: #4cc07e;
+        --danger: #ec6a60;
+        --warning: #d99a3a;
+        --info: #3f8fd6;
+        --shadow: rgba(0, 0, 0, 0.4);
         --shadow-lg: rgba(0, 0, 0, 0.6);
-        --glass-bg: rgba(22, 20, 15, 0.82);
+        --glass-bg: rgba(10, 11, 13, 0.82);
         --glass-border: rgba(255, 255, 255, 0.08);
-        --on-accent: #16140f;
-        --page-bg: #100e0a;
+        --on-accent: #ffffff;
+        --page-bg: #0a0b0d;
         --hover-bg: rgba(255, 255, 255, 0.05);
         --border-strong: rgba(255, 255, 255, 0.18);
         --spine-default: rgba(255, 255, 255, 0.14);
@@ -88,28 +89,28 @@
 }
 [data-theme="dark"] {
     color-scheme: dark;
-    --primary: #16140f;
-    --primary-light: #221f18;
-    --accent: #efe9dd;
-    --accent-dark: #ffffff;
-    --accent-glow: rgba(255, 255, 255, 0.12);
-    --text: #ece7dd;
-    --text-muted: #9b958a;
-    --surface: #1d1b15;
-    --surface-solid: #1d1b15;
-    --surface-light: #262219;
-    --border: rgba(255, 255, 255, 0.1);
-    --border-accent: rgba(255, 255, 255, 0.28);
-    --success: #93c46a;
-    --danger: #e06a5f;
-    --warning: #d9a441;
-    --info: #efe9dd;
-    --shadow: rgba(0, 0, 0, 0.45);
+    --primary: #131519;
+    --primary-light: #1b1e24;
+    --accent: #3f8fd6;
+    --accent-dark: #5a9fdf;
+    --accent-glow: rgba(63, 143, 214, 0.22);
+    --text: #f1f3f5;
+    --text-muted: #949aa5;
+    --surface: #131519;
+    --surface-solid: #131519;
+    --surface-light: #1b1e24;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-accent: rgba(63, 143, 214, 0.5);
+    --success: #4cc07e;
+    --danger: #ec6a60;
+    --warning: #d99a3a;
+    --info: #3f8fd6;
+    --shadow: rgba(0, 0, 0, 0.4);
     --shadow-lg: rgba(0, 0, 0, 0.6);
-    --glass-bg: rgba(22, 20, 15, 0.82);
+    --glass-bg: rgba(10, 11, 13, 0.82);
     --glass-border: rgba(255, 255, 255, 0.08);
-    --on-accent: #16140f;
-    --page-bg: #100e0a;
+    --on-accent: #ffffff;
+    --page-bg: #0a0b0d;
     --hover-bg: rgba(255, 255, 255, 0.05);
     --border-strong: rgba(255, 255, 255, 0.18);
     --spine-default: rgba(255, 255, 255, 0.14);
@@ -149,7 +150,6 @@ header {
     background: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-top: 3px solid var(--brand);
     border-bottom: 1px solid var(--glass-border);
     margin: 0 calc(-1 * var(--space-page)) var(--space-section);
     padding: 20px var(--space-page) 18px;
@@ -220,7 +220,7 @@ header {
 }
 .logo-emblem__ring--outer { opacity: 0.38; }
 .logo-emblem__ring--inner { opacity: 0.95; }
-.logo-emblem__core { fill: var(--brand-bright); }
+.logo-emblem__core { fill: var(--on-accent); }
 /* Gentle live pulse on the core, disabled for reduced-motion. */
 @media (prefers-reduced-motion: no-preference) {
     .logo-emblem__core { animation: logoPulse 2.4s ease-in-out infinite; transform-origin: 20px 20px; }
@@ -259,49 +259,44 @@ header {
 
 .header-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
+/* Flat text + icon nav (no boxed segmented container). Active item gets a
+   subtle accent-tinted pill; inactive items are muted and brighten on hover. */
 .view-toggle {
     display: flex;
-    background: var(--surface-solid);
-    border-radius: var(--radius);
-    padding: 4px;
-    border: 1px solid var(--border);
+    background: transparent;
+    border: none;
+    padding: 0;
     gap: 2px;
-    /* Fix Firefox Android rendering artifacts */
     transform: translateZ(0);
     isolation: isolate;
-    overflow: hidden;
 }
 .view-toggle button {
-    padding: 8px 16px;
+    padding: 7px 13px;
     background: transparent;
     border: none;
     color: var(--text-muted);
     cursor: pointer;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: color 0.18s ease, background 0.18s ease;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     position: relative;
 }
 .view-toggle button svg {
-    width: 18px;
-    height: 18px;
+    width: 17px;
+    height: 17px;
     flex-shrink: 0;
-    transition: transform 0.2s ease;
 }
 .view-toggle button.active {
-    background: var(--accent);
-    color: var(--on-accent);
-    box-shadow: 0 1px 2px var(--shadow);
-    /* Fix Firefox Android rendering artifacts */
-    transform: translateZ(0);
+    background: var(--accent-glow);
+    color: var(--accent);
 }
 .view-toggle button:hover:not(.active) {
     color: var(--text);
-    background: var(--surface-light);
+    background: var(--hover-bg);
 }
 /* Labels hidden by default on tablets, shown on large desktops */
 @media (min-width: 1200px) {
@@ -589,56 +584,47 @@ header {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 0 12px 64px;
-    background: linear-gradient(var(--page-bg) 78%, transparent);
+    padding: 8px 4px 12px;
+    background: linear-gradient(var(--page-bg) 76%, transparent);
 }
 .feed-group__label {
     font-family: var(--font-display);
-    font-size: 19px;
+    font-size: 20px;
     font-weight: 700;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
     color: var(--text);
 }
 .feed-group__count {
+    font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-muted);
     background: var(--surface-light);
     border: 1px solid var(--border);
-    padding: 1px 8px;
-    border-radius: 999px;
-    line-height: 1.6;
+    padding: 1px 7px;
+    border-radius: 6px;
+    line-height: 1.7;
 }
 .feed-group__items { position: relative; }
-/* Continuous rail behind the nodes */
-.feed-group__items::before {
-    content: '';
-    position: absolute;
-    left: 27px;
-    top: 0;
-    bottom: 14px;
-    width: 2px;
-    background: var(--border);
-    border-radius: 2px;
-}
 
 /* Emoji node on the rail (hidden outside the feed layout) */
 .event-node { display: none; }
+/* Type-tinted rounded-square icon tile, sat inside the card (no timeline rail) */
 .feed .event-node {
     display: flex;
     position: absolute;
-    left: 8px;
-    top: 6px;
-    width: 40px;
-    height: 40px;
+    left: 18px;
+    top: 16px;
+    width: 42px;
+    height: 42px;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    background: var(--surface-solid);
-    border: 2px solid var(--node-color, var(--border-strong));
-    box-shadow: 0 0 0 4px var(--page-bg), 0 2px 8px -2px color-mix(in srgb, var(--node-color, #000) 45%, transparent);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--node-color, var(--accent)) 14%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--node-color, var(--accent)) 32%, transparent);
+    box-shadow: none;
     z-index: 2;
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    transition: border-color 0.18s ease, background 0.18s ease;
 }
 .event-node__icon {
     display: flex;
@@ -649,57 +635,48 @@ header {
 }
 .event-node__icon svg { display: block; }
 
-/* Card becomes a borderless timeline row; the header is the content bubble */
+/* Each event is a flat, outlined card with the icon tile floated top-left. */
 .feed .event-card {
     position: relative;
     display: block;
-    background: transparent;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: none;
+    overflow: hidden;
+    padding: 16px 20px 16px 76px;
+    margin: 0 0 12px;
+    cursor: default;
+    transition: border-color 0.16s ease, background 0.16s ease;
+    animation: feedIn 0.3s ease-out backwards;
+}
+@keyframes feedIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.feed .event-card::before { display: none; }
+.feed .event-card-header {
+    background: none;
     border: none;
     border-radius: 0;
     box-shadow: none;
-    overflow: visible;
-    padding: 0 0 0 64px;
+    padding: 0;
     margin: 0;
-    cursor: default;
-    animation: feedIn 0.35s ease-out backwards;
 }
-@keyframes feedIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.feed .event-card::before { display: none; }
-.feed .event-card-header {
-    background: var(--surface-solid);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow: 0 1px 2px var(--shadow), 0 10px 28px -18px var(--shadow-lg);
-    padding: 14px 18px;
-    margin-bottom: 14px;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+.feed .event-card:has(.event-card-header:hover) {
+    border-color: var(--border-accent);
+    background: var(--hover-bg);
 }
-.feed .event-card-header:hover {
-    border-color: var(--border-strong);
-    box-shadow: 0 2px 6px var(--shadow), 0 18px 36px -18px var(--shadow-lg);
-    transform: translateY(-1px);
-    background: var(--surface-solid);
-}
-.feed .event-card:has(.event-card-header:hover) { transform: none; box-shadow: none; }
 .feed .event-card:has(.event-card-header:hover) .event-node {
-    transform: scale(1.08);
+    border-color: color-mix(in srgb, var(--node-color, var(--accent)) 55%, transparent);
 }
-.feed .event-card.expanded .event-card-header {
-    border-color: var(--border-strong);
-    box-shadow: 0 2px 6px var(--shadow), 0 18px 40px -18px var(--shadow-lg);
+.feed .event-card.expanded {
+    border-color: var(--border-accent);
 }
-.feed .event-card.expanded .event-node {
-    border-color: var(--node-color, var(--accent));
-    box-shadow: 0 0 0 4px var(--page-bg), 0 0 0 6px color-mix(in srgb, var(--node-color, var(--accent)) 22%, transparent);
-}
-.feed .event-card-body { padding: 0 0 14px; }
+.feed .event-card-body { padding: 4px 0 2px; }
 
 @media (max-width: 768px) {
-    .feed-group__header { padding-left: 52px; top: 64px; }
-    .feed-group__items::before { left: 22px; }
-    .feed .event-card { padding-left: 52px; }
-    .feed .event-node { left: 5px; width: 34px; height: 34px; }
-    .event-node__icon svg { width: 17px; height: 17px; }
+    .feed-group__header { padding-left: 4px; top: 64px; }
+    .feed .event-card { padding: 14px 16px 14px 62px; }
+    .feed .event-node { left: 14px; top: 14px; width: 36px; height: 36px; border-radius: 10px; }
+    .event-node__icon svg { width: 18px; height: 18px; }
 }
 
 .event-card {
@@ -824,8 +801,11 @@ header {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: -0.01em;
     color: var(--text-muted);
+    margin-bottom: 9px;
 }
 .event-meta-row .event-datetime {
     display: flex;
@@ -834,7 +814,7 @@ header {
     font-variant-numeric: tabular-nums;
 }
 .event-meta-row .event-relative {
-    color: var(--success);
+    color: var(--accent);
     font-weight: 600;
     font-size: inherit;
 }
@@ -1241,15 +1221,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .leaflet-container {
     background: var(--primary) !important;
 }
-/* Editorial map: gently warm and desaturate the tiles so the colour-coded
-   incident markers read as the only saturated thing on the map. Radar theme
-   overrides this with its own (more specific) tile filter. */
+/* Neutral, desaturated map so the colour-coded incident markers are the only
+   saturated thing on screen. Radar theme overrides this with its own filter. */
 .leaflet-tile-pane {
-    filter: grayscale(0.5) sepia(0.16) brightness(1.02) contrast(0.95) saturate(0.85);
+    filter: grayscale(0.7) brightness(1.03) contrast(0.94) saturate(0.75);
 }
 @media (prefers-color-scheme: dark) {
     .leaflet-tile-pane {
-        filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) grayscale(0.55) sepia(0.12);
+        filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(0.92) grayscale(0.75) saturate(0.7);
     }
 }
 /* Attribution styling */
@@ -1621,8 +1600,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     border-color: var(--border-accent);
 }
 .stats-metric--highlight {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--success) 9%, var(--surface-solid)), var(--surface-solid));
-    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--surface-solid)), var(--surface-solid));
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .stats-metric__value {
     display: block;
@@ -1638,7 +1617,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     color: var(--accent);
 }
 .stats-metric--highlight .stats-metric__value {
-    color: var(--success);
+    color: var(--accent);
 }
 .stats-metric__label {
     display: block;
@@ -3484,8 +3463,13 @@ footer {
     font-size: 12px;
 }
 .stream-item__sep {
-    color: rgba(148, 163, 184, 0.4);
-    margin: 0 3px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    opacity: 0.4;
+    margin: 0 8px;
+    flex: none;
 }
 .stream-item__type {
     color: var(--text);

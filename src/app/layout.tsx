@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   keywords: ['polis', 'polishändelser', 'Sverige', 'realtid', 'brott', 'olyckor', 'karta'],
   manifest: '/manifest.json',
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%2316140f'/><circle cx='20' cy='20' r='13' fill='none' stroke='%23faf8f3' stroke-width='2' opacity='0.4'/><circle cx='20' cy='20' r='8' fill='none' stroke='%23faf8f3' stroke-width='2' opacity='0.95'/><circle cx='20' cy='20' r='3.6' fill='%23e4002b'/></svg>",
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%23165a9b'/><circle cx='20' cy='20' r='13' fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.4'/><circle cx='20' cy='20' r='8' fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.95'/><circle cx='20' cy='20' r='3.6' fill='%23ffffff'/></svg>",
   },
   appleWebApp: {
     capable: true,
@@ -42,7 +42,7 @@ export default function RootLayout({
       <head>
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap"
         />
       </head>
       <body>
