@@ -49,6 +49,7 @@ export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
     gps: event.location?.gps || '',
     color: style.color,
     icon: style.icon,
+    iconKey: style.iconKey,
     date: {
       day: String(date.getDate()).padStart(2, '0'),
       month: months[date.getMonth()],

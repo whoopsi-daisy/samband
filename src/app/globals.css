@@ -523,19 +523,14 @@ header {
     z-index: 2;
     transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.event-node__emoji {
+.event-node__icon {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
-    font-size: 19px;
-    line-height: 1;
-    /* Normalise emoji glyph metrics so it sits dead-centre in the ring */
-    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-    text-align: center;
-    transform: translateY(0.5px);
 }
+.event-node__icon svg { display: block; }
 
 /* Card becomes a borderless timeline row; the header is the content bubble */
 .feed .event-card {
@@ -587,7 +582,7 @@ header {
     .feed-group__items::before { left: 22px; }
     .feed .event-card { padding-left: 52px; }
     .feed .event-node { left: 5px; width: 34px; height: 34px; }
-    .event-node__emoji { font-size: 16px; }
+    .event-node__icon svg { width: 17px; height: 17px; }
 }
 
 .event-card {
@@ -1159,7 +1154,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .map-popup { max-width: 280px; }
 .map-popup h3 { font-size: 13px; margin-bottom: 5px; }
 .map-popup p { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
-.map-popup .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.map-popup .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.map-popup .badge svg { flex: none; }
 .map-popup .popup-time { font-size: 10px; color: var(--success); margin-bottom: 6px; }
 .map-popup .popup-links { display: flex; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .map-popup .popup-links a { color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 500; }
@@ -3366,7 +3362,11 @@ footer {
 .stream-item__type {
     color: var(--text);
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
+.stream-item__type-icon { flex: none; }
 .stream-item__location {
     color: var(--text-muted);
 }

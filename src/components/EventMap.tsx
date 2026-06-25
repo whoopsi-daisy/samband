@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { FormattedEvent } from '@/types';
+import { typeIconSvg } from './TypeIcon';
 
 interface EventMapProps {
   events: FormattedEvent[];
@@ -210,14 +211,14 @@ function EventMapInner({ events, isActive }: EventMapProps) {
       (e.summary || '').length > 120 ? e.summary!.substring(0, 120) + '...' : e.summary || ''
     );
     const safeLocation = escapeHtml(e.location || '');
-    const safeIcon = escapeHtml(e.icon || '');
     const safeColor = escapeHtml(e.color || '');
+    const iconSvg = typeIconSvg(e.iconKey || 'pin', safeColor, 13);
     const safeUrl = e.url ? escapeHtml(e.url) : '';
     const gMaps = `https://www.google.com/maps/search/?api=1&query=${rawLat},${rawLng}`;
 
     marker.bindPopup(`
       <div class="map-popup">
-        <span class="badge" style="background:${safeColor}20;color:${safeColor}">${safeIcon} ${safeType}</span>
+        <span class="badge" style="background:${safeColor}20;color:${safeColor}">${iconSvg}${safeType}</span>
         <div class="popup-time">${isRecent ? '🔴' : '🕐'} ${relTime}</div>
         <h3>${safeName}</h3>
         <p>${safeSummary}</p>
