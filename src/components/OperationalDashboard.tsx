@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { OperationalStats, FetchLogEntry, DatabaseHealth, Statistics } from '@/types';
+import { useMounted } from '@/hooks/useMounted';
 
 interface OperationalDashboardProps {
   operationalStats: OperationalStats;
@@ -10,6 +11,8 @@ interface OperationalDashboardProps {
   eventStats: Statistics;
 }
 
+// Both helpers below depend on the viewer's clock and timezone, so they only
+// produce stable markup after mount — see the `mounted` gate in the component.
 function formatTimeAgo(dateString: string | null): string {
   if (!dateString) return 'Aldrig';
   const date = new Date(dateString);
@@ -76,6 +79,14 @@ export default function OperationalDashboard({
   useEffect(() => {
     setUpdatedAt(new Date().toLocaleString('sv-SE'));
   }, []);
+
+  // Clock- and timezone-dependent strings render as a placeholder on the server
+  // and are filled in on mount, so hydration never sees two different values.
+  const mounted = useMounted();
+  const timeAgo = (value: string | null) => (mounted ? formatTimeAgo(value) : '—');
+  const dateTime = (value: string) => (mounted ? formatDateTime(value) : '—');
+  const dateOnly = (value: string | null) =>
+    !value ? 'N/A' : mounted ? new Date(value).toLocaleDateString('sv-SE') : '—';
 
   const maxHourlyFetches = Math.max(...operationalStats.hourlyFetches, 1);
   const maxDailyEventCount = Math.max(...eventStats.daily.map(d => d.count), 1);
@@ -172,13 +183,13 @@ export default function OperationalDashboard({
                 <div className="ops-info-row">
                   <span className="ops-info-label">Senast lyckad</span>
                   <span className="ops-info-value ops-info-value--success">
-                    {formatTimeAgo(operationalStats.lastSuccessfulFetch)}
+                    {timeAgo(operationalStats.lastSuccessfulFetch)}
                   </span>
                 </div>
                 <div className="ops-info-row">
                   <span className="ops-info-label">Senast misslyckad</span>
                   <span className="ops-info-value ops-info-value--muted">
-                    {formatTimeAgo(operationalStats.lastFailedFetch)}
+                    {timeAgo(operationalStats.lastFailedFetch)}
                   </span>
                 </div>
                 <div className="ops-info-row">
@@ -231,17 +242,13 @@ export default function OperationalDashboard({
                 <div className="ops-info-row">
                   <span className="ops-info-label">Äldsta händelse</span>
                   <span className="ops-info-value">
-                    {databaseHealth.oldestEvent
-                      ? new Date(databaseHealth.oldestEvent).toLocaleDateString('sv-SE')
-                      : 'N/A'}
+                    {dateOnly(databaseHealth.oldestEvent)}
                   </span>
                 </div>
                 <div className="ops-info-row">
                   <span className="ops-info-label">Nyaste händelse</span>
                   <span className="ops-info-value">
-                    {databaseHealth.newestEvent
-                      ? new Date(databaseHealth.newestEvent).toLocaleDateString('sv-SE')
-                      : 'N/A'}
+                    {dateOnly(databaseHealth.newestEvent)}
                   </span>
                 </div>
                 <div className="ops-info-row">
@@ -353,7 +360,7 @@ export default function OperationalDashboard({
                 {operationalStats.recentErrors.map((error, index) => (
                   <div key={index} className="ops-error-item">
                     <span className="ops-error-type">{error.error_type}</span>
-                    <span className="ops-error-time">{formatDateTime(error.fetched_at)}</span>
+                    <span className="ops-error-time">{dateTime(error.fetched_at)}</span>
                   </div>
                 ))}
               </div>
@@ -379,7 +386,7 @@ export default function OperationalDashboard({
                 <tbody>
                   {fetchLogs.map((log) => (
                     <tr key={log.id} className={log.success ? '' : 'ops-table-row--error'}>
-                      <td className="ops-table-time">{formatDateTime(log.fetchedAt)}</td>
+                      <td className="ops-table-time">{dateTime(log.fetchedAt)}</td>
                       <td>
                         <span className={`ops-status-badge ops-status-badge--${log.success ? 'success' : 'error'}`}>
                           {log.success ? 'OK' : 'FEL'}

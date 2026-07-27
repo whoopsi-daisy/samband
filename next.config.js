@@ -1,5 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Emit .next/standalone: a self-contained server with only the modules that
+  // are actually reachable, so the runtime image does not need node_modules
+  // (and therefore no devDependencies) copied into it.
+  output: 'standalone',
+  // Never bundle the native SQLite addon — it has to stay a real require().
+  serverExternalPackages: ['better-sqlite3'],
+  // better-sqlite3 resolves its .node binary at runtime, which static tracing
+  // cannot always follow. Without this the standalone server starts and then
+  // throws "Could not locate the bindings file". Both layouts are listed: v13
+  // ships prebuilds/, older versions compile into build/Release/.
+  outputFileTracingIncludes: {
+    '/**': [
+      './node_modules/better-sqlite3/prebuilds/**',
+      './node_modules/better-sqlite3/build/Release/*.node',
+    ],
+  },
   // Transpile leaflet to avoid bundler issues
   transpilePackages: ['leaflet'],
   // Allow Turbopack (default in Next.js 16) with empty config

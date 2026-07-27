@@ -1,11 +1,18 @@
 .git
+.gitignore
 .github
 node_modules
 .next
+coverage
+# Never copy a local database into the build context — /app/data is a mount.
 data
 .env*
 *.md
+Dockerfile
+docker-compose.yml
+.dockerignore
 jest.config.js
 jest.setup.js
 eslint.config.mjs
 src/__tests__
+scripts

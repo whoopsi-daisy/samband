@@ -33,13 +33,20 @@ A real-time Swedish police event notification service built with Next.js. Fetche
 - **Testing**: [Jest 30](https://jestjs.io/) with [Testing Library](https://testing-library.com/)
 - **Styling**: Custom CSS with CSS variables
 - **Data Source**: [Swedish Police API](https://polisen.se/api/events)
+- **Deployment**: Docker (multi-stage, standalone output, non-root, healthchecked)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 22.x or later
+- Node.js 22.x or later (the container image and CI use Node 24)
 - npm or yarn
+
+> **Timezone matters.** The app parses Swedish wall-clock times out of event
+> text (`"27 juli 14.30, Brand, Malmö"`) and renders them back, so it must run
+> with `TZ=Europe/Stockholm`. Running under UTC shifts every stored and
+> displayed event time by 1–2 hours. The Docker image sets this by default; set
+> it yourself for bare-metal installs.
 
 ### Installation
 
@@ -68,6 +75,133 @@ npm run build
 npm start
 ```
 
+## Running with Docker
+
+The recommended deployment. The image is a multi-stage build producing a
+standalone Next.js server (~55 MB of app code, no devDependencies), running as
+an unprivileged user with `TZ=Europe/Stockholm` and a healthcheck.
+
+```bash
+git clone https://github.com/doctorslop/samband.git
+cd samband
+
+# The data directory is bind-mounted; it must be writable by the container user.
+mkdir -p data && sudo chown -R 1001:1001 data
+
+docker compose up -d --build
+```
+
+The app is then on <http://localhost:3000>. Check it came up:
+
+```bash
+docker compose ps          # should show (healthy)
+docker compose logs -f
+curl -s http://localhost:3000/api/health
+```
+
+On an empty database the first fetch backfills roughly a week of events from
+polisen.se, so give it a minute before the feed looks populated.
+
+### Configuration
+
+Compose reads these from the environment or an `.env` file next to
+`docker-compose.yml`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SAMBAND_PORT` | `3000` | Host port to publish. |
+| `TZ` | `Europe/Stockholm` | Container timezone. Changing this corrupts event times — see the warning above. |
+| `RATE_LIMIT_PROXY_HOPS` | `1` | Trusted reverse-proxy hops in front of the app. |
+
+The image itself also honours `SAMBAND_DATA_DIR` (default `/app/data`), which
+is where `events.db` lives.
+
+### Updating
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+The database lives in the bind-mounted `./data` directory, so rebuilds never
+touch it.
+
+### Backups
+
+`events.db` is the entire state. Snapshot it safely while the app runs:
+
+```bash
+./scripts/export-db.sh ./data/events.db ./backup-$(date +%F).db
+```
+
+Do not just `cp` the file — the database runs in WAL mode, so recent writes live
+in `events.db-wal` and a plain copy of the main file alone loses them.
+
+## Migrating an existing install into Docker
+
+If you already run samband directly on a host (e.g. a Proxmox LXC container),
+move the collected history across in three steps.
+
+**1. Export on the old host.** This uses SQLite's online backup API, so the app
+can keep running while it happens:
+
+```bash
+cd /path/to/samband          # wherever the app lives on the LXC
+./scripts/export-db.sh
+```
+
+It prints a summary (event count, oldest/newest event, integrity check) and
+writes `samband-export-<timestamp>.db`. If the `sqlite3` CLI is not installed,
+the script falls back to the `better-sqlite3` module the app already ships, so
+there is nothing to install.
+
+**2. Copy it to the Docker host:**
+
+```bash
+scp samband-export-*.db user@docker-host:/path/to/samband/
+```
+
+**3. Import and start:**
+
+```bash
+cd /path/to/samband
+docker compose down                        # if already running
+sudo ./scripts/import-db.sh samband-export-20260727-143000.db
+docker compose up -d --build
+```
+
+`import-db.sh` verifies the file is a real SQLite database, moves any existing
+database aside as `events.db.bak-<timestamp>` rather than deleting it, clears
+stale WAL sidecars that would otherwise be replayed over the new file, and sets
+ownership to uid 1001 so the container can write to it.
+
+### What happens on first start
+
+Older databases stored `event_time` in two different shapes — UTC
+(`2026-07-27T12:30:00.000Z`) and the API's local offset form
+(`2026-07-27T14:30:00+02:00`). SQLite compares these columns as text, and those
+two shapes do not sort against each other chronologically, so the feed order and
+the "last 24h" statistics were both subtly wrong.
+
+The app migrates these to UTC automatically on first start and logs what it did:
+
+```
+[db] migration: normalised 500 event timestamps to UTC
+```
+
+This runs once, tracked by `schema_version` in the `meta` table. Because it
+rewrites rows in place, **take the export in step 1 before starting the
+container** — that file is your rollback.
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---------|-------|
+| `SQLITE_CANTOPEN` / `attempt to write a readonly database` | `./data` is not writable by uid 1001. Run `sudo chown -R 1001:1001 data`. |
+| Event times off by 1–2 hours | `TZ` is not `Europe/Stockholm`. |
+| Container `(unhealthy)` | `/api/health` returns 503 when the last fetch is over an hour old. Check `docker compose logs` for polisen.se errors. |
+| Feed is empty on a fresh install | Backfill has not finished; wait a minute and check `/stats`. |
+
 ## Project Structure
 
 ```
@@ -81,7 +215,8 @@ samband/
 │   │   │   └── page.tsx        # System status page
 │   │   └── api/                # API Route Handlers
 │   │       ├── events/         # GET /api/events
-│   │       └── details/        # GET /api/details
+│   │       ├── details/        # GET /api/details
+│   │       └── health/         # GET /api/health (container healthcheck)
 │   │
 │   ├── components/             # React Components
 │   │   ├── ClientApp.tsx       # Main client-side wrapper
@@ -98,7 +233,9 @@ samband/
 │   │   └── ServiceWorkerRegistration.tsx  # PWA service worker
 │   │
 │   ├── hooks/                  # Custom React hooks
-│   │   └── useKeyboardShortcuts.ts  # Keyboard shortcut handling
+│   │   ├── useKeyboardShortcuts.ts  # Keyboard shortcut handling
+│   │   ├── useMounted.ts       # Hydration-safe gate for clock/TZ-dependent UI
+│   │   └── useNow.ts           # Shared one-minute clock for relative times
 │   │
 │   ├── lib/                    # Server-side utilities
 │   │   ├── db.ts               # SQLite database operations
@@ -118,9 +255,15 @@ samband/
 │   ├── icons/                  # App icons
 │   └── sound/                  # Audio files
 │
-├── data/                       # Data directory
+├── scripts/                    # Operational scripts
+│   ├── export-db.sh            # Consistent DB snapshot (WAL-safe)
+│   └── import-db.sh            # Import a snapshot into the Docker data dir
+│
+├── data/                       # Data directory (bind-mounted into the container)
 │   └── events.db               # SQLite database (created at runtime)
 │
+├── Dockerfile
+├── docker-compose.yml
 ├── package.json
 ├── tsconfig.json
 ├── next.config.js
@@ -169,6 +312,22 @@ Fetches detailed text content for a specific event from polisen.se.
 }
 ```
 
+### GET /api/health
+
+Liveness probe used by the container healthcheck. Not rate limited, so a probe
+can never lock itself out. Returns 503 when the last fetch attempt is older than
+60 minutes, or when the database cannot be opened.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "events": 12043,
+  "lastFetch": "2026-07-27T16:08:32.813Z",
+  "lastFetchAgeMinutes": 3
+}
+```
+
 ## Database Schema
 
 The SQLite database stores events with the following structure:
@@ -199,16 +358,30 @@ CREATE TABLE fetch_log (
   success INTEGER,
   error_message TEXT
 );
+
+CREATE TABLE meta (
+  key TEXT PRIMARY KEY,        -- 'schema_version' tracks applied migrations
+  value TEXT
+);
 ```
+
+All timestamp columns hold canonical UTC ISO 8601 (`2026-07-27T12:30:00.000Z`).
+SQLite compares them as text, so a single shape is required for `ORDER BY` and
+range filters to be chronologically correct — see the migration note above.
+Statistics that are meaningful only in local time (events per hour, per weekday,
+per day) apply SQLite's `'localtime'` modifier at query time.
 
 ## Configuration
 
 ### Environment Variables
 
-No environment variables are required for basic operation. The application uses sensible defaults.
+No environment variables are required for basic operation, but `TZ` should
+always be set — see the warning under Prerequisites.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `TZ` | system | Process timezone. Must be `Europe/Stockholm`; event time parsing and the local-time statistics depend on it. Set in the image. |
+| `SAMBAND_DATA_DIR` | `<cwd>/data` | Directory holding `events.db`. The standalone server runs from a different working directory than the repo root, so the image sets this to `/app/data`. |
 | `RATE_LIMIT_PROXY_HOPS` | `1` | Number of trusted reverse-proxy hops in front of the app. The client IP is read this many positions from the right of `X-Forwarded-For`, so a client cannot spoof it. Set to the number of proxies (e.g. Traefik, a CDN) ahead of the container. |
 
 ### Background Refresh
@@ -351,6 +524,18 @@ TypeScript errors are checked during build:
 ```bash
 npm run build
 ```
+
+### Dependency overrides
+
+`package.json` pins `postcss` and `sharp` above the versions Next.js depends on;
+both of Next's pins carry high-severity advisories, and `npm audit fix` would
+otherwise "resolve" them by downgrading Next.js to 9.x. Production dependencies
+audit clean; drop the overrides once Next ships updated pins.
+
+One high-severity advisory remains in the dev-only lint toolchain
+(`brace-expansion`, reached through `eslint`). It never runs in production, and
+its only available fix downgrades `@eslint/eslintrc` to 0.1.0. CI therefore
+audits with `--omit=dev`.
 
 ## Data Flow
 

@@ -13,6 +13,10 @@ const customJestConfig = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
+  // The standalone build emits .next/standalone/package.json with the same
+  // "name" as the root manifest, which Jest reports as a haste collision.
+  // Keep the whole build output out of the module map.
+  modulePathIgnorePatterns: ['<rootDir>/.next/'],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
