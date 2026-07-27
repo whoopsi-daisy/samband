@@ -28,8 +28,12 @@ import {
 // and extended as the archive grows.
 
 // Overridable so the importer can be pointed at a mock or a caching proxy.
-// Defaults to the public API.
-const BASE_URL = process.env.BPK_API_BASE_URL?.trim() || 'https://brottsplatskartan.se/api/events';
+// Defaults to the public API. Any trailing slash is stripped: the form that is
+// known to work is `/api/events?...` with no slash before the query string.
+const BASE_URL = (process.env.BPK_API_BASE_URL?.trim() || 'https://brottsplatskartan.se/api/events').replace(
+  /\/+$/,
+  ''
+);
 const APP_PARAM = 'samband';
 const USER_AGENT = 'samband/1.0 (+https://github.com/whoopsi-daisy/samband) self-hosted event archive';
 
@@ -48,10 +52,10 @@ const MAX_CONCURRENCY = 8;
 const DELAY_BETWEEN_BATCHES_MS = 250;
 
 // The default page size is 10, which would mean ~33k requests for a full
-// import of the ~333k events. If the API honours a larger `limit` that
-// collapses to a fraction of that, so probe for it rather than assuming.
-// Falls back silently to whatever the server actually returns.
-const PREFERRED_PER_PAGE = 100;
+// import of the ~333k events. `limit=500` is confirmed working against the
+// live API, bringing that down to ~670. Still probed rather than assumed —
+// the code believes whatever the server actually returns.
+const PREFERRED_PER_PAGE = 500;
 
 export interface ImportOptions {
   mode?: 'full' | 'incremental';
@@ -205,7 +209,7 @@ export function mapApiEvent(raw: ApiEvent): BpkEventInput | null {
 }
 
 async function fetchPage(page: number, perPage: number, signal?: AbortSignal): Promise<ApiPage> {
-  const url = new URL(BASE_URL + '/');
+  const url = new URL(BASE_URL);
   url.searchParams.set('app', APP_PARAM);
   url.searchParams.set('page', String(page));
   // The page-size parameter is `limit`. The response echoes it back as

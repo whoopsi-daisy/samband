@@ -2,6 +2,7 @@
 /**
  * Import events from brottsplatskartan.se into the local database.
  *
+ *   npm run import:bpk -- --from-ndjson=FILE  load a dump (file path or URL)
  *   npm run import:bpk -- --probe            inspect the API, import nothing
  *   npm run import:bpk -- --mode=incremental pull only what is new (default)
  *   npm run import:bpk -- --mode=full        walk the whole archive (hours)
@@ -13,6 +14,7 @@
  * SAMBAND_DATA_DIR selects the database, the same as for the app itself.
  */
 import { importBrottsplatskartan, probeApi } from '../src/lib/brottsplatskartan';
+import { importNdjson } from '../src/lib/brottsplatskartanNdjson';
 import { getBpkImportState } from '../src/lib/brottsplatskartanDb';
 import { reconcileImportState } from '../src/lib/brottsplatskartanRunner';
 
@@ -21,6 +23,7 @@ interface Args {
   concurrency?: number;
   maxPages?: number;
   probe: boolean;
+  fromNdjson?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -31,6 +34,10 @@ function parseArgs(argv: string[]): Args {
     switch (key) {
       case 'probe':
         args.probe = true;
+        break;
+      case 'from-ndjson':
+        if (!value) throw new Error('--from-ndjson needs a file path or URL');
+        args.fromNdjson = value;
         break;
       case 'mode':
         if (value !== 'full' && value !== 'incremental') {
@@ -80,11 +87,18 @@ async function main(): Promise<void> {
     if (meta.perPage > 10) {
       console.log(`\n  The API honoured a larger page size, so a full import needs`);
       console.log(`  ${meta.totalPages?.toLocaleString('sv-SE')} requests instead of ~33,000.`);
+      console.log(`  An NDJSON dump avoids those requests entirely:`);
+      console.log(`    npm run import:bpk -- --from-ndjson=<file or URL>`);
     }
     return;
   }
 
   reconcileImportState();
+
+  if (args.fromNdjson) {
+    await runNdjsonImport(args.fromNdjson);
+    return;
+  }
 
   const before = getBpkImportState();
   console.log(`Starting ${args.mode} import (already stored: ${before.storedEvents.toLocaleString('sv-SE')})`);
@@ -149,6 +163,58 @@ async function main(): Promise<void> {
   } catch (error: unknown) {
     if ((error as { name?: string })?.name === 'AbortError') {
       console.log(`Cancelled after ${formatDuration(Date.now() - started)}. Re-run to resume.`);
+      process.exitCode = 130;
+      return;
+    }
+    throw error;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+  }
+}
+
+async function runNdjsonImport(source: string): Promise<void> {
+  console.log(`Importing from ${source}`);
+  const started = Date.now();
+  let lastLine = 0;
+
+  const controller = new AbortController();
+  const onSignal = () => {
+    console.log('\nStopping; rows already inserted are kept.');
+    controller.abort();
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+
+  try {
+    const result = await importNdjson({
+      source,
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (Date.now() - lastLine < 2000) return;
+        lastLine = Date.now();
+        console.log(
+          `  ${p.linesRead.toLocaleString('sv-SE')} lines, ` +
+            `${p.imported.toLocaleString('sv-SE')} new, ${p.duplicates.toLocaleString('sv-SE')} known`
+        );
+      },
+    });
+
+    console.log('\nFinished.');
+    console.log(`  lines read  ${result.linesRead.toLocaleString('sv-SE')}`);
+    console.log(`  imported    ${result.imported.toLocaleString('sv-SE')}`);
+    console.log(`  already had ${result.duplicates.toLocaleString('sv-SE')}`);
+    if (result.malformed > 0) console.log(`  unparseable ${result.malformed.toLocaleString('sv-SE')} lines`);
+    if (result.unusable > 0) console.log(`  no id/date  ${result.unusable.toLocaleString('sv-SE')} records`);
+    console.log(`  elapsed     ${formatDuration(Date.now() - started)}`);
+    console.log(`  stored now  ${result.storedTotal.toLocaleString('sv-SE')}`);
+    console.log(
+      `\n  Run an incremental sync to pick up anything published since the dump:` +
+        `\n    npm run import:bpk -- --mode=incremental`
+    );
+  } catch (error: unknown) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      console.log(`Cancelled after ${formatDuration(Date.now() - started)}. Re-run to continue.`);
       process.exitCode = 130;
       return;
     }
