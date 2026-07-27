@@ -3,11 +3,35 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    volumes:
-      - sqlite_data:/app/data
+    image: samband:latest
+    container_name: samband
     restart: unless-stopped
-
-volumes:
-  sqlite_data:
+    # Reap zombies and forward SIGTERM so the container stops promptly.
+    init: true
+    ports:
+      - "${SAMBAND_PORT:-3000}:3000"
+    environment:
+      # The app parses Swedish wall-clock times out of event text and renders
+      # them back, so the container clock must be Swedish. Overriding this
+      # silently shifts every stored and displayed event time.
+      TZ: ${TZ:-Europe/Stockholm}
+      # Reverse-proxy hops in front of the app; the client IP for rate limiting
+      # is read this many entries from the right of X-Forwarded-For.
+      RATE_LIMIT_PROXY_HOPS: ${RATE_LIMIT_PROXY_HOPS:-1}
+    volumes:
+      # Bind mount rather than a named volume: the SQLite file stays visible on
+      # the host, so importing a database from an existing install and taking
+      # backups are ordinary file operations. The directory must be writable by
+      # uid 1001 (see scripts/import-db.sh, or `chown -R 1001:1001 ./data`).
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

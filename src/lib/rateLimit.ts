@@ -32,7 +32,7 @@ function scheduleCleanup(): void {
   if (cleanupScheduled) return;
   cleanupScheduled = true;
 
-  setInterval(() => {
+  const timer = setInterval(() => {
     const now = Date.now();
     const entries = Array.from(rateLimitMap.entries());
     for (const [key, entry] of entries) {
@@ -41,6 +41,11 @@ function scheduleCleanup(): void {
       }
     }
   }, CLEANUP_INTERVAL);
+
+  // Housekeeping only — it must not be the reason the process stays alive,
+  // otherwise the server ignores SIGTERM and the container takes the full
+  // 10s stop timeout to shut down on every deploy.
+  if (typeof timer.unref === 'function') timer.unref();
 }
 
 // Get client IP from request headers

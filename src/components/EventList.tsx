@@ -222,8 +222,14 @@ export default function EventList({
     const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const today = startOfDay(new Date());
 
-    const label = (iso: string) => {
-      const d = new Date(iso);
+    // The key must be the *local* calendar day. Slicing the UTC ISO string
+    // instead put events in the 00:00-02:00 local window into the previous
+    // day's bucket while the label still said today, splitting one day into
+    // two groups with the same heading.
+    const dayKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const label = (d: Date) => {
       const diffDays = Math.round((today - startOfDay(d)) / 86400000);
       if (diffDays === 0) return 'Idag';
       if (diffDays === 1) return 'Igår';
@@ -233,10 +239,10 @@ export default function EventList({
     const groups: { key: string; label: string; events: FormattedEvent[] }[] = [];
     let current: { key: string; label: string; events: FormattedEvent[] } | null = null;
     for (const ev of events) {
-      const iso = ev.date.iso || ev.datetime;
-      const key = iso.slice(0, 10);
+      const d = new Date(ev.date.iso || ev.datetime);
+      const key = dayKey(d);
       if (!current || current.key !== key) {
-        current = { key, label: label(iso), events: [] };
+        current = { key, label: label(d), events: [] };
         groups.push(current);
       }
       current.events.push(ev);

@@ -4,9 +4,16 @@ import fs from 'fs';
 import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
 import { escapeLikeWildcards } from './utils';
 
-// Database configuration
-const DATA_DIR = path.join(process.cwd(), 'data');
+// Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
+// database somewhere other than <cwd>/data (the standalone Next.js server runs
+// from a different working directory than the repo root).
+const DATA_DIR = process.env.SAMBAND_DATA_DIR
+  ? path.resolve(process.env.SAMBAND_DATA_DIR)
+  : path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'events.db');
+
+// Bump when a migration is added below.
+const SCHEMA_VERSION = 1;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -55,6 +62,67 @@ function initializeDatabase(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_composite ON events(event_time DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_events_location_type ON events(location_name, type);
   `);
+
+  // Key/value table used to track which migrations have run.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+
+  runMigrations(database);
+}
+
+function getSchemaVersion(database: Database.Database): number {
+  const row = database.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
+    | { value: string }
+    | undefined;
+  return row ? parseInt(row.value, 10) || 0 : 0;
+}
+
+function setSchemaVersion(database: Database.Database, version: number): void {
+  database
+    .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(String(version));
+}
+
+// Migration 1: canonicalise timestamps to UTC ("...Z").
+//
+// Older rows stored `event_time`/`datetime` in two different shapes: UTC from
+// `toISOString()` ("2026-07-27T12:30:00.000Z") and the API's local offset form
+// ("2026-07-27T14:30:00+02:00"). Both are valid ISO 8601, but the columns are
+// ordered and range-filtered as TEXT, and those two shapes do not sort against
+// each other chronologically — so `ORDER BY event_time DESC` interleaved rows
+// and the "last 24h" filters cut at the wrong instant. Rewrite every non-UTC
+// value so the whole column is comparable as a string again.
+function migrateTimestampsToUtc(database: Database.Database): void {
+  const rows = database
+    .prepare("SELECT id, datetime, event_time FROM events WHERE datetime NOT LIKE '%Z' OR event_time NOT LIKE '%Z'")
+    .all() as Array<{ id: number; datetime: string | null; event_time: string | null }>;
+
+  if (rows.length === 0) return;
+
+  const update = database.prepare('UPDATE events SET datetime = ?, event_time = ? WHERE id = ?');
+  const applyAll = database.transaction((pending: typeof rows) => {
+    for (const row of pending) {
+      update.run(toUtcIso(row.datetime), toUtcIso(row.event_time), row.id);
+    }
+  });
+  applyAll(rows);
+
+  console.log(`[db] migration: normalised ${rows.length} event timestamps to UTC`);
+}
+
+function runMigrations(database: Database.Database): void {
+  const current = getSchemaVersion(database);
+  if (current >= SCHEMA_VERSION) return;
+
+  if (current < 1) {
+    migrateTimestampsToUtc(database);
+  }
+
+  setSchemaVersion(database, SCHEMA_VERSION);
 }
 
 export function getDatabase(): Database.Database {
@@ -79,11 +147,28 @@ export function getDatabase(): Database.Database {
   return db;
 }
 
-// Normalize datetime to ISO 8601 format
+// Convert any parseable timestamp to canonical UTC ISO 8601 ("...Z").
+//
+// Every timestamp column is compared and sorted as TEXT by SQLite, so they must
+// all share one shape: UTC ISO strings sort chronologically, mixed offset forms
+// do not. Returns the input untouched if it cannot be parsed, so a malformed
+// value is never silently turned into a wrong date.
+export function toUtcIso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
+// Local calendar day as YYYY-MM-DD, matching SQLite's date(col, 'localtime').
+function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// Normalize the API's datetime ("2026-07-27 14:30:00 +02:00") to UTC ISO 8601.
 function normalizeDateTime(datetime: string): string {
   let normalized = datetime.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T');
   normalized = normalized.replace(/ ([+-]\d{2}:\d{2})$/, '$1');
-  return normalized;
+  return toUtcIso(normalized) ?? normalized;
 }
 
 // Extract actual event time from event data
@@ -461,15 +546,17 @@ export function getStatsSummary(): Statistics {
   // Top locations
   const topLocations = pdo.prepare('SELECT location_name AS label, COUNT(*) AS total FROM events WHERE type NOT LIKE ? GROUP BY location_name ORDER BY total DESC LIMIT 8').all(excludePattern) as TopItem[];
 
-  // Per hour last 24h
-  const hourlyRows = pdo.prepare("SELECT strftime('%H', event_time) AS hour, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY hour ORDER BY hour").all(since24h, excludePattern) as Array<{ hour: string; total: number }>;
+  // Per hour last 24h. Timestamps are stored in UTC, but "events by hour of day"
+  // is only meaningful in the local (Swedish) wall clock, so bucket with the
+  // 'localtime' modifier — it applies the correct DST offset per row.
+  const hourlyRows = pdo.prepare("SELECT strftime('%H', event_time, 'localtime') AS hour, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY hour ORDER BY hour").all(since24h, excludePattern) as Array<{ hour: string; total: number }>;
   const hourly: number[] = Array(24).fill(0);
   for (const row of hourlyRows) {
     hourly[parseInt(row.hour, 10)] = row.total;
   }
 
   // Per weekday last 30 days
-  const weekdayRows = pdo.prepare("SELECT strftime('%w', event_time) AS weekday, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY weekday ORDER BY weekday").all(since30d, excludePattern) as Array<{ weekday: string; total: number }>;
+  const weekdayRows = pdo.prepare("SELECT strftime('%w', event_time, 'localtime') AS weekday, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY weekday ORDER BY weekday").all(since30d, excludePattern) as Array<{ weekday: string; total: number }>;
   const weekdayData: number[] = Array(7).fill(0);
   for (const row of weekdayRows) {
     weekdayData[parseInt(row.weekday, 10)] = row.total;
@@ -486,7 +573,7 @@ export function getStatsSummary(): Statistics {
   ];
 
   // Events per day last 7 days
-  const dailyRows = pdo.prepare("SELECT date(event_time) AS day, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY day ORDER BY day").all(since7d, excludePattern) as Array<{ day: string; total: number }>;
+  const dailyRows = pdo.prepare("SELECT date(event_time, 'localtime') AS day, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY day ORDER BY day").all(since7d, excludePattern) as Array<{ day: string; total: number }>;
   const dailyMap: Record<string, number> = {};
   for (const row of dailyRows) {
     dailyMap[row.day] = row.total;
@@ -496,7 +583,9 @@ export function getStatsSummary(): Statistics {
   const dayNames = ['Sön', 'Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör'];
   for (let i = 6; i >= 0; i--) {
     const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const dateStr = date.toISOString().split('T')[0];
+    // Must be the local calendar day to line up with date(..., 'localtime')
+    // above; toISOString() would key these buckets off the UTC day instead.
+    const dateStr = toLocalDateKey(date);
     daily.push({
       date: dateStr,
       day: dayNames[date.getDay()],
@@ -602,7 +691,7 @@ export function getOperationalStats(): OperationalStats {
 
   // Fetch history by hour (last 24h)
   const fetchesByHour = pdo.prepare(`
-    SELECT strftime('%H', fetched_at) AS hour, COUNT(*) AS count
+    SELECT strftime('%H', fetched_at, 'localtime') AS hour, COUNT(*) AS count
     FROM fetch_log
     WHERE fetched_at >= ?
     GROUP BY hour
@@ -624,7 +713,7 @@ export function getOperationalStats(): OperationalStats {
   const eventsAddedToday = (pdo.prepare(`
     SELECT COUNT(*) as count
     FROM events
-    WHERE date(fetched_at) = date('now')
+    WHERE date(fetched_at, 'localtime') = date('now', 'localtime')
   `).get() as { count: number }).count;
 
   // Uptime (based on successful fetches in expected intervals)

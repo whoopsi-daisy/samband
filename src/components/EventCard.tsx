@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { FormattedEvent, getTypeClass } from '@/types';
 import { TypeIcon } from './TypeIcon';
 import { formatRelativeTime } from '@/lib/utils';
+import { useNow } from '@/hooks/useNow';
 import type { Density } from './ClientApp';
 
 interface EventCardProps {
@@ -150,11 +151,14 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
     isHighlighted ? 'highlighted' : '',
   ].filter(Boolean).join(' ');
 
-  // Compute relative time client-side so it stays fresh
+  // Keep the relative time fresh without breaking hydration: until the shared
+  // clock reports in, reuse the string the server already computed, so the
+  // first client render matches the server markup exactly.
+  const now = useNow();
   const relativeTime = useMemo(() => {
-    const eventDate = new Date(event.date.iso || event.datetime);
-    return formatRelativeTime(eventDate, new Date());
-  }, [event.date.iso, event.datetime]);
+    if (now === null) return event.date.relative;
+    return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
+  }, [now, event.date.iso, event.date.relative, event.datetime]);
 
   // Stream mode: completely different ticker/feed layout
   if (density === 'stream') {
