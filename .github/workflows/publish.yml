@@ -1,0 +1,124 @@
+name: Publish container image
+
+# Builds and pushes the runtime image to the GitHub Container Registry.
+#
+# Tagging:
+#   push to main      -> :edge, :main, :sha-<commit>
+#   push tag vX.Y.Z   -> :X.Y.Z, :X.Y, :X, :latest, :sha-<commit>
+#   pre-release tag   -> :X.Y.Z-rc.1 only (no :latest, no moving tags)
+#
+# Pull requests are validated by the `docker` job in ci.yml, which builds the
+# same Dockerfile and smoke-tests it without pushing anything.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build
+        required: false
+        default: linux/amd64,linux/arm64
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  # Lowercased below — ghcr.io rejects uppercase in image names, and GitHub
+  # org/repo names may contain capitals.
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Read the repository to build from.
+      contents: read
+      # Push the image to ghcr.io. This is the one that is easy to miss —
+      # without it the push fails with "denied: installation not allowed".
+      packages: write
+      # Mint the OIDC token used to sign the build provenance attestation.
+      id-token: write
+      # Write that attestation back to the repository.
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        id: image
+        run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # Provided automatically; no personal access token needed.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=edge,branch=main
+            type=ref,event=branch
+            type=sha,prefix=sha-
+          # Only a real release moves :latest. Pre-releases (v1.2.0-rc.1) are
+          # excluded by metadata-action's own semver handling.
+          flavor: |
+            latest=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+          labels: |
+            org.opencontainers.image.title=Sambandscentralen
+            org.opencontainers.image.description=Realtidsvy över polisens händelsenotiser
+            org.opencontainers.image.licenses=NOASSERTION
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # arm64 is built under QEMU emulation, which is slow (the Next.js
+          # build dominates). Drop it from the default input if that cost is
+          # not worth it for your deployment.
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summarise
+        run: |
+          {
+            echo "### Published"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

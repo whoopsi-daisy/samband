@@ -34,10 +34,18 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
+              // 'unsafe-inline' is required by the inline theme bootstrap in
+              // layout.tsx, which must run before first paint to avoid a flash.
               "script-src 'self' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
-              "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com blob:",
-              "font-src 'self' https://fonts.gstatic.com",
+              // Fonts are self-hosted via next/font, so no third-party style or
+              // font origins are needed. unpkg.com was allowed but never used.
+              "style-src 'self' 'unsafe-inline'",
+              // The OSM fallback layer requests the bare host
+              // tile.openstreetmap.org, which a '*.' wildcard does NOT match —
+              // so it has to be listed separately or the fallback is blocked
+              // exactly when CartoDB is down and it is needed.
+              "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
+              "font-src 'self'",
               "connect-src 'self' https://polisen.se https://*.basemaps.cartocdn.com https://tile.openstreetmap.org",
               "frame-ancestors 'self'",
             ].join('; '),

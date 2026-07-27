@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
 import { escapeLikeWildcards } from './utils';
+import { memoizeWithTtl } from './cache';
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
 // database somewhere other than <cwd>/data (the standalone Next.js server runs
@@ -13,7 +14,7 @@ const DATA_DIR = process.env.SAMBAND_DATA_DIR
 const DB_PATH = path.join(DATA_DIR, 'events.db');
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -114,12 +115,71 @@ function migrateTimestampsToUtc(database: Database.Database): void {
   console.log(`[db] migration: normalised ${rows.length} event timestamps to UTC`);
 }
 
+// Migration 2: tables for imported brottsplatskartan.se events.
+//
+// Deliberately a SEPARATE table rather than rows in `events`. Both sources
+// number their events from 1, and `events.id` is the primary key holding
+// polisen.se's ids — importing brottsplatskartan into it would silently
+// overwrite unrelated polisen events wherever the two id spaces collide.
+function migrateBrottsplatskartanTables(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS bpk_events (
+      id INTEGER PRIMARY KEY,
+      pubdate TEXT NOT NULL,
+      pubdate_unix INTEGER,
+      title_type TEXT,
+      title_location TEXT,
+      headline TEXT,
+      description TEXT,
+      content TEXT,
+      location_string TEXT,
+      county TEXT,
+      lat REAL,
+      lng REAL,
+      external_source_link TEXT,
+      permalink TEXT,
+      imported_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bpk_pubdate ON bpk_events(pubdate DESC);
+    CREATE INDEX IF NOT EXISTS idx_bpk_type ON bpk_events(title_type);
+    CREATE INDEX IF NOT EXISTS idx_bpk_location ON bpk_events(location_string);
+    CREATE INDEX IF NOT EXISTS idx_bpk_county ON bpk_events(county);
+    CREATE INDEX IF NOT EXISTS idx_bpk_coords ON bpk_events(lat, lng);
+
+    -- Single-row table tracking import progress so a run that is interrupted
+    -- (container restart, network loss) resumes instead of starting over.
+    CREATE TABLE IF NOT EXISTS bpk_import_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      status TEXT NOT NULL DEFAULT 'idle',
+      mode TEXT,
+      last_page_done INTEGER NOT NULL DEFAULT 0,
+      total_pages INTEGER,
+      total_events INTEGER,
+      per_page INTEGER,
+      imported INTEGER NOT NULL DEFAULT 0,
+      duplicates INTEGER NOT NULL DEFAULT 0,
+      newest_pubdate_unix INTEGER,
+      started_at TEXT,
+      updated_at TEXT,
+      finished_at TEXT,
+      last_error TEXT
+    );
+  `);
+
+  database.prepare('INSERT OR IGNORE INTO bpk_import_state (id) VALUES (1)').run();
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
   if (current >= SCHEMA_VERSION) return;
 
   if (current < 1) {
     migrateTimestampsToUtc(database);
+  }
+
+  if (current < 2) {
+    migrateBrottsplatskartanTables(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -394,21 +454,6 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
     params.push(filters.type);
   }
 
-  if (filters.date) {
-    query += " AND event_time LIKE ? ESCAPE '\\'";
-    params.push(escapeLikeWildcards(filters.date) + '%');
-  }
-
-  if (filters.from) {
-    query += ' AND event_time >= ?';
-    params.push(filters.from);
-  }
-
-  if (filters.to) {
-    query += ' AND event_time <= ?';
-    params.push(filters.to + 'T23:59:59');
-  }
-
   if (filters.search) {
     query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
     const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
@@ -453,21 +498,6 @@ export function countEventsInDb(filters: EventFilters = {}): number {
     params.push(filters.type);
   }
 
-  if (filters.date) {
-    query += " AND event_time LIKE ? ESCAPE '\\'";
-    params.push(escapeLikeWildcards(filters.date) + '%');
-  }
-
-  if (filters.from) {
-    query += ' AND event_time >= ?';
-    params.push(filters.from);
-  }
-
-  if (filters.to) {
-    query += ' AND event_time <= ?';
-    params.push(filters.to + 'T23:59:59');
-  }
-
   if (filters.search) {
     query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
     const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
@@ -494,7 +524,7 @@ export function getDailyFetchCount(): number {
 }
 
 // Get filter options
-export function getFilterOptions(column: 'location_name' | 'type'): string[] {
+function computeFilterOptions(column: 'location_name' | 'type'): string[] {
   // Defensive allowlist: this value is interpolated into the SQL string, so
   // guard against anything outside the known columns even though the type
   // already constrains callers.
@@ -507,7 +537,7 @@ export function getFilterOptions(column: 'location_name' | 'type'): string[] {
 }
 
 // Get statistics summary
-export function getStatsSummary(): Statistics {
+function computeStatsSummary(): Statistics {
   const pdo = getDatabase();
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -622,6 +652,26 @@ export function getStatsSummary(): Statistics {
     uniqueLocations,
     uniqueTypes,
   };
+}
+
+// Both of these are pure aggregates over the events table and were previously
+// recomputed on every home-page request. New data only lands every 10 minutes,
+// so a short TTL is invisible to users but removes the repeated full scans.
+const AGGREGATE_CACHE_TTL_MS = 60_000;
+
+export const getFilterOptions = memoizeWithTtl(
+  computeFilterOptions,
+  AGGREGATE_CACHE_TTL_MS,
+  (column) => column
+);
+
+export const getStatsSummary = memoizeWithTtl(computeStatsSummary, AGGREGATE_CACHE_TTL_MS, () => 'stats');
+
+// Drop cached aggregates. Called after a refresh writes new events so the next
+// request reflects them immediately rather than waiting out the TTL.
+export function invalidateAggregateCaches(): void {
+  getFilterOptions.invalidate();
+  getStatsSummary.invalidate();
 }
 
 // Get operational statistics for monitoring

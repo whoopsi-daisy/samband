@@ -1,25 +1,25 @@
+# Run the pre-built image from the GitHub Container Registry instead of
+# building from source.
+#
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# Pin SAMBAND_TAG to a release (e.g. 1.2.0) for reproducible deployments;
+# `latest` follows the newest tagged release, `edge` follows main.
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: samband:latest
+    image: ghcr.io/${SAMBAND_REPO:-whoopsi-daisy/samband}:${SAMBAND_TAG:-latest}
     container_name: samband
     restart: unless-stopped
-    # Reap zombies and forward SIGTERM so the container stops promptly.
     init: true
+    pull_policy: always
     ports:
       - "${SAMBAND_PORT:-3000}:3000"
     environment:
       # The app parses Swedish wall-clock times out of event text and renders
-      # them back, so the container clock must be Swedish. Overriding this
-      # silently shifts every stored and displayed event time.
+      # them back, so the container clock must be Swedish.
       TZ: ${TZ:-Europe/Stockholm}
-      # Reverse-proxy hops in front of the app; the client IP for rate limiting
-      # is read this many entries from the right of X-Forwarded-For.
       RATE_LIMIT_PROXY_HOPS: ${RATE_LIMIT_PROXY_HOPS:-1}
-      # Set both to require HTTP Basic auth on the /stats operational
-      # dashboard. Left unset, /stats stays publicly reachable.
+      # Set both to require a login on the /stats operational dashboard.
       STATS_USER: ${STATS_USER:-}
       STATS_PASSWORD: ${STATS_PASSWORD:-}
       # Opt-in Brottsplatskartan archive import: 'full' (once, then keeps
@@ -27,10 +27,7 @@ services:
       BPK_IMPORT_ON_START: ${BPK_IMPORT_ON_START:-}
       BPK_IMPORT_CONCURRENCY: ${BPK_IMPORT_CONCURRENCY:-4}
     volumes:
-      # Bind mount rather than a named volume: the SQLite file stays visible on
-      # the host, so importing a database from an existing install and taking
-      # backups are ordinary file operations. The directory must be writable by
-      # uid 1001 (see scripts/import-db.sh, or `chown -R 1001:1001 ./data`).
+      # Must be writable by uid 1001 — see scripts/import-db.sh.
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]

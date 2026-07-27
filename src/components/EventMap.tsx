@@ -8,6 +8,10 @@ import { typeIconSvg } from './TypeIcon';
 interface EventMapProps {
   events: FormattedEvent[];
   isActive: boolean;
+  /** Events are being fetched from /api/map. */
+  loading?: boolean;
+  /** That fetch failed. */
+  error?: boolean;
 }
 
 type TimeRange = '24h' | '48h' | '72h';
@@ -111,7 +115,7 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function EventMapInner({ events, isActive }: EventMapProps) {
+function EventMapInner({ events, isActive, loading = false, error = false }: EventMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersLayerRef = useRef<L.FeatureGroup | null>(null);
@@ -518,6 +522,22 @@ function EventMapInner({ events, isActive }: EventMapProps) {
     <div className={`map-wrapper${isActive ? ' active' : ''}`} aria-hidden={!isActive}>
       {/* Map container first for immediate visibility */}
       <div id="mapContainer" className="map-container" ref={mapContainerRef} />
+
+      {loading && (
+        <div className="map-overlay" role="status" aria-live="polite">
+          <span className="spinner" />
+          <span>Laddar karta...</span>
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="map-overlay" role="alert">
+          <span>Kunde inte ladda kartan.</span>
+          <button type="button" className="map-overlay__retry" onClick={() => window.location.reload()}>
+            Försök igen
+          </button>
+        </div>
+      )}
 
       {/* Timeline bar - compact overlay at bottom */}
       <div className="map-timeline">

@@ -1,5 +1,5 @@
 import { RawEvent } from '@/types';
-import { insertEvent, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount } from './db';
+import { insertEvent, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
 
 const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
@@ -154,6 +154,11 @@ export async function refreshEventsIfNeeded(): Promise<RefreshResult> {
     }
 
     logFetch(eventsFetched, eventsNew, true);
+    // Stats and filter options are cached; drop them so the data that just
+    // landed shows up on the next request instead of after the TTL.
+    if (eventsNew > 0 || eventsUpdated > 0) {
+      invalidateAggregateCaches();
+    }
     return { fetched: eventsFetched, new: eventsNew, updated: eventsUpdated, success: true, error: null };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
