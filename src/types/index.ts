@@ -46,9 +46,6 @@ export interface EventFilters {
   location?: string;
   type?: string;
   search?: string;
-  date?: string;
-  from?: string;
-  to?: string;
 }
 
 // Statistics types

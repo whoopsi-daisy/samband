@@ -12,6 +12,7 @@ import ScrollToTop from './ScrollToTop';
 import MapModal from './MapModal';
 import ErrorBoundary from './ErrorBoundary';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useMapEvents } from '@/hooks/useMapEvents';
 import { FormattedEvent, Statistics } from '@/types';
 
 export type Density = 'comfortable' | 'compact' | 'stream';
@@ -20,7 +21,6 @@ export type Theme = 'system' | 'light' | 'dark' | 'radar';
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
-  mapEvents: FormattedEvent[];
   hasMore: boolean;
   locations: string[];
   types: string[];
@@ -36,7 +36,6 @@ interface ClientAppProps {
 
 function ClientAppContent({
   initialEvents,
-  mapEvents,
   hasMore,
   locations,
   types,
@@ -193,6 +192,9 @@ function ClientAppContent({
   // Register keyboard shortcuts
   useKeyboardShortcuts(shortcutHandlers);
 
+  // Map data loads on demand the first time the map view is opened.
+  const map = useMapEvents(filters, currentView === 'map');
+
   return (
     <>
       <div className={`container view-${currentView} density-${density}${expandSummaries ? ' summaries-expanded' : ''}`}>
@@ -223,7 +225,12 @@ function ClientAppContent({
               />
             )}
 
-            <EventMap events={mapEvents} isActive={currentView === 'map'} />
+            <EventMap
+              events={map.events}
+              isActive={currentView === 'map'}
+              loading={map.loading}
+              error={map.error}
+            />
           </div>
 
           <StatsView

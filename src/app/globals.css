@@ -41,7 +41,7 @@
     --spine-default: #d2d6de;
     /* Serif display face for editorial headlines + mono for technical meta.
        Playfair (not Fraunces) per the project's serif policy. */
-    --font-display: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+    --font-display: var(--font-serif), 'Iowan Old Style', Georgia, serif;
     --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
     /* Brand accent (blue) — reserved for the mark, links and active states. */
     --brand: #165a9b;
@@ -124,7 +124,7 @@
 html { scroll-behavior: smooth; }
 
 body {
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--page-bg); color: var(--text); min-height: 100vh; min-height: 100dvh; line-height: 1.6;
     -webkit-font-smoothing: antialiased; overflow-x: hidden;
 }
@@ -308,7 +308,10 @@ header {
     50% { opacity: 0.9; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
 }
 
-.filters-section { margin-bottom: var(--space-section); }
+/* max-width keeps this from outgrowing a narrow viewport: at 320px the
+   search bar and the two 160px-min selects inside it pushed the section to
+   356px and made the whole page scroll sideways. */
+.filters-section { margin-bottom: var(--space-section); max-width: 100%; }
 
 .search-bar {
     background: var(--glass-bg);
@@ -504,7 +507,8 @@ header {
 /* Keep the search/filter bar on the same column as the feed so the side
    margins read as an intentional editorial column, not dead space. */
 .view-list .filters-section {
-    max-width: 920px;
+    /* min() so the 920px reading width never beats the viewport clamp above. */
+    max-width: min(920px, 100%);
     margin-left: auto;
     margin-right: auto;
 }
@@ -837,6 +841,13 @@ header {
 .event-meta-row .event-source:hover {
     color: var(--text-muted);
     opacity: 0.95;
+}
+/* The "Källa" link rendered as a 33x18 target, below the 24x24 minimum in
+   WCAG 2.5.8. Pad the hit area vertically without moving the text: negative
+   margins keep the meta row's visual rhythm unchanged. */
+.event-meta-row .event-source {
+    padding-block: 5px;
+    margin-block: -5px;
 }
 .event-meta-row .updated-indicator {
     font-size: 10px;
@@ -1192,6 +1203,42 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .map-loading-content .spinner {
     width: 32px;
     height: 32px;
+}
+
+/* Overlay shown while /api/map is in flight, or if that request failed.
+   Sits above the Leaflet pane, which uses z-index up to 700. */
+.map-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 800;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--primary) 82%, transparent);
+    backdrop-filter: blur(2px);
+    color: var(--text-muted);
+    font-size: 14px;
+    text-align: center;
+    padding: 16px;
+}
+.map-overlay .spinner {
+    width: 32px;
+    height: 32px;
+}
+.map-overlay__retry {
+    padding: 8px 16px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm, 8px);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+.map-overlay__retry:hover {
+    border-color: var(--accent, currentColor);
 }
 
 #map { height: 100%; width: 100%; background: var(--primary); }
@@ -2181,12 +2228,19 @@ footer {
     .logo-icon { width: 36px; height: 36px; min-width: 36px; min-height: 36px; font-size: 17px; }
     .header-controls { gap: 6px; }
     .view-toggle button { padding: 6px 10px; font-size: 12px; }
+    /* Icon-only below this width: the label carries the width on desktop, so
+       hiding it collapsed the app's primary navigation to a ~31x29 target.
+       Height is raised to 44px (comfortable, and free — the header has the
+       room). Width is deliberately left alone: forcing 44px there overflows
+       the header at 320px, and 31px already clears the 24px WCAG 2.5.8 AA
+       minimum. */
     .view-toggle button span.label { display: none; }
+    .view-toggle button { min-height: 44px; justify-content: center; }
 }
 
 @media (max-width: 900px) {
     .logo-text p { display: none; }
-    .view-toggle button { padding: 6px 8px; }
+    .view-toggle button { padding: 6px 8px; min-height: 44px; }
 }
 @media (max-width: 768px) {
     :root {
@@ -2208,7 +2262,7 @@ footer {
     .logo-text p { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .header-controls { flex-wrap: nowrap; gap: 4px; flex-shrink: 0; }
     .view-toggle { padding: 2px; flex-shrink: 0; }
-    .view-toggle button { padding: 6px 7px; font-size: 13px; min-width: 0; }
+    .view-toggle button { padding: 6px 7px; font-size: 13px; min-width: 0; min-height: 44px; }
     .search-form { flex-direction: column; gap: 8px; }
     .search-bar { padding: 10px; }
     .filter-selects-row { display: flex; gap: 8px; width: 100%; }
@@ -2280,7 +2334,7 @@ footer {
     .logo-icon { width: 28px; height: 28px; min-width: 28px; min-height: 28px; font-size: 14px; }
     .logo-text h1 { font-size: 13px; }
     .logo-text p { display: none; }
-    .view-toggle button { padding: 5px 6px; font-size: 12px; }
+    .view-toggle button { padding: 5px 6px; font-size: 12px; min-height: 44px; }
     .event-card-header { padding: var(--space-card); gap: var(--space-element); }
     .event-meta-row { font-size: 10px; gap: 4px; }
     .event-type { padding: 5px 8px; font-size: 9px; }
@@ -2349,6 +2403,14 @@ footer {
 }
 
 .ops-header {
+    /* The bare `header` element rule above applies a full-bleed negative
+       margin (and width: 100% + 2 * --space-page) sized for the main app's
+       padded .container. .ops-container has no horizontal padding, so that
+       rule hung this header 48px off both edges and made every /stats page
+       scroll sideways. Undo it — the element selector otherwise wins, since
+       this class rule never set margin or width. */
+    margin: 0;
+    width: 100%;
     background: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);

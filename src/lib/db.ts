@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
 import { escapeLikeWildcards } from './utils';
+import { memoizeWithTtl } from './cache';
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
 // database somewhere other than <cwd>/data (the standalone Next.js server runs
@@ -394,21 +395,6 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
     params.push(filters.type);
   }
 
-  if (filters.date) {
-    query += " AND event_time LIKE ? ESCAPE '\\'";
-    params.push(escapeLikeWildcards(filters.date) + '%');
-  }
-
-  if (filters.from) {
-    query += ' AND event_time >= ?';
-    params.push(filters.from);
-  }
-
-  if (filters.to) {
-    query += ' AND event_time <= ?';
-    params.push(filters.to + 'T23:59:59');
-  }
-
   if (filters.search) {
     query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
     const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
@@ -453,21 +439,6 @@ export function countEventsInDb(filters: EventFilters = {}): number {
     params.push(filters.type);
   }
 
-  if (filters.date) {
-    query += " AND event_time LIKE ? ESCAPE '\\'";
-    params.push(escapeLikeWildcards(filters.date) + '%');
-  }
-
-  if (filters.from) {
-    query += ' AND event_time >= ?';
-    params.push(filters.from);
-  }
-
-  if (filters.to) {
-    query += ' AND event_time <= ?';
-    params.push(filters.to + 'T23:59:59');
-  }
-
   if (filters.search) {
     query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
     const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
@@ -494,7 +465,7 @@ export function getDailyFetchCount(): number {
 }
 
 // Get filter options
-export function getFilterOptions(column: 'location_name' | 'type'): string[] {
+function computeFilterOptions(column: 'location_name' | 'type'): string[] {
   // Defensive allowlist: this value is interpolated into the SQL string, so
   // guard against anything outside the known columns even though the type
   // already constrains callers.
@@ -507,7 +478,7 @@ export function getFilterOptions(column: 'location_name' | 'type'): string[] {
 }
 
 // Get statistics summary
-export function getStatsSummary(): Statistics {
+function computeStatsSummary(): Statistics {
   const pdo = getDatabase();
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -622,6 +593,26 @@ export function getStatsSummary(): Statistics {
     uniqueLocations,
     uniqueTypes,
   };
+}
+
+// Both of these are pure aggregates over the events table and were previously
+// recomputed on every home-page request. New data only lands every 10 minutes,
+// so a short TTL is invisible to users but removes the repeated full scans.
+const AGGREGATE_CACHE_TTL_MS = 60_000;
+
+export const getFilterOptions = memoizeWithTtl(
+  computeFilterOptions,
+  AGGREGATE_CACHE_TTL_MS,
+  (column) => column
+);
+
+export const getStatsSummary = memoizeWithTtl(computeStatsSummary, AGGREGATE_CACHE_TTL_MS, () => 'stats');
+
+// Drop cached aggregates. Called after a refresh writes new events so the next
+// request reflects them immediately rather than waiting out the TTL.
+export function invalidateAggregateCaches(): void {
+  getFilterOptions.invalidate();
+  getStatsSummary.invalidate();
 }
 
 // Get operational statistics for monitoring

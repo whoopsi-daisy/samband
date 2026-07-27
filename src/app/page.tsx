@@ -48,12 +48,12 @@ async function HomeContent({ searchParams }: PageProps) {
   const totalEvents = countEventsInDb(filters);
   const hasMore = offset + EVENTS_PER_PAGE < totalEvents;
 
-  // Get map events (more for the map view)
-  const mapEvents = getEventsFromDb(filters, 500, 0);
+  // Map events are deliberately NOT fetched here — the map loads them from
+  // /api/map when it is opened. Embedding them added ~500 events to every
+  // page payload, including for visitors who never leave the list view.
 
   // Format events for UI
   const formattedEvents = events.map(formatEventForUi);
-  const formattedMapEvents = mapEvents.map(formatEventForUi);
 
   // Get filter options and stats
   const locations = getFilterOptions('location_name');
@@ -66,7 +66,6 @@ async function HomeContent({ searchParams }: PageProps) {
   return (
     <ClientApp
       initialEvents={formattedEvents}
-      mapEvents={formattedMapEvents}
       hasMore={hasMore}
       locations={locations}
       types={types}
