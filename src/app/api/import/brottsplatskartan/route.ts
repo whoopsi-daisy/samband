@@ -20,11 +20,19 @@ export async function GET() {
       ? Math.min(100, Math.round((state.lastPageDone / state.totalPages) * 1000) / 10)
       : null;
 
+  // Coverage against what the API last reported, which is the figure to check
+  // when the question is "did everything get imported".
+  const coverage =
+    state.totalEvents && state.totalEvents > 0
+      ? Math.round((state.storedEvents / state.totalEvents) * 10000) / 100
+      : null;
+
   return NextResponse.json({
     ...state,
     running: isImportRunning(),
     runningMode: getRunningMode(),
     percentComplete: percent,
+    coveragePercent: coverage,
   });
 }
 

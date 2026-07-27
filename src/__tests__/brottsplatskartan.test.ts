@@ -326,3 +326,163 @@ describe('importBrottsplatskartan', () => {
     expect(seen[seen.length - 1]).toBe(8);
   });
 });
+
+describe('completeness while the archive is live', () => {
+  // The scenario that matters for "import everything": events keep being
+  // published during a multi-hour run.
+  function installGrowingApi(startTotal: number, perPage: number, addPerRequest: number) {
+    let total = startTotal;
+    // Ids are assigned newest-first: the newest event always has the highest id.
+    global.fetch = jest.fn(async (input: string | URL | Request) => {
+      const url = new URL(typeof input === 'string' ? input : input.toString());
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const limit = Math.min(Number(url.searchParams.get('limit') ?? '10'), perPage);
+
+      const lastPage = Math.ceil(total / limit);
+      const start = (page - 1) * limit;
+      const count = Math.max(0, Math.min(limit, total - start));
+      const data = Array.from({ length: count }, (_, i) => {
+        const id = total - (start + i);
+        return { id, pubdate_unix: 1_700_000_000 + id * 60 };
+      });
+
+      const body = JSON.stringify({
+        links: { current_page: page, last_page: lastPage, per_page: limit, total },
+        data,
+      });
+
+      // New events appear at the head after each request is served.
+      total += addPerRequest;
+
+      return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    return { finalTotal: () => total };
+  }
+
+  it('loses nothing when events are published mid-run', async () => {
+    const api = installGrowingApi(1000, 100, 7);
+
+    const result = await bpk.importBrottsplatskartan({ mode: 'full', concurrency: 2 });
+
+    const stored = db
+      .getDatabase()
+      .prepare('SELECT id FROM bpk_events ORDER BY id')
+      .all() as Array<{ id: number }>;
+    const ids = new Set(stored.map((r) => r.id));
+
+    // Every event that existed when the run began must be present. Those are
+    // ids 1..1000 — ids above that were published during the run.
+    const missing: number[] = [];
+    for (let id = 1; id <= 1000; id++) if (!ids.has(id)) missing.push(id);
+
+    expect(missing).toEqual([]);
+    // The archive really did grow underneath the importer.
+    expect(api.finalTotal()).toBeGreaterThan(1000);
+    expect(result.reportedTotal).toBeGreaterThan(1000);
+  });
+
+  it('follows last_page as the archive grows instead of stopping at the initial bound', async () => {
+    // 500 events at 100/page is 5 pages at the start. Adding 40 per request
+    // pushes last_page past that while still converging, since each request
+    // consumes 100.
+    installGrowingApi(500, 100, 40);
+
+    const result = await bpk.importBrottsplatskartan({ mode: 'full', concurrency: 1 });
+
+    // A fixed bound would have stopped at 5 pages.
+    expect(result.pagesFetched).toBeGreaterThan(5);
+
+    const ids = new Set(
+      (db.getDatabase().prepare('SELECT id FROM bpk_events').all() as Array<{ id: number }>).map((r) => r.id)
+    );
+    const missing: number[] = [];
+    for (let id = 1; id <= 500; id++) if (!ids.has(id)) missing.push(id);
+    expect(missing).toEqual([]);
+  });
+
+  it('reports stored versus expected totals so coverage can be checked', async () => {
+    installFakeApi({ totalEvents: 300, maxPerPage: 100 });
+
+    const result = await bpk.importBrottsplatskartan({ mode: 'full' });
+
+    expect(result.reportedTotal).toBe(300);
+    expect(result.storedTotal).toBe(300);
+  });
+
+  it('stops at a ceiling rather than chasing a feed that outgrows it', async () => {
+    // Pathological: every 10-event request adds 200 more, so last_page runs
+    // away. The run must end and report itself incomplete, not hang.
+    installGrowingApi(50, 10, 200);
+
+    const result = await bpk.importBrottsplatskartan({ mode: 'full', concurrency: 1, maxPages: 400 });
+
+    expect(result.stoppedEarly).toBe(true);
+    // Progress is kept so a re-run continues.
+    expect(bpkDb.getBpkImportState().lastPageDone).toBeGreaterThan(0);
+  }, 60_000);
+});
+
+describe('coexistence with the live polisen.se feed', () => {
+  // The archive import is a multi-hour job sharing one SQLite connection with
+  // the app's own 10-minute refresh. Neither may block or corrupt the other.
+  it('keeps accepting polisen writes and reads while an import runs', async () => {
+    installFakeApi({ totalEvents: 2000, maxPerPage: 10 });
+
+    const importPromise = bpk.importBrottsplatskartan({ mode: 'full', concurrency: 2 });
+
+    // Simulate the refresh scheduler landing new polisen events mid-import,
+    // and the feed being read at the same time.
+    let polisenWrites = 0;
+    let feedReads = 0;
+    for (let i = 1; i <= 40; i++) {
+      db.insertEvent({
+        id: i,
+        name: `Polisen ${i}`,
+        summary: 'Live event',
+        url: '',
+        type: 'Trafikolycka',
+        datetime: new Date(1_700_000_000_000 + i * 60_000).toISOString(),
+        location: { name: 'Uppsala', gps: '59.85,17.63' },
+      } as Parameters<typeof db.insertEvent>[0]);
+      polisenWrites++;
+
+      if (db.getEventsFromDb({}, 5, 0).length > 0) feedReads++;
+      await new Promise((r) => setTimeout(r, 1));
+    }
+
+    const result = await importPromise;
+
+    // Both datasets are intact and independent.
+    expect(polisenWrites).toBe(40);
+    expect(feedReads).toBe(40);
+    expect(db.countEventsInDb()).toBe(40);
+    expect(result.imported).toBe(2000);
+    expect(bpkDb.countBpkEvents()).toBe(2000);
+
+    // The polisen feed still reads correctly, newest first.
+    const feed = db.getEventsFromDb({}, 3, 0);
+    expect(feed[0].name).toBe('Polisen 40');
+  }, 30_000);
+
+  it('leaves the polisen table untouched by a completed import', async () => {
+    db.insertEvent({
+      id: 7,
+      name: 'Polisen 7',
+      summary: 'Before the import',
+      url: '',
+      type: 'Brand',
+      datetime: '2026-07-27T09:00:00.000Z',
+      location: { name: 'Lund', gps: '' },
+    } as Parameters<typeof db.insertEvent>[0]);
+
+    const before = db.getEventsFromDb({}, 10, 0);
+
+    installFakeApi({ totalEvents: 500, maxPerPage: 100 });
+    await bpk.importBrottsplatskartan({ mode: 'full' });
+
+    const after = db.getEventsFromDb({}, 10, 0);
+    expect(after).toEqual(before);
+    expect(db.countEventsInDb()).toBe(1);
+  });
+});

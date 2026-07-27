@@ -1,4 +1,5 @@
 import {
+  countBpkEvents,
   insertBpkEvents,
   updateBpkImportState,
   getBpkImportState,
@@ -12,11 +13,19 @@ import {
 //   full        - walk every page from the beginning (resumable)
 //   incremental - walk from page 1 until we reach events already stored
 //
-// A note on correctness: the API paginates a live, newest-first feed, so page
-// boundaries shift as new events are published during a multi-hour run. That
-// means deep pagination can re-serve events (harmless — inserts are ignored)
-// and can skip a few (not harmless). A follow-up incremental sync closes that
-// gap, which is why `runImport` schedules one at the end of a full import.
+// A note on completeness. The API paginates a live, newest-first feed, and new
+// events are inserted at the head while a multi-hour import is running. Because
+// this walks pages in ASCENDING order, that insertion pushes existing events
+// toward LATER pages — away from the cursor — so an event can never slip behind
+// it. Head growth therefore re-serves events (absorbed by INSERT OR IGNORE)
+// rather than skipping them.
+//
+// What head growth does change is `last_page`: the oldest events get pushed
+// onto page numbers past whatever the last page was when the run began. Fixing
+// the bound at the start would silently drop them, and an incremental sync
+// could never recover them — it stops at its watermark, and these are the
+// oldest events in the archive. So the bound is re-read from every response
+// and extended as the archive grows.
 
 // Overridable so the importer can be pointed at a mock or a caching proxy.
 // Defaults to the public API.
@@ -67,6 +76,10 @@ export interface ImportResult {
   duplicates: number;
   stoppedEarly: boolean;
   perPage: number;
+  /** Events the API said exist, as of the last page fetched. */
+  reportedTotal: number | null;
+  /** Rows in bpk_events once the run finished. */
+  storedTotal: number;
 }
 
 interface ApiLinks {
@@ -340,8 +353,17 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
   let stoppedEarly = false;
   let highestPageDone = resumeFrom;
 
-  const lastPage = metadata.totalPages ?? 1;
+  // Re-read from every response so the run follows the archive as it grows.
+  let lastPage = metadata.totalPages ?? 1;
+  let reportedTotal = metadata.totalEvents;
   const hardLimit = options.maxPages ?? Number.POSITIVE_INFINITY;
+
+  // Following a growing bound terminates only while the archive grows slower
+  // than we consume it — true by a wide margin in practice (a few hundred new
+  // events a day against thousands of pages an hour). This caps the chase
+  // anyway, so a pathological feed ends the run instead of looping forever.
+  // Hitting it marks the run incomplete, so re-running resumes.
+  const pageCeiling = (metadata.totalPages ?? 1) * 2 + 1000;
 
   try {
     // Work in batches so progress is written regularly and an incremental run
@@ -350,7 +372,13 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
     // before we can tell it found nothing new.
     const batchSize = mode === 'incremental' ? concurrency : concurrency * 4;
 
-    for (let start = resumeFrom + 1; start <= lastPage; start += batchSize) {
+    // `lastPage` is a moving target while the archive is live. Walking to it
+    // once can finish a growth-step short of the true tail, so after the walk
+    // the bound is re-checked and the walk continues if it moved. In practice
+    // that costs one extra probe; the sweeps are bounded by pageCeiling.
+    let start = resumeFrom + 1;
+
+    while (start <= lastPage) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       if (pagesFetched >= hardLimit) {
         stoppedEarly = true;
@@ -369,6 +397,15 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
         concurrency,
         async (page) => {
           const payload = await fetchPage(page, metadata.perPage, signal);
+
+          // Extend the target if the archive grew since the run started.
+          const seenLastPage = toNumber(payload.links?.last_page);
+          if (seenLastPage !== null && seenLastPage > lastPage) {
+            lastPage = Math.min(seenLastPage, pageCeiling);
+          }
+          const seenTotal = toNumber(payload.links?.total);
+          if (seenTotal !== null) reportedTotal = seenTotal;
+
           const mapped = (payload.data ?? [])
             .map(mapApiEvent)
             .filter((e): e is BpkEventInput => e !== null);
@@ -409,9 +446,29 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
       }
 
       await sleep(DELAY_BETWEEN_BATCHES_MS, signal);
+      // Advance past what was actually fetched, not by a whole batch: `end` is
+      // clamped by the current lastPage and by maxPages, so a fixed stride
+      // would step over pages that were never requested.
+      start = end + 1;
+
+      // Exhausted the known range — ask the API whether more has appeared
+      // behind us before declaring the archive fully walked.
+      if (start > lastPage && mode === 'full' && !stoppedEarly && lastPage < pageCeiling) {
+        const recheck = await probeApi(signal);
+        if (recheck.totalPages !== null && recheck.totalPages > lastPage) {
+          lastPage = Math.min(recheck.totalPages, pageCeiling);
+        }
+        if (recheck.totalEvents !== null) reportedTotal = recheck.totalEvents;
+      }
     }
 
-    const completed = !stoppedEarly && highestPageDone >= lastPage;
+    const hitCeiling = lastPage >= pageCeiling;
+    if (hitCeiling) {
+      console.warn(
+        `[bpk] stopped at the page ceiling (${pageCeiling}); the archive is growing faster than it can be read. Re-run to continue.`
+      );
+    }
+    const completed = !stoppedEarly && !hitCeiling && highestPageDone >= lastPage;
     updateBpkImportState({
       status: mode === 'incremental' || completed ? 'complete' : 'idle',
       finishedAt: new Date().toISOString(),
@@ -419,7 +476,16 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
       lastPageDone: mode === 'incremental' ? 0 : highestPageDone,
     });
 
-    return { mode, pagesFetched, imported, duplicates, stoppedEarly, perPage: metadata.perPage };
+    return {
+      mode,
+      pagesFetched,
+      imported,
+      duplicates,
+      stoppedEarly: stoppedEarly || hitCeiling,
+      perPage: metadata.perPage,
+      reportedTotal,
+      storedTotal: countBpkEvents(),
+    };
   } catch (error) {
     const aborted = isAbortError(error);
     updateBpkImportState({
