@@ -511,7 +511,33 @@ that archive into the same SQLite database.
 
 This is entirely opt-in. Nothing below runs unless you ask for it.
 
-### Try it first
+### Fastest route: import a dump
+
+If you already have (or can take) an NDJSON dump — one event per line, each line
+exactly as the API's `data[]` entries are shaped — load that instead of walking
+the API:
+
+```bash
+npm run import:bpk -- --from-ndjson=/path/to/brottsplatskartan.ndjson
+npm run import:bpk -- --from-ndjson=https://example.com/brottsplatskartan.ndjson
+```
+
+This is both faster and kinder: a few hundred MB read as a stream, versus ~670
+paginated requests against someone else's free API. The file is streamed line by
+line, so its size does not matter, and rows go through the same mapper as the
+live import — both paths store identical data.
+
+Corrupt or truncated lines are counted and skipped rather than aborting the run,
+which matters at 333k lines. Re-running is free: nothing already stored is
+written again.
+
+Then keep it current from the API:
+
+```bash
+npm run import:bpk -- --mode=incremental
+```
+
+### Or walk the API directly
 
 ```bash
 npm run import:bpk -- --probe
@@ -577,9 +603,13 @@ resumes from where it stopped.
 ### How long, and how much disk
 
 The API defaults to 10 events per request, which would mean ~33,000 requests.
-It also accepts a `limit` parameter, and the importer probes for the largest
-page size the server actually honours — at 100 per page that drops to ~3,300
-requests. Run `--probe` to see what you will get.
+It also accepts a `limit` parameter — `limit=500` is confirmed working against
+the live API, which brings a full import down to roughly **670 requests**. The
+importer asks for 500 and then believes whatever the server actually returns,
+so a future cap degrades gracefully rather than breaking. Run `--probe` to see
+what you will get.
+
+Importing a dump instead skips this entirely.
 
 Concurrency defaults to **4**, not the 25 a naive dump would use. This is a free
 API run by a small site, and four in flight with a short pause between batches

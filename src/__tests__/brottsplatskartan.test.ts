@@ -17,6 +17,7 @@ interface FakeApiOptions {
 }
 
 let fakeRequests: Array<{ page: number; perPage: number }> = [];
+let lastRequestedUrl = '';
 
 function installFakeApi(options: FakeApiOptions): void {
   const { totalEvents, maxPerPage } = options;
@@ -31,6 +32,7 @@ function installFakeApi(options: FakeApiOptions): void {
     const perPage = Math.min(requestedPerPage, maxPerPage);
 
     fakeRequests.push({ page, perPage });
+    lastRequestedUrl = url.toString();
 
     const queued = remainingFailures.get(page);
     if (queued && queued.length > 0) {
@@ -484,5 +486,22 @@ describe('coexistence with the live polisen.se feed', () => {
     const after = db.getEventsFromDb({}, 10, 0);
     expect(after).toEqual(before);
     expect(db.countEventsInDb()).toBe(1);
+  });
+});
+
+describe('request shape', () => {
+  it('requests the path without a trailing slash and sizes pages with `limit`', async () => {
+    installFakeApi({ totalEvents: 10, maxPerPage: 100 });
+    await bpk.probeApi();
+
+    const url = new URL(lastRequestedUrl);
+    // The form confirmed working against the live API is /api/events?... —
+    // appending a slash before the query string is an unnecessary gamble.
+    expect(url.pathname.endsWith('/')).toBe(false);
+    // Not pinned to a literal — the point is that a page size larger than the
+    // API's default of 10 is requested, whatever that size currently is.
+    expect(Number(url.searchParams.get('limit'))).toBeGreaterThan(10);
+    expect(url.searchParams.get('per_page')).toBeNull();
+    expect(url.searchParams.get('page')).toBe('1');
   });
 });
