@@ -128,7 +128,21 @@ async function main(): Promise<void> {
     console.log(`  imported    ${result.imported.toLocaleString('sv-SE')}`);
     console.log(`  already had ${result.duplicates.toLocaleString('sv-SE')}`);
     console.log(`  elapsed     ${formatDuration(Date.now() - started)}`);
-    console.log(`  stored now  ${getBpkImportState().storedEvents.toLocaleString('sv-SE')}`);
+    console.log(`  stored now  ${result.storedTotal.toLocaleString('sv-SE')}`);
+
+    if (result.reportedTotal !== null) {
+      const pct = ((result.storedTotal / result.reportedTotal) * 100).toFixed(2);
+      console.log(`  API reports ${result.reportedTotal.toLocaleString('sv-SE')} events -> ${pct}% coverage`);
+      const shortfall = result.reportedTotal - result.storedTotal;
+      if (shortfall > 0 && !result.stoppedEarly) {
+        console.log(
+          `\n  ${shortfall.toLocaleString('sv-SE')} fewer stored than the API reports. Some of that is` +
+            `\n  expected (records the API serves without a usable id or date are` +
+            `\n  skipped). Re-run --mode=full to sweep again; the count should not move.`
+        );
+      }
+    }
+
     if (result.stoppedEarly) {
       console.log('\n  Stopped before the end. Re-run to continue.');
     }

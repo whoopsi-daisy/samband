@@ -631,16 +631,81 @@ means merging two different schemas into one timeline, with its own filtering
 and deduplication design — a separate piece of work, deliberately not bundled
 into the import.
 
-### Caveats
+### Does it really get everything?
 
-- **Pagination drift.** The API paginates a live, newest-first feed, so page
-  boundaries shift as events are published during a multi-hour run. Re-served
-  events are ignored on insert, but a few can be skipped. Run an incremental
-  sync afterwards to close the gap.
+That is the whole point of a full import, so here is exactly how it behaves
+against a feed that keeps moving.
+
+The API paginates a **live, newest-first** list, and events keep being published
+during a run that takes hours. The importer walks pages in **ascending** order,
+which is the direction that makes this safe:
+
+- New events are inserted at the head, so every existing event moves toward
+  **later** pages — away from the cursor. An event can never slip behind it.
+- The cost is re-reading events already stored. `INSERT OR IGNORE` absorbs those,
+  which is why a run reports a large "already had" count.
+
+Two things were needed to make "everything" actually true, both covered by tests
+that run against an archive which grows mid-import:
+
+- **The end of the archive moves.** As events are added, the oldest ones are
+  pushed onto page numbers past whatever the last page was when the run started.
+  Fixing that bound at the start silently drops them — and an incremental sync
+  can never recover them, because it stops at its watermark and these are the
+  oldest events there are. The bound is therefore re-read from every response,
+  and re-checked once more after the walk appears finished.
+- **The cursor advances by what was fetched**, not by a fixed batch stride. A
+  batch clamped by the current last page (or by `--max-pages`) would otherwise
+  leave a hole where the stride overshot.
+
+If the feed ever grew faster than it could be read, the run stops at a ceiling
+and reports itself incomplete rather than chasing forever. Re-running resumes.
+
+**Verifying a run.** Both the CLI and the API report coverage against the
+API's own event count:
+
+```
+  stored now  333 478
+  API reports 333 478 events -> 100.00% coverage
+```
+
+```bash
+curl -u admin:secret http://localhost:3000/api/import/brottsplatskartan
+# {"status":"complete","storedEvents":333478,"totalEvents":333478,"coveragePercent":100,...}
+```
+
+A small shortfall is possible and harmless: records the API serves without a
+usable id or date are skipped rather than stored half-formed. Re-running
+`--mode=full` sweeps again — if the number does not move, the archive is fully
+read. It is safe to re-run at any time; it stores nothing it already has.
+
+### Keeping your own realtime feed
+
+Importing the archive does not change how the app collects data. The polisen.se
+refresh keeps running on its 10-minute schedule throughout, writing to `events`,
+completely independently of `bpk_events`. This is covered by tests that write
+and read polisen events while an import is in flight, and that assert a
+completed import leaves the `events` table byte-identical.
+
+The intended sequence is exactly what you described:
+
+1. `BPK_IMPORT_ON_START=full` — imports the archive once, resuming across
+   restarts if interrupted.
+2. Once complete, the same setting switches to an incremental sync on each boot,
+   so the archive stays current without re-walking it.
+3. The polisen.se scheduler runs the whole time and is your realtime source.
+
+### Other caveats
+
 - **Duplication with polisen.se.** Brottsplatskartan largely republishes
   polisen.se, so recent events will exist in both tables in different shapes.
   The `external_source_link` column holds the polisen.se URL if you want to
   correlate them.
+- **Deep pagination** — request ~3,300 (or ~33,000 at 10/page) is a large
+  `OFFSET`. If the API slows down or starts failing that deep, the importer
+  retries with backoff and, if it still cannot proceed, stops with progress
+  saved so a later re-run continues. This has not been exercised against the
+  live API.
 - Check the site's terms and be considerate with `BPK_IMPORT_CONCURRENCY`.
 
 ## Migrating an existing install into Docker
