@@ -52,7 +52,7 @@ A real-time Swedish police event notification service built with Next.js. Fetche
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/doctorslop/samband.git
+   git clone https://github.com/whoopsi-daisy/samband.git
    cd samband
    ```
 
@@ -82,7 +82,7 @@ standalone Next.js server (~55 MB of app code, no devDependencies), running as
 an unprivileged user with `TZ=Europe/Stockholm` and a healthcheck.
 
 ```bash
-git clone https://github.com/doctorslop/samband.git
+git clone https://github.com/whoopsi-daisy/samband.git
 cd samband
 
 # The data directory is bind-mounted; it must be writable by the container user.
@@ -116,59 +116,376 @@ Compose reads these from the environment or an `.env` file next to
 The image itself also honours `SAMBAND_DATA_DIR` (default `/app/data`), which
 is where `events.db` lives.
 
-### Running the pre-built image
+---
 
-Released images are published to the GitHub Container Registry, so you can skip
-the build entirely:
+# Deploying from GHCR
+
+Two separate things, in order:
+
+- **[Part A — publishing](#part-a--publish-images-from-your-repository)**: a
+  one-time setup on GitHub so the workflow can push images. You do this once.
+- **[Part B — deploying](#part-b--run-the-published-image)**: pulling and
+  running that image on your server. You do this every time you deploy.
+
+If someone else already publishes the image, skip to Part B.
+
+## Part A — publish images from your repository
+
+The workflow is already in the repo at `.github/workflows/publish.yml`. It needs
+two things enabled on GitHub that a workflow cannot grant itself.
+
+### A1. Check the workflow is there
+
+```bash
+ls .github/workflows/
+# ci.yml  publish.yml
+```
+
+| File | Runs on | Does |
+|------|---------|------|
+| `ci.yml` | every push and PR | lint, typecheck, test, `npm run build`, plus a Docker build + `/api/health` smoke test. **Never pushes an image.** |
+| `publish.yml` | pushes to `main`, `v*.*.*` tags, manual dispatch | builds and **pushes to ghcr.io** |
+
+### A2. Allow Actions to write packages
+
+GitHub → your repo → **Settings** → **Actions** → **General** → scroll to
+**Workflow permissions**.
+
+Select **"Read and write permissions"**, or leave it on read-only — either
+works, because `publish.yml` requests what it needs explicitly:
+
+```yaml
+permissions:
+  contents: read        # check out the repo
+  packages: write       # push to ghcr.io
+  id-token: write       # sign the provenance attestation
+  attestations: write   # record it against the repo
+```
+
+What breaks this is an **organisation** policy that caps workflow permissions
+below `packages: write`. If your repo is under an org and the push fails with
+`denied: installation not allowed`, that cap is the reason — an org owner has to
+lift it under Organisation Settings → Actions → General.
+
+No secret needs creating. The workflow logs in with the `GITHUB_TOKEN` that
+Actions injects automatically:
+
+```yaml
+- name: Log in to ghcr.io
+  uses: docker/login-action@v3
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### A3. Trigger the first publish
+
+Merging this branch to `main` is enough — that publishes `:edge`. To publish a
+real release:
+
+```bash
+npm version 1.0.0 --no-git-tag-version   # keeps package.json in step
+git commit -am "Release 1.0.0"
+git tag v1.0.0
+git push origin main --tags
+```
+
+Watch it under the repo's **Actions** tab → *Publish container image*. The run
+ends with a summary listing every tag it pushed and the image digest.
+
+**The first run takes 15–25 minutes.** `arm64` is built under QEMU emulation and
+the Next.js build dominates. Later runs hit the layer cache and are much faster.
+If you only deploy to x86, see [A6](#a6-skipping-arm64).
+
+### A4. Make the package public
+
+**This is the step people miss.** The first successful push creates the package
+as **private**, regardless of whether the repository is public. Until you change
+it, `docker pull` fails with `denied` or `manifest unknown` for everyone
+including you-on-another-machine.
+
+GitHub → your **profile or org** page → **Packages** tab → click **samband** →
+**Package settings** (right-hand side) → scroll to **Danger Zone** →
+**Change package visibility** → **Public** → confirm by typing the package name.
+
+Do this once. Later pushes keep whatever visibility the package already has.
+
+While you are there, under **Manage Actions access**, confirm the `samband`
+repository is listed with at least **Write** — that link is created
+automatically on the first push, but it is worth a glance if pushes later start
+failing.
+
+### A5. Verify it worked
+
+```bash
+# From any machine, with no login at all:
+docker pull ghcr.io/whoopsi-daisy/samband:latest
+```
+
+If that succeeds, Part A is done.
+
+### A6. Skipping arm64
+
+If everything you run is x86, halve the build time. Either run the workflow
+manually — **Actions** → *Publish container image* → **Run workflow** → set
+**Platforms** to `linux/amd64` — or make it permanent by editing the default in
+`.github/workflows/publish.yml`:
+
+```yaml
+platforms: ${{ inputs.platforms || 'linux/amd64' }}
+```
+
+### A7. Keeping the image private instead
+
+Skip A4 and have each server authenticate. Create a token at **Settings** →
+**Developer settings** → **Personal access tokens** → **Tokens (classic)** with
+only the **`read:packages`** scope, then on the server:
+
+```bash
+echo "ghp_yourtoken" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+The login persists in `~/.docker/config.json`, so `docker compose pull` works
+from then on.
+
+## Part B — run the published image
+
+This is what you do on the Proxmox host, the LXC container, or wherever Docker
+lives. Nothing here needs the source repository except the two compose files.
+
+### B1. Prerequisites
+
+```bash
+docker --version          # 20.10+
+docker compose version    # v2 — note: "docker compose", not "docker-compose"
+```
+
+### B2. Create the deployment directory
+
+```bash
+mkdir -p /opt/samband && cd /opt/samband
+```
+
+Fetch just the compose file:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/whoopsi-daisy/samband/main/docker-compose.ghcr.yml
+```
+
+### B3. Create the data directory with the right owner
+
+**Do this before the first start.** The container runs as an unprivileged user,
+uid **1001**. If Docker creates `./data` itself it will be owned by root and the
+app cannot write to it:
+
+```bash
+mkdir -p data
+sudo chown -R 1001:1001 data
+```
+
+Symptom if you skip it: the container starts, then logs
+`SQLITE_CANTOPEN: unable to open database file` and `/api/health` returns 503.
+
+### B4. Configure
+
+Create a `.env` file next to the compose file. Every value has a working
+default, so an empty file is valid — but you almost certainly want the first
+two:
+
+```bash
+cat > .env <<'EOF'
+# Host port to publish on
+SAMBAND_PORT=3000
+
+# Credentials for the /stats dashboard and the import API.
+# Leave unset and /stats is reachable by anyone who guesses the URL.
+STATS_USER=admin
+STATS_PASSWORD=change-me
+
+# Pin a release for reproducible deploys; omit to follow `latest`.
+# SAMBAND_TAG=1.0.0
+
+# Number of reverse proxies in front of the app (see B7).
+RATE_LIMIT_PROXY_HOPS=1
+
+# Do NOT change TZ. The app parses Swedish wall-clock times out of event
+# text and renders them back; anything else shifts every event by 1-2 hours.
+TZ=Europe/Stockholm
+EOF
+chmod 600 .env
+```
+
+### B5. Start it
 
 ```bash
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-Or without compose:
+Then confirm it is actually healthy, not merely running:
 
 ```bash
-mkdir -p data && sudo chown -R 1001:1001 data
-docker run -d --name samband \
-  -p 3000:3000 \
-  -e TZ=Europe/Stockholm \
-  -v "$PWD/data:/app/data" \
-  ghcr.io/whoopsi-daisy/samband:latest
+docker compose -f docker-compose.ghcr.yml ps
 ```
 
-Available tags:
+```
+NAME       IMAGE                                    STATUS
+samband    ghcr.io/whoopsi-daisy/samband:latest     Up 2 minutes (healthy)
+```
 
-| Tag | Points at |
-|-----|-----------|
-| `latest` | Newest stable release |
-| `1.2.3` | That exact release — use this for reproducible deployments |
-| `1.2` | Newest patch of 1.2 |
-| `1` | Newest minor of 1.x |
-| `edge` | Newest commit on `main`, untagged |
-| `sha-abc1234` | One specific commit |
+`(healthy)` is the bit that matters — it means `/api/health` is answering. It
+takes up to 40 seconds to appear (the healthcheck's start period).
 
-Images are built for `linux/amd64` and `linux/arm64` and carry a signed build
-provenance attestation, which you can verify with:
+```bash
+curl -s http://localhost:3000/api/health
+# {"status":"ok","events":0,"lastFetch":"...","lastFetchAgeMinutes":0}
+```
+
+`events: 0` on a fresh install is expected. The first fetch backfills about a
+week from polisen.se; give it a minute, then reload.
+
+Follow the logs if anything looks wrong:
+
+```bash
+docker compose -f docker-compose.ghcr.yml logs -f
+```
+
+### B6. Choosing a tag
+
+`docker-compose.ghcr.yml` reads `SAMBAND_TAG`, defaulting to `latest`.
+
+| Tag | Points at | Use when |
+|-----|-----------|----------|
+| `latest` | Newest stable release | You want releases without thinking about it |
+| `1.2.3` | That exact release | Production — reproducible, no surprise upgrades |
+| `1.2` | Newest patch of 1.2 | You want bug fixes but not new features |
+| `1` | Newest minor of 1.x | You accept features, not breaking changes |
+| `edge` | Newest commit on `main` | You want unreleased changes and accept breakage |
+| `sha-abc1234` | One specific commit | Bisecting a regression |
+
+`latest` only ever moves on a real release. A pre-release tag like `v1.3.0-rc.1`
+publishes only `1.3.0-rc.1` and never touches `latest`, `1.3` or `1`.
+
+### B7. Behind a reverse proxy
+
+Rate limiting reads the client IP from `X-Forwarded-For`, counting
+`RATE_LIMIT_PROXY_HOPS` entries **from the right** — the entries your own
+proxies appended, which a client cannot forge. Set it to the number of proxies
+in front of the app: `1` for a single nginx/Traefik/Caddy, `2` if Cloudflare
+sits in front of that as well.
+
+Getting it wrong is not cosmetic. Too low and every visitor shares one rate-limit
+bucket; too high and a client can spoof the header to dodge the limit entirely.
+
+Caddy:
+
+```caddy
+samband.example.se {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+nginx:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+With either, bind the container to localhost so it is not reachable directly —
+in `.env`:
+
+```bash
+SAMBAND_PORT=127.0.0.1:3000
+```
+
+### B8. Updating
+
+```bash
+cd /opt/samband
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+The database lives in the bind-mounted `./data`, so pulls and restarts never
+touch it. Schema migrations run automatically at startup and log what they did.
+
+Take a snapshot first if the release notes mention a migration:
+
+```bash
+docker compose -f docker-compose.ghcr.yml exec app \
+  wget -qO- http://127.0.0.1:3000/api/health   # confirm it is healthy first
+cp -a data data.bak-$(date +%F)
+```
+
+### B9. Rolling back
+
+```bash
+echo "SAMBAND_TAG=1.0.0" >> .env
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Migrations are forward-only: they do not un-apply when you run an older image.
+Rolling back across a schema change means restoring the database snapshot too.
+
+### B10. Verifying provenance (optional)
+
+Every image carries a signed attestation proving it was built by this workflow
+from this repository:
 
 ```bash
 gh attestation verify oci://ghcr.io/whoopsi-daisy/samband:latest \
   --repo whoopsi-daisy/samband
 ```
 
-### Updating
+### Without compose
 
-Building from source:
+```bash
+mkdir -p /opt/samband/data && sudo chown -R 1001:1001 /opt/samband/data
+
+docker run -d \
+  --name samband \
+  --restart unless-stopped \
+  --init \
+  -p 3000:3000 \
+  -e TZ=Europe/Stockholm \
+  -e STATS_USER=admin \
+  -e STATS_PASSWORD=change-me \
+  -v /opt/samband/data:/app/data \
+  ghcr.io/whoopsi-daisy/samband:latest
+```
+
+The healthcheck is baked into the image, so `docker ps` shows `(healthy)` here
+too.
+
+## GHCR troubleshooting
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| Push fails: `denied: installation not allowed` | The workflow lacks `packages: write`, almost always an org-level cap. See [A2](#a2-allow-actions-to-write-packages). |
+| Pull fails: `denied` or `manifest unknown` | The package is still private. See [A4](#a4-make-the-package-public). A public *repo* does not make the *package* public. |
+| Pull fails: `unauthorized: authentication required` | Private package and you are not logged in. See [A7](#a7-keeping-the-image-private-instead). |
+| `exec format error` on start | Wrong architecture — the image was built amd64-only and the host is arm64. Rebuild with both platforms, or run the workflow with `linux/arm64`. |
+| Container is `Up` but never `(healthy)` | `/api/health` is failing. `docker compose logs`. Usually `./data` not writable by uid 1001 ([B3](#b3-create-the-data-directory-with-the-right-owner)). |
+| `SQLITE_CANTOPEN` / `attempt to write a readonly database` | Same — `sudo chown -R 1001:1001 data`. |
+| Event times are 1–2 hours off | `TZ` is not `Europe/Stockholm`. |
+| Workflow did not run at all | `publish.yml` only triggers on `main` and `v*.*.*` tags. Pushing a feature branch runs `ci.yml` only, by design. |
+| Every visitor shares one rate limit | `RATE_LIMIT_PROXY_HOPS` is wrong for your proxy chain ([B7](#b7-behind-a-reverse-proxy)). |
+
+---
+
+### Updating a source build
+
+If you build from source rather than pulling:
 
 ```bash
 git pull
 docker compose up -d --build
-```
-
-Or, running the published image:
-
-```bash
-docker compose -f docker-compose.ghcr.yml pull
-docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 The database lives in the bind-mounted `./data` directory, so rebuilds never
@@ -716,13 +1033,9 @@ npm run build
 
 ### Publishing a release
 
-`.github/workflows/publish.yml` builds the image and pushes it to
-`ghcr.io/<owner>/<repo>`. It runs on every push to `main` (publishing `edge`)
-and on every `v*.*.*` tag (publishing the semver tags and `latest`). Pull
-requests are not published — `ci.yml` builds the same Dockerfile and smoke-tests
-it without pushing.
-
-To cut a release:
+Image publishing is covered in full under
+[Deploying from GHCR → Part A](#part-a--publish-images-from-your-repository).
+The short version:
 
 ```bash
 npm version 1.2.0 --no-git-tag-version   # keep package.json in step
@@ -731,43 +1044,9 @@ git tag v1.2.0
 git push origin main --tags
 ```
 
-A pre-release tag (`v1.2.0-rc.1`) publishes only that exact version — it does
-not move `latest`, `1.2`, or `1`.
+That publishes `1.2.0`, `1.2`, `1` and `latest`. A pre-release tag
+(`v1.2.0-rc.1`) publishes only that exact version and moves none of the others.
 
-The workflow authenticates with the automatically provided `GITHUB_TOKEN`; no
-personal access token or secret needs to be created. It does need these
-permissions, which are declared in the workflow itself:
-
-| Permission | Why |
-|------------|-----|
-| `contents: read` | Check out the repository |
-| `packages: write` | Push to ghcr.io — without it the push fails with `denied: installation not allowed` |
-| `id-token: write` | Mint the OIDC token that signs the provenance attestation |
-| `attestations: write` | Record that attestation against the repository |
-
-**Two things must be set in the repository settings by hand** — a workflow
-cannot grant itself either:
-
-1. **Settings → Actions → General → Workflow permissions** must not be set to
-   a mode that strips `packages: write`. "Read repository contents and
-   packages permissions" is fine, because the workflow requests what it needs
-   explicitly.
-2. **The package's visibility.** The first successful push creates the package
-   as *private*, inheriting from the repository. To let anyone `docker pull`
-   without authenticating, go to the package page → *Package settings* →
-   *Change visibility* → **Public**. This is a one-time step; later pushes keep
-   whatever visibility the package already has.
-
-If you would rather keep the image private, consumers authenticate with a token
-that has `read:packages`:
-
-```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <username> --password-stdin
-```
-
-Note that `arm64` is built under QEMU emulation, which dominates the workflow's
-runtime. If you only deploy to x86 hosts, run the workflow manually with
-`platforms: linux/amd64`, or change the default in the workflow file.
 
 ### Dependency overrides
 
