@@ -1,0 +1,27 @@
+{
+  "data": {
+    "id": 1,
+    "description": "Åsgärdevägen, Gamla Enskede.\nMan med skottskada i ena underbenet anträffad.",
+    "permalink": "http://polisen.se/Stockholms_lan/Aktuellt/Handelser/Stockholms-lan/2016-10-14-2127-Misshandel-grov-Stockholm/",
+    "parsed_date": "2016-10-14 21:27:00",
+    "parsed_title_location": "Stockholm",
+    "parsed_content": "Polis beordrades till platsen efter uppgifter om att en man skottskadats.\r\nEn man med skottskada i ena underbenet anträffades. Mannen förd till sjukhus. \r\nPolispatruller arbetar i området. Ingen har gripits. \r\nVid 22:18-tiden meddelades den befarade brottsplatsen anträffats invid tunnelbanestation Sandsborg. Platsen har spärrats av.\r\n \r\n \r\n \r\n \r\nPolisen Stockholms län",
+    "location_lng": "18.0685808",
+    "location_lat": "59.3293235",
+    "parsed_title": "Misshandel,  grov",
+    "parsed_teaser": "Åsgärdevägen, Gamla Enskede.\r\nMan med skottskada i ena underbenet anträffad.",
+    "location_geometry_type": "APPROXIMATE",
+    "administrative_area_level_1": "Stockholms län",
+    "administrative_area_level_2": "Stockholm",
+    "viewport_northeast_lat": "59.4278409",
+    "viewport_northeast_lng": "18.1982290",
+    "viewport_southwest_lat": "59.2244429",
+    "viewport_southwest_lng": "17.7768618",
+    "headline": "Åsgärdevägen, Gamla Enskede. Man med skottskada i ena underbenet anträffad.",
+    "image": "https://kartbilder.brottsplatskartan.se/styles/basic-preview/static/auto/640x320.jpg?latlng=1&fill=rgba%28255%2C0%2C0%2C.2%29&width=2&stroke=rgba%28255%2C0%2C0%2C.2%29&path=59.428%2C18.198%7C59.224%2C18.198%7C59.224%2C17.777%7C59.428%2C17.777&padding=0.4",
+    "image_far": "https://kartbilder.brottsplatskartan.se/styles/basic-preview/static/18.069,59.329,5/640x320@2x.jpg?latlng=1&fill=rgba%28255%2C0%2C0%2C.2%29&width=2&stroke=rgba%28255%2C0%2C0%2C.2%29&path=59.678%2C18.448%7C58.974%2C18.448%7C58.974%2C17.527%7C59.678%2C17.527",
+    "content_teaser": "Polis beordrades till platsen efter uppgifter om att en man skottskadats.\r\nEn man med skottskada i ena underbenet anträffades. Mannen förd till sjukhus. \r\nPolis...",
+    "location_string": "Gamla Enskede, Sandsborg, Stockholm, Stockholms län",
+    "location_string_2": "Gamla Enskede, Sandsborg, Stockholm"
+  }
+}

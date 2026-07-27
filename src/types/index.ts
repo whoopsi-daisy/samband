@@ -162,3 +162,42 @@ export interface DatabaseHealth {
   updatedEvents: number;
   updatedEventsPercent: number;
 }
+
+// Brottsplatskartan import types
+//
+// Stored separately from polisen.se events: the two sources have independent
+// id spaces, so they cannot share the `events` table without collisions.
+export interface BpkEvent {
+  id: number;
+  pubdate: string;
+  titleType: string | null;
+  titleLocation: string | null;
+  headline: string | null;
+  description: string | null;
+  locationString: string | null;
+  county: string | null;
+  lat: number | null;
+  lng: number | null;
+  permalink: string | null;
+}
+
+export type BpkImportStatus = 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
+export type BpkImportMode = 'full' | 'incremental';
+
+export interface BpkImportState {
+  status: BpkImportStatus;
+  mode: BpkImportMode | null;
+  lastPageDone: number;
+  totalPages: number | null;
+  totalEvents: number | null;
+  perPage: number | null;
+  imported: number;
+  duplicates: number;
+  newestPubdateUnix: number | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  finishedAt: string | null;
+  lastError: string | null;
+  /** Rows actually in bpk_events, independent of the counters above. */
+  storedEvents: number;
+}

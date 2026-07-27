@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Optional HTTP Basic auth for the operational dashboard.
+// Optional HTTP Basic auth for the operational dashboard and import controls.
 //
-// /stats exposes fetch logs, error history and database internals. Set
-// STATS_USER and STATS_PASSWORD to require credentials. Both unset leaves the
-// dashboard public, which is the pre-existing behaviour — so upgrading cannot
+// /stats exposes fetch logs, error history and database internals, and
+// /api/import can start a multi-hour job against a third-party API. Set
+// STATS_USER and STATS_PASSWORD to require credentials. Both unset leaves them
+// public, which is the pre-existing behaviour for /stats — so upgrading cannot
 // lock an operator out of their own container — but it is logged as a warning
 // on first access.
 
@@ -79,5 +80,8 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/stats/:path*'],
+  // /api/import is included because it can start a multi-hour job against a
+  // third-party API — not something an anonymous visitor should be able to
+  // trigger, or cancel.
+  matcher: ['/stats/:path*', '/api/import/:path*'],
 };

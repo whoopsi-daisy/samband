@@ -98,6 +98,11 @@ describe('getEventsFromDb', () => {
     db.insertEvent(makeEvent({ id: 1, name: 'Original', summary: 'First' }));
     expect(db.getEventsFromDb({}, 10, 0)[0].was_updated).toBe(false);
 
+    // Backdate publish_time first. was_updated compares last_updated against
+    // publish_time, and an insert followed immediately by an update can land in
+    // the same millisecond, making the two timestamps compare equal.
+    db.getDatabase().prepare("UPDATE events SET publish_time = '2020-01-01T00:00:00.000Z' WHERE id = 1").run();
+
     const status = db.insertEvent(makeEvent({ id: 1, name: 'Original', summary: 'Rewritten' }));
     expect(status).toBe('updated');
     expect(db.getEventsFromDb({}, 10, 0)[0].was_updated).toBe(true);

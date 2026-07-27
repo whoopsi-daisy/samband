@@ -109,8 +109,13 @@ describe('UTC timestamp migration', () => {
       const second = await import('@/lib/db');
       const db = second.getDatabase();
 
+      // Assert a version was recorded and is stable, not a specific number —
+      // pinning the literal breaks every time a migration is added.
       const version = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
-      expect(version.value).toBe('1');
+      expect(Number(version.value)).toBeGreaterThanOrEqual(1);
+
+      const reopened = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+      expect(reopened.value).toBe(version.value);
 
       const row = db.prepare('SELECT event_time FROM events WHERE id = 1').get() as { event_time: string };
       expect(row.event_time).toBe('2026-07-27T10:00:00.000Z');

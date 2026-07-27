@@ -116,11 +116,59 @@ Compose reads these from the environment or an `.env` file next to
 The image itself also honours `SAMBAND_DATA_DIR` (default `/app/data`), which
 is where `events.db` lives.
 
+### Running the pre-built image
+
+Released images are published to the GitHub Container Registry, so you can skip
+the build entirely:
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Or without compose:
+
+```bash
+mkdir -p data && sudo chown -R 1001:1001 data
+docker run -d --name samband \
+  -p 3000:3000 \
+  -e TZ=Europe/Stockholm \
+  -v "$PWD/data:/app/data" \
+  ghcr.io/whoopsi-daisy/samband:latest
+```
+
+Available tags:
+
+| Tag | Points at |
+|-----|-----------|
+| `latest` | Newest stable release |
+| `1.2.3` | That exact release — use this for reproducible deployments |
+| `1.2` | Newest patch of 1.2 |
+| `1` | Newest minor of 1.x |
+| `edge` | Newest commit on `main`, untagged |
+| `sha-abc1234` | One specific commit |
+
+Images are built for `linux/amd64` and `linux/arm64` and carry a signed build
+provenance attestation, which you can verify with:
+
+```bash
+gh attestation verify oci://ghcr.io/whoopsi-daisy/samband:latest \
+  --repo whoopsi-daisy/samband
+```
+
 ### Updating
+
+Building from source:
 
 ```bash
 git pull
 docker compose up -d --build
+```
+
+Or, running the published image:
+
+```bash
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 The database lives in the bind-mounted `./data` directory, so rebuilds never
@@ -136,6 +184,147 @@ touch it.
 
 Do not just `cp` the file — the database runs in WAL mode, so recent writes live
 in `events.db-wal` and a plain copy of the main file alone loses them.
+
+## Importing the Brottsplatskartan archive
+
+[Brottsplatskartan](https://brottsplatskartan.se/) publishes a free API covering
+roughly **333,000 events** going back to 2016 — far more history than
+polisen.se's API exposes, which only serves recent events. The importer pulls
+that archive into the same SQLite database.
+
+This is entirely opt-in. Nothing below runs unless you ask for it.
+
+### Try it first
+
+```bash
+npm run import:bpk -- --probe
+```
+
+This makes one request and reports what the API says: how many events exist, how
+many events come back per request, and therefore how many requests a full import
+needs. It writes nothing.
+
+### Running an import
+
+```bash
+# Only what is new since the last run — safe to run on a schedule
+npm run import:bpk
+
+# The whole archive. Takes a while; see the estimate below
+npm run import:bpk -- --mode=full
+
+# Tune it
+npm run import:bpk -- --mode=full --concurrency=6 --max-pages=500
+```
+
+Progress is written to the database after every batch, so **Ctrl-C is safe** —
+re-running with `--mode=full` continues from the last completed page rather than
+starting over.
+
+Inside a container, the same thing over HTTP (credentials are the
+`STATS_USER`/`STATS_PASSWORD` pair):
+
+```bash
+# Status
+curl -u admin:secret http://localhost:3000/api/import/brottsplatskartan
+
+# Start
+curl -u admin:secret -X POST -H 'content-type: application/json' \
+  -d '{"mode":"full"}' http://localhost:3000/api/import/brottsplatskartan
+
+# Stop (progress is kept)
+curl -u admin:secret -X DELETE http://localhost:3000/api/import/brottsplatskartan
+```
+
+### On first boot
+
+Set `BPK_IMPORT_ON_START` to start an import automatically when the container
+comes up:
+
+| Value | Behaviour |
+|-------|-----------|
+| unset | Nothing happens (default) |
+| `incremental` | Pull what is new on every boot |
+| `full` | Import the archive once, then behave as `incremental` on later boots |
+
+A `full` setting does not re-import on every restart: if a full run already
+completed it switches to an incremental sync, and if one was interrupted it
+resumes from where it stopped.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BPK_IMPORT_ON_START` | unset | `full`, `incremental`, or unset |
+| `BPK_IMPORT_CONCURRENCY` | `4` | Requests in flight, 1–8 |
+| `BPK_API_BASE_URL` | the public API | Point at a mock or caching proxy |
+
+### How long, and how much disk
+
+The API defaults to 10 events per request, which would mean ~33,000 requests.
+It also accepts a `limit` parameter, and the importer probes for the largest
+page size the server actually honours — at 100 per page that drops to ~3,300
+requests. Run `--probe` to see what you will get.
+
+Concurrency defaults to **4**, not the 25 a naive dump would use. This is a free
+API run by a small site, and four in flight with a short pause between batches
+still finishes in a few hours. The importer honours `Retry-After`, backs off
+exponentially on 429 and 5xx, and gives up immediately on a 404 rather than
+hammering a dead page.
+
+Expect roughly **300–350 MB** of database growth for the full archive, measured
+from real API responses (~950 bytes of stored fields per event, plus indexes).
+
+### Where the data goes
+
+Imported events live in their own `bpk_events` table, **not** in `events`.
+
+This matters: both sources number their events from 1, and `events.id` is a
+primary key holding polisen.se's ids. Importing one into the other would
+silently overwrite unrelated polisen events wherever the id spaces collide — and
+they do. Keeping them apart also means an import can be dropped and redone
+without touching the data the app collects itself.
+
+```sql
+CREATE TABLE bpk_events (
+  id INTEGER PRIMARY KEY,      -- brottsplatskartan's id
+  pubdate TEXT NOT NULL,       -- UTC ISO 8601, like every other timestamp here
+  pubdate_unix INTEGER,
+  title_type TEXT,             -- "Trafikbrott", "Brand", ...
+  title_location TEXT,
+  headline TEXT,
+  description TEXT,
+  content TEXT,                -- HTML, as served
+  location_string TEXT,
+  county TEXT,                 -- administrative_area_level_1
+  lat REAL,
+  lng REAL,
+  external_source_link TEXT,   -- usually the polisen.se original
+  permalink TEXT,
+  imported_at TEXT NOT NULL
+);
+```
+
+Dropped deliberately: `content_formatted` (byte-identical to `content` in the
+responses checked), the map image URLs and viewport bounds (derivable from
+`lat`/`lng`), and `date_human` (a rendered string). Everything with independent
+information content is kept.
+
+**These events are not shown in the app's UI.** The feed, map and statistics
+still read only the polisen.se `events` table. Surfacing 333k archived events
+means merging two different schemas into one timeline, with its own filtering
+and deduplication design — a separate piece of work, deliberately not bundled
+into the import.
+
+### Caveats
+
+- **Pagination drift.** The API paginates a live, newest-first feed, so page
+  boundaries shift as events are published during a multi-hour run. Re-served
+  events are ignored on insert, but a few can be skipped. Run an incremental
+  sync afterwards to close the gap.
+- **Duplication with polisen.se.** Brottsplatskartan largely republishes
+  polisen.se, so recent events will exist in both tables in different shapes.
+  The `external_source_link` column holds the polisen.se URL if you want to
+  correlate them.
+- Check the site's terms and be considerate with `BPK_IMPORT_CONCURRENCY`.
 
 ## Migrating an existing install into Docker
 
@@ -524,6 +713,61 @@ TypeScript errors are checked during build:
 ```bash
 npm run build
 ```
+
+### Publishing a release
+
+`.github/workflows/publish.yml` builds the image and pushes it to
+`ghcr.io/<owner>/<repo>`. It runs on every push to `main` (publishing `edge`)
+and on every `v*.*.*` tag (publishing the semver tags and `latest`). Pull
+requests are not published — `ci.yml` builds the same Dockerfile and smoke-tests
+it without pushing.
+
+To cut a release:
+
+```bash
+npm version 1.2.0 --no-git-tag-version   # keep package.json in step
+git commit -am "Release 1.2.0"
+git tag v1.2.0
+git push origin main --tags
+```
+
+A pre-release tag (`v1.2.0-rc.1`) publishes only that exact version — it does
+not move `latest`, `1.2`, or `1`.
+
+The workflow authenticates with the automatically provided `GITHUB_TOKEN`; no
+personal access token or secret needs to be created. It does need these
+permissions, which are declared in the workflow itself:
+
+| Permission | Why |
+|------------|-----|
+| `contents: read` | Check out the repository |
+| `packages: write` | Push to ghcr.io — without it the push fails with `denied: installation not allowed` |
+| `id-token: write` | Mint the OIDC token that signs the provenance attestation |
+| `attestations: write` | Record that attestation against the repository |
+
+**Two things must be set in the repository settings by hand** — a workflow
+cannot grant itself either:
+
+1. **Settings → Actions → General → Workflow permissions** must not be set to
+   a mode that strips `packages: write`. "Read repository contents and
+   packages permissions" is fine, because the workflow requests what it needs
+   explicitly.
+2. **The package's visibility.** The first successful push creates the package
+   as *private*, inheriting from the repository. To let anyone `docker pull`
+   without authenticating, go to the package page → *Package settings* →
+   *Change visibility* → **Public**. This is a one-time step; later pushes keep
+   whatever visibility the package already has.
+
+If you would rather keep the image private, consumers authenticate with a token
+that has `read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <username> --password-stdin
+```
+
+Note that `arm64` is built under QEMU emulation, which dominates the workflow's
+runtime. If you only deploy to x86 hosts, run the workflow manually with
+`platforms: linux/amd64`, or change the default in the workflow file.
 
 ### Dependency overrides
 
