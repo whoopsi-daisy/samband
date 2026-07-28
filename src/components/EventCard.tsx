@@ -16,6 +16,11 @@ interface EventCardProps {
  * time and a two-line summary; expanding fetches the full text from polisen.se
  * and reveals the actions.
  */
+/** For comparing two renderings of the same sentence, not for display. */
+function normaliseText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 export default function EventCard({ event, onShowMap, isHighlighted }: EventCardProps) {
   const [expanded, setExpanded] = useState(isHighlighted || false);
   const [details, setDetails] = useState<string | null>(null);
@@ -140,6 +145,33 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     return `${day} ${months[parseInt(month, 10) - 1]}, ${time}`;
   }, [event.updated]);
 
+  // polisen.se's summary is the opening of the notice itself, so the text
+  // fetched when a row is expanded almost always restates the teaser directly
+  // above it — the same sentence twice, a few pixels apart. Imported events do
+  // the same, since their description is the first line of their body.
+  //
+  // Compared with whitespace and case normalised: the two copies travel
+  // different routes (one through the API, one scraped out of HTML or stored
+  // markup) and differ in spacing often enough to defeat plain equality.
+  const detail = useMemo(() => {
+    if (!details) return { paragraphs: [] as string[], supersedesSummary: false };
+
+    const summary = normaliseText(event.summary);
+    const paragraphs = details
+      .split('\n\n')
+      .map((paragraph) => paragraph.trim())
+      .filter((paragraph) => paragraph !== '' && normaliseText(paragraph) !== summary);
+
+    // What is left may still open with the teaser and carry on past it — the
+    // longer text stands on its own, so the teaser goes instead.
+    const supersedesSummary =
+      summary !== '' && paragraphs.length > 0 && normaliseText(paragraphs[0]).startsWith(summary);
+
+    return { paragraphs, supersedesSummary };
+  }, [details, event.summary]);
+
+  const showSummary = !(expanded && detail.supersedesSummary);
+
   const rowClasses = [
     'event-row',
     expanded ? 'event-row--expanded' : '',
@@ -154,28 +186,32 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
         {/* Where, then what, then the summary — each on its own line, so the
             same information sits in the same place in every row. */}
         <span className="event-main">
+          {/* What happened leads the row. The county is where it happened —
+              useful, but not what anyone scans a feed for, and it was set in
+              the largest, heaviest type on the card while the kind of incident
+              sat in an 11px badge underneath. */}
           <span className="event-head">
-            <span className="event-location">{event.location}</span>
+            <span className="event-type">
+              {/* Decoration beside the word it decorates — a screen reader
+                  reads the type, not "speaking head". */}
+              <span className="event-type-emoji" aria-hidden="true">
+                {event.emoji}
+              </span>
+              {event.type}
+            </span>
             <span className="event-time" title={absoluteTime}>
               {relativeTime}
             </span>
           </span>
           <span className="event-meta">
-            <span className="badge badge--neutral badge--type">
-              {/* Decoration beside the word it decorates — a screen reader
-                  reads the type, not "speaking head". */}
-              <span className="badge-emoji" aria-hidden="true">
-                {event.emoji}
-              </span>
-              {event.type}
-            </span>
+            <span className="event-location">{event.location}</span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
               </span>
             )}
           </span>
-          <span className="event-text">{event.summary}</span>
+          {showSummary && <span className="event-text">{event.summary}</span>}
         </span>
 
         <span className="event-chevron" aria-hidden="true">
@@ -205,10 +241,12 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
               Hela texten kunde inte hämtas just nu — läs den på polisen.se nedan.
             </span>
           )}
-          {/* The text arrives as paragraphs separated by blank lines — from
-              the scraped page or, for imported events, from their stored
-              body. Rendered as one <p>, those breaks would collapse. */}
-          {details?.split('\n\n').map((paragraph, i) => <p key={i}>{paragraph}</p>)}
+          {/* Paragraphs separated by blank lines — from the scraped page or,
+              for imported events, from their stored body. Rendered as one <p>,
+              those breaks would collapse. */}
+          {detail.paragraphs.map((paragraph, i) => (
+            <p key={i}>{paragraph}</p>
+          ))}
 
           <div className="event-actions">
             {event.url && (
