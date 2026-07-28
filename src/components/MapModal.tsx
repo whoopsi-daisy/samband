@@ -27,7 +27,7 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
 
       // Always create a fresh map instance since the DOM container is recreated each time
       mapRef.current = L.map(mapContainerRef.current).setView([lat, lng], 14);
-      const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap',
         maxZoom: 18,
       }).addTo(mapRef.current);
@@ -45,9 +45,11 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
         }).addTo(mapInstance);
       });
 
+      const accent =
+        getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#165a9b';
       markerRef.current = L.circleMarker([lat, lng], {
-        radius: 12,
-        fillColor: '#3b82f6',
+        radius: 11,
+        fillColor: accent,
         color: '#fff',
         weight: 3,
         opacity: 1,
@@ -101,31 +103,26 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
 
   return (
     <div
-      id="mapModalOverlay"
-      className={`map-modal-overlay${isOpen ? ' active' : ''}`}
+      className="modal-overlay"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="mapModalTitle"
     >
-      <div className="map-modal">
-        <div className="map-modal-header">
-          <h3 id="mapModalTitle">📍 {location || 'Plats'}</h3>
-          <button
-            id="mapModalClose"
-            className="map-modal-close"
-            type="button"
-            onClick={onClose}
-            aria-label="Stäng karta"
-          >
-            ✕
+      <div className="modal">
+        <div className="modal-header">
+          <h2 id="mapModalTitle" className="modal-title">{location || 'Plats'}</h2>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Stäng karta">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="map-modal-body">
+        <div className="modal-body">
           <div id="modalMap" ref={mapContainerRef} style={{ height: '100%' }} />
         </div>
-        <div className="map-modal-footer">
-          <span id="mapModalCoords" className="coords">
+        <div className="modal-footer">
+          <span className="modal-coords">
             {lat}, {lng}
           </span>
           <a

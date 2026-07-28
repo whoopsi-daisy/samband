@@ -81,11 +81,11 @@ export default function Home(props: PageProps) {
   return (
     <Suspense
       fallback={
-        <div className="container">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <main id="main-content">
+          <div className="loading-center">
             <div className="spinner" />
           </div>
-        </div>
+        </main>
       }
     >
       <HomeContent {...props} />

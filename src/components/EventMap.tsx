@@ -222,14 +222,16 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
     marker.bindPopup(`
       <div class="map-popup">
-        <span class="badge" style="background:${safeColor}20;color:${safeColor}">${iconSvg}${safeType}</span>
-        <div class="popup-time">${isRecent ? '🔴' : '🕐'} ${relTime}</div>
+        <div class="popup-head">
+          <span class="popup-badge" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d">${iconSvg}${safeType}</span>
+          <span class="popup-time">${isRecent ? '<span class="popup-live"></span>' : ''}${relTime}</span>
+        </div>
         <h3>${safeName}</h3>
         <p>${safeSummary}</p>
-        <p><strong>${safeLocation}</strong></p>
+        <p class="popup-place">${safeLocation}</p>
         <div class="popup-links">
           <a href="${gMaps}" target="_blank" rel="noopener noreferrer">Google Maps</a>
-          ${safeUrl ? `<a href="https://polisen.se${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">Polisen.se</a>` : ''}
+          ${safeUrl ? `<a href="https://polisen.se${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">polisen.se</a>` : ''}
         </div>
       </div>
     `);
@@ -519,80 +521,77 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
     : 'Live';
 
   return (
-    <div className={`map-wrapper${isActive ? ' active' : ''}`} aria-hidden={!isActive}>
-      {/* Map container first for immediate visibility */}
-      <div id="mapContainer" className="map-container" ref={mapContainerRef} />
+    <div className={`map-view${isActive ? ' active' : ''}`} aria-hidden={!isActive}>
+      <div className="map-wrap">
+        <div className="map-canvas-wrap">
+          {/* Map container first for immediate visibility */}
+          <div id="mapContainer" className="map-canvas" ref={mapContainerRef} />
 
-      {loading && (
-        <div className="map-overlay" role="status" aria-live="polite">
-          <span className="spinner" />
-          <span>Laddar karta...</span>
+          {loading && (
+            <div className="map-overlay" role="status" aria-live="polite">
+              <span className="spinner" />
+              <span>Laddar karta…</span>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="map-overlay" role="alert">
+              <span>Kunde inte ladda kartan.</span>
+              <button type="button" className="btn-quiet" onClick={() => window.location.reload()}>
+                Försök igen
+              </button>
+            </div>
+          )}
         </div>
-      )}
 
-      {error && !loading && (
-        <div className="map-overlay" role="alert">
-          <span>Kunde inte ladda kartan.</span>
-          <button type="button" className="map-overlay__retry" onClick={() => window.location.reload()}>
-            Försök igen
-          </button>
-        </div>
-      )}
-
-      {/* Timeline bar - compact overlay at bottom */}
-      <div className="map-timeline">
-        <div className="timeline-controls">
-          {/* Play / pause */}
+        {/* Replay controls, as a bar under the map rather than floating on it */}
+        <div className="map-timeline">
           <button
-            className={`timeline-play-btn${isPlaying ? ' playing' : ''}`}
+            type="button"
+            className="timeline-play"
             onClick={togglePlay}
-            aria-label={isPlaying ? 'Pausa' : 'Spela upp'}
-            title={isPlaying ? 'Pausa' : 'Replay'}
+            aria-label={isPlaying ? 'Pausa uppspelning' : 'Spela upp tidslinje'}
           >
             {isPlaying ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
             )}
           </button>
 
-          {/* Slider */}
-          <div className="timeline-slider-wrap">
-            <input
-              type="range"
-              className="timeline-slider"
-              min="0"
-              max="1"
-              step="0.005"
-              value={replayPosition}
-              onChange={e => handleSlider(parseFloat(e.target.value))}
-              aria-label="Tidslinje"
-            />
-            <div className="timeline-slider-fill" style={{ width: `${replayPosition * 100}%` }} />
-          </div>
+          <input
+            type="range"
+            className="timeline-slider"
+            min="0"
+            max="1"
+            step="0.005"
+            value={replayPosition}
+            onChange={(e) => handleSlider(parseFloat(e.target.value))}
+            aria-label="Tidslinje"
+          />
 
-          {/* Time label */}
           <span className={`timeline-label${replayTimestamp ? '' : ' live'}`}>
-            {!replayTimestamp && <span className="live-dot" />}
+            {!replayTimestamp && <span className="feed-live-dot" aria-hidden="true" />}
             {sliderLabel}
           </span>
 
-          {/* Event counter */}
-          <span className="timeline-counter">{visibleCount}</span>
+          <span className="timeline-counter" title={`${visibleCount} händelser visas`}>
+            {visibleCount}
+          </span>
+        </div>
 
-          {/* Range buttons */}
-          <div className="timeline-range-selector">
-            {TIME_RANGES.map(r => (
-              <button
-                key={r.key}
-                className={`timeline-range-btn${timeRange === r.key ? ' active' : ''}`}
-                onClick={() => handleRangeChange(r.key)}
-                aria-pressed={timeRange === r.key}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+        <div className="timeline-ranges" role="group" aria-label="Tidsintervall">
+          {TIME_RANGES.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              className={`timeline-range${timeRange === r.key ? ' active' : ''}`}
+              onClick={() => handleRangeChange(r.key)}
+              aria-pressed={timeRange === r.key}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

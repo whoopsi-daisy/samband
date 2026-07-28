@@ -41,18 +41,9 @@ function formatDateTime(dateString: string): string {
 }
 
 function StatusIndicator({ status }: { status: 'healthy' | 'warning' | 'error' }) {
-  const colors = {
-    healthy: '#10b981',
-    warning: '#f59e0b',
-    error: '#ef4444',
-  };
-  return (
-    <span
-      className="ops-status-dot"
-      style={{ backgroundColor: colors[status] }}
-      title={status}
-    />
-  );
+  // Pulled from the theme tokens so the dot tracks light/dark like everything else.
+  const tokens = { healthy: 'var(--ok)', warning: 'var(--warn)', error: 'var(--alert)' };
+  return <span className="ops-status-dot" style={{ backgroundColor: tokens[status] }} title={status} />;
 }
 
 export default function OperationalDashboard({
