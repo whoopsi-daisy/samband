@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { OperationalStats, FetchLogEntry, DatabaseHealth, Statistics } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
+import ImportPanel from './ImportPanel';
 
 interface OperationalDashboardProps {
   operationalStats: OperationalStats;
@@ -212,6 +213,9 @@ export default function OperationalDashboard({
             </div>
           </div>
         </section>
+
+        {/* Importstatus — live, se ImportPanel */}
+        <ImportPanel />
 
         {/* Databashälsa */}
         <section className="ops-section">

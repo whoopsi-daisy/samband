@@ -1,0 +1,15 @@
+# Build from source instead of pulling the published image. Only needed when
+# working on the code; deployments use docker-compose.yml on its own.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Everything else — ports, environment, the data mount — comes from
+# docker-compose.yml, so there is one place to configure a deployment.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: samband:local
+    # A locally built tag has nothing to pull from.
+    pull_policy: never

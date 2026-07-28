@@ -1,13 +1,24 @@
+# The deployment. Runs the image published to the GitHub Container Registry:
+#
+#   docker compose up -d
+#
+# Settings come from the .env file next to this one — copy .env.example.
+#
+# To build from source instead of pulling (only needed when working on the
+# code), add the build override:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: samband:latest
+    # SAMBAND_TAG pins the version: `latest` follows the newest release,
+    # `edge` follows main, or name a release like `1.2.0` for a deployment
+    # that cannot move under you.
+    image: ghcr.io/${SAMBAND_REPO:-whoopsi-daisy/samband}:${SAMBAND_TAG:-latest}
     container_name: samband
     restart: unless-stopped
     # Reap zombies and forward SIGTERM so the container stops promptly.
     init: true
+    pull_policy: always
     ports:
       - "${SAMBAND_PORT:-3000}:3000"
     environment:
@@ -18,19 +29,26 @@ services:
       # Reverse-proxy hops in front of the app; the client IP for rate limiting
       # is read this many entries from the right of X-Forwarded-For.
       RATE_LIMIT_PROXY_HOPS: ${RATE_LIMIT_PROXY_HOPS:-1}
-      # Set both to require HTTP Basic auth on the /stats operational
-      # dashboard. Left unset, /stats stays publicly reachable.
+      # Set both to require HTTP Basic auth on the /stats dashboard and on the
+      # import API. Left unset, /stats stays publicly reachable.
       STATS_USER: ${STATS_USER:-}
       STATS_PASSWORD: ${STATS_PASSWORD:-}
-      # Opt-in Brottsplatskartan archive import: 'full' (once, then keeps
-      # current), 'incremental', or unset for no import at all.
+      # Optional import on startup:
+      #   ndjson      - load BPK_IMPORT_SOURCE once, then keep it current
+      #   full        - walk the whole API archive (hours), then keep current
+      #   incremental - only pull what is new
+      # Unset means no import at all; one can also be started from /stats.
       BPK_IMPORT_ON_START: ${BPK_IMPORT_ON_START:-}
+      # The dump for BPK_IMPORT_ON_START=ndjson. A bare name is resolved inside
+      # the data directory below, so ./data/brottsplatskartan.ndjson on the
+      # host is just `brottsplatskartan.ndjson` here. An http(s) URL also works.
+      BPK_IMPORT_SOURCE: ${BPK_IMPORT_SOURCE:-}
       BPK_IMPORT_CONCURRENCY: ${BPK_IMPORT_CONCURRENCY:-4}
     volumes:
-      # Bind mount rather than a named volume: the SQLite file stays visible on
-      # the host, so importing a database from an existing install and taking
-      # backups are ordinary file operations. The directory must be writable by
-      # uid 1001 (see scripts/import-db.sh, or `chown -R 1001:1001 ./data`).
+      # Bind mount rather than a named volume: the SQLite file and any NDJSON
+      # dump stay visible on the host, so importing, backing up and restoring
+      # are ordinary file operations. The directory must be writable by uid
+      # 1001 (see scripts/import-db.sh, or `chown -R 1001:1001 ./data`).
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]

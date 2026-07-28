@@ -182,7 +182,8 @@ export interface BpkEvent {
 }
 
 export type BpkImportStatus = 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
-export type BpkImportMode = 'full' | 'incremental';
+// 'ndjson' loads a local dump (or a URL) instead of walking the API.
+export type BpkImportMode = 'full' | 'incremental' | 'ndjson';
 
 export interface BpkImportState {
   status: BpkImportStatus;
