@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEventsFromDb } from '@/lib/db';
+import { getMapEvents } from '@/lib/db';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
@@ -7,8 +7,8 @@ import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/ra
 //
 // These used to be embedded in the home page's payload on every request, which
 // meant ~500 events were serialised into the HTML even for visitors who never
-// left the list view.
-const MAP_EVENT_LIMIT = 500;
+// left the list view. The query behind getMapEvents is cached per filter set
+// and dropped whenever a fetch changes the rows.
 
 export async function GET(request: NextRequest) {
   const rateLimitResult = checkRateLimit(request);
@@ -24,8 +24,13 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    const events = getEventsFromDb(filters, MAP_EVENT_LIMIT, 0);
+    const events = getMapEvents(filters);
     const response = NextResponse.json({ events: events.map(formatEventForUi) });
+    // Deliberately uncacheable over HTTP. The payload carries relative times
+    // and a "new events" banner depends on this endpoint answering with the
+    // current rows, so a browser or proxy holding a copy would show a feed
+    // that quietly stopped moving.
+    response.headers.set('Cache-Control', 'no-store');
     return addRateLimitHeaders(response, rateLimitResult);
   } catch (error) {
     console.error('Error fetching map events:', error);

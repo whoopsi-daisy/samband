@@ -24,30 +24,44 @@ curl -fsSLO https://raw.githubusercontent.com/whoopsi-daisy/samband/main/docker-
 curl -fsSLo .env https://raw.githubusercontent.com/whoopsi-daisy/samband/main/.env.example
 ```
 
-## 2. Data directory, owned by uid 1001
-
-**Do this before the first start.** The container runs as an unprivileged user,
-uid 1001. If Docker creates `./data` itself it will be owned by root and the app
-cannot write to it:
+## 2. Data directory
 
 ```bash
 mkdir -p data
+```
+
+The server runs as uid 1001 and the database lives in this directory, so uid
+1001 has to be able to write to it. It usually cannot to begin with: Docker
+creates a missing bind-mount source as root, and on a cloned repository
+`./data` already exists owned by whoever cloned — `mkdir -p` changes nothing
+there. The container's entrypoint therefore takes ownership at boot, before
+dropping to uid 1001 to run the server, so no host-side `chown` is needed.
+
+If the mount is read-only, on a filesystem that refuses `chown`, or you set
+`user:` in compose, the entrypoint says so and the app then refuses to start
+with a message naming the directory, the uid it is running as and the fix:
+
+```bash
 sudo chown -R 1001:1001 data
 ```
 
-Symptom if you skip it: the container starts, logs `SQLITE_CANTOPEN: unable to
-open database file`, and `/api/health` returns 503.
-
 ## 3. Configure
 
-Edit `.env`. Every value has a working default, so an empty file starts fine,
-but you almost certainly want credentials on `/stats`:
+Edit `.env`. Every value has a working default, so an empty file starts fine —
+except `/stats`, which answers `503` until you give it credentials:
 
 ```bash
 STATS_USER=admin
 STATS_PASSWORD=change-me
 chmod 600 .env
 ```
+
+`/stats` shows fetch logs, error history and database internals, and the
+import API behind it can start or cancel a run lasting hours. It used to be
+reachable without a login whenever these were unset — which is what an
+untouched `.env` gives you — so the default is now closed. If you genuinely
+want it open (a private network, say), ask for that explicitly with
+`STATS_PUBLIC=true` rather than by leaving the fields blank.
 
 Full list: [`.env.example`](../.env.example). Do not change `TZ` — the app
 parses Swedish wall-clock times out of event text and renders them back, so
@@ -199,7 +213,6 @@ place:
 ```bash
 git clone https://github.com/whoopsi-daisy/samband.git
 cd samband
-mkdir -p data && sudo chown -R 1001:1001 data
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
@@ -208,7 +221,7 @@ To update a source build: `git pull`, then the same command again.
 ## Without compose
 
 ```bash
-mkdir -p /opt/samband/data && sudo chown -R 1001:1001 /opt/samband/data
+mkdir -p /opt/samband/data
 
 docker run -d \
   --name samband \
@@ -284,8 +297,9 @@ container** — that file is your rollback.
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| Container is `Up` but never `(healthy)` | `/api/health` is failing. `docker compose logs`. Usually `./data` not writable by uid 1001 |
-| `SQLITE_CANTOPEN` / `attempt to write a readonly database` | `sudo chown -R 1001:1001 data` |
+| Container is `Up` but never `(healthy)` | `/api/health` is failing. `docker compose logs` |
+| `SQLITE_CANTOPEN` / `attempt to write a readonly database` | The container now takes ownership of its data directory at boot, so this should be gone. If it survives (read-only mount, NFS, `user:` set in compose), the log names the directory, the uid and the fix: `sudo chown -R 1001:1001 data` |
+| `/stats` returns 503 "Systemstatus är avstängd" | `STATS_USER`/`STATS_PASSWORD` are unset. Set them, or `STATS_PUBLIC=true` to leave it open on purpose |
 | Event times are 1–2 hours off | `TZ` is not `Europe/Stockholm` |
 | Feed is empty on a fresh install | Backfill has not finished; wait a minute and check `/stats` |
 | Every visitor shares one rate limit | `RATE_LIMIT_PROXY_HOPS` is wrong for your proxy chain |

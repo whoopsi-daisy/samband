@@ -36,6 +36,10 @@ export async function GET(request: NextRequest) {
       hasMore: (offset + EVENTS_PER_PAGE) < total,
       total,
     });
+    // See the note in the map route: "N nya händelser" refreshes through here,
+    // and a cached page 1 would refresh the feed into exactly what it already
+    // showed.
+    response.headers.set('Cache-Control', 'no-store');
     return addRateLimitHeaders(response, rateLimitResult);
   } catch (error) {
     console.error('Error fetching events:', error);
