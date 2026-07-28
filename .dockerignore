@@ -9,7 +9,7 @@ data
 .env*
 *.md
 Dockerfile
-docker-compose.yml
+docker-compose*.yml
 .dockerignore
 jest.config.js
 jest.setup.js
