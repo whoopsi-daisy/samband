@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Statistics } from '@/types';
+import { Statistics, getTypeStyle } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
 
 interface StatsViewProps {
@@ -24,9 +24,13 @@ function formatDay(iso: string): string {
 function TopList({
   rows,
   onSelect,
+  withEmoji = false,
 }: {
   rows: { label: string; total: number }[];
   onSelect?: (label: string) => void;
+  /** Incident types carry their emoji here too, so the same row of the same
+      list reads the same way as it does in the feed and on the map. */
+  withEmoji?: boolean;
 }) {
   // Normalise against the largest row, not the grand total. Against the total,
   // the top entry of a long-tailed distribution fills ~10% of the track and
@@ -40,7 +44,14 @@ function TopList({
           <li key={row.label}>
             <button type="button" className="top-item" onClick={() => onSelect?.(row.label)}>
               <span className="top-rank">{i + 1}</span>
-              <span className="top-name">{row.label}</span>
+              <span className="top-name">
+                {withEmoji && (
+                  <span className="badge-emoji" aria-hidden="true">
+                    {getTypeStyle(row.label).emoji}
+                  </span>
+                )}
+                <span className="top-name-text">{row.label}</span>
+              </span>
               <span className="top-track">
                 <span className="top-bar" style={{ width: `${pct}%` }} />
               </span>
@@ -206,7 +217,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
       <div className="card-grid">
         <div className="card">
           <h2 className="card-title">Vanligaste händelsetyper</h2>
-          <TopList rows={stats.topTypes} onSelect={onTypeClick} />
+          <TopList rows={stats.topTypes} onSelect={onTypeClick} withEmoji />
           <p className="chart-caption">Tryck på en typ för att se bara de händelserna i listan.</p>
         </div>
         <div className="card">

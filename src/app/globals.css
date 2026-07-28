@@ -49,6 +49,9 @@
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", ui-monospace, monospace;
+  /* Named explicitly so the type emoji render in colour everywhere rather than
+     falling back to a monochrome glyph, or to tofu on a bare Linux box. */
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
 
   /* ── Radii ──────────────────────────────────────────────── */
   --radius-xs: 4px;
@@ -293,6 +296,30 @@ main:focus { outline: none; }
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* The type's emoji, always immediately before the type's name. Line-height 1
+   and a fixed size keep it from stretching the pill it sits in. */
+.badge-emoji {
+  font-family: var(--font-emoji);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: var(--weight-normal);
+  letter-spacing: normal;
+  flex-shrink: 0;
+}
+
+/* Incident types read as words, not as shouted labels: sentence case at a
+   readable size, because the emoji beside them is doing the fast recognition
+   and the pair should look like a category, not a system tag. */
+.badge--type {
+  height: 22px;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .badge--accent {
@@ -1060,9 +1087,8 @@ main {
   border-radius: 0;
 }
 
-/* The icon, the title line and the chevron all occupy one line of body text and
-   centre within it, so the three align optically with no magic offsets. */
-.event-icon,
+/* The chevron occupies one line of body text and centres within it, so it sits
+   optically on the title line with no magic offsets. */
 .event-chevron {
   display: flex;
   align-items: center;
@@ -1071,9 +1097,6 @@ main {
   color: var(--muted);
   transition: color var(--t-fast) var(--ease), transform var(--t-base) var(--ease);
 }
-
-.event-row:hover .event-icon,
-.event-list--newest .event-row:first-child .event-icon { color: var(--accent); }
 
 .event-row:hover .event-chevron { color: var(--fg); }
 .event-row--expanded .event-chevron { transform: rotate(180deg); color: var(--fg); }
@@ -1140,10 +1163,10 @@ main {
   -webkit-line-clamp: unset;
 }
 
-/* Expanded detail. Indented to the text column so it reads as a continuation
-   of the row rather than a new block. */
+/* Expanded detail, aligned with the row's own text rather than indented past
+   the icon column that used to sit to its left. */
 .event-detail {
-  padding: 0 var(--space-4) var(--space-4) calc(var(--space-4) + var(--space-5) + var(--space-3));
+  padding: 0 var(--space-4) var(--space-4);
   font-size: var(--text-ui);
   line-height: var(--leading-normal);
   color: var(--fg-secondary);
@@ -1469,6 +1492,10 @@ main {
   gap: var(--space-2);
 }
 
+/* Popup markup is built as a string for Leaflet, so it composes the same
+   primitives by class name rather than by component. */
+.map-popup .badge { max-width: 100%; overflow: hidden; }
+
 .popup-time {
   display: inline-flex;
   align-items: center;
@@ -1781,7 +1808,17 @@ main {
 }
 
 .top-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   font-size: var(--text-sm);
+}
+
+/* The label needs its own block box: a bare text node inside a flex container
+   is an anonymous item, and text-overflow does not apply to it. */
+.top-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

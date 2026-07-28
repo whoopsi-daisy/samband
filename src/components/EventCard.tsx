@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { FormattedEvent } from '@/types';
-import { TypeIcon } from './TypeIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
 
@@ -143,10 +142,6 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
   return (
     <article className={rowClasses} data-event-id={event.id ?? undefined}>
       <button type="button" className="event-summary-btn" onClick={toggle} aria-expanded={expanded}>
-        <span className="event-icon">
-          <TypeIcon name={event.iconKey} size={20} />
-        </span>
-
         {/* Where, then what, then the summary — each on its own line, so the
             same information sits in the same place in every row. */}
         <span className="event-main">
@@ -157,7 +152,14 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
             </span>
           </span>
           <span className="event-meta">
-            <span className="badge badge--accent">{event.type}</span>
+            <span className="badge badge--neutral badge--type">
+              {/* Decoration beside the word it decorates — a screen reader
+                  reads the type, not "speaking head". */}
+              <span className="badge-emoji" aria-hidden="true">
+                {event.emoji}
+              </span>
+              {event.type}
+            </span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
