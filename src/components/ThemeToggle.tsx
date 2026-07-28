@@ -33,7 +33,7 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="icon-btn"
       onClick={toggle}
       aria-label={isDark ? 'Byt till ljust tema' : 'Byt till mörkt tema'}
       title="Byt tema"

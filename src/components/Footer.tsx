@@ -14,7 +14,7 @@ export default function Footer({ lastChecked }: FooterProps) {
 
   return (
     <footer className="site-footer">
-      <span className="footer-dot" aria-hidden="true" />
+      <span className="dot dot--sm dot--ok" aria-hidden="true" />
       <span>
         Uppdaterad{' '}
         {mounted ? lastChecked.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '--:--'}

@@ -223,7 +223,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
     marker.bindPopup(`
       <div class="map-popup">
         <div class="popup-head">
-          <span class="popup-badge" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d">${iconSvg}${safeType}</span>
+          <span class="badge" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d">${iconSvg}${safeType}</span>
           <span class="popup-time">${isRecent ? '<span class="popup-live"></span>' : ''}${relTime}</span>
         </div>
         <h3>${safeName}</h3>
@@ -522,7 +522,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
   return (
     <div className={`map-view${isActive ? ' active' : ''}`} aria-hidden={!isActive}>
-      <div className="map-wrap">
+      <div className="panel">
         <div className="map-canvas-wrap">
           {/* Map container first for immediate visibility */}
           <div id="mapContainer" className="map-canvas" ref={mapContainerRef} />
@@ -548,7 +548,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
         <div className="map-timeline">
           <button
             type="button"
-            className="timeline-play"
+            className="icon-btn"
             onClick={togglePlay}
             aria-label={isPlaying ? 'Pausa uppspelning' : 'Spela upp tidslinje'}
           >
@@ -571,7 +571,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
           />
 
           <span className={`timeline-label${replayTimestamp ? '' : ' live'}`}>
-            {!replayTimestamp && <span className="feed-live-dot" aria-hidden="true" />}
+            {!replayTimestamp && <span className="dot dot--sm dot--ok" aria-hidden="true" />}
             {sliderLabel}
           </span>
 

@@ -112,7 +112,7 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
       <div className="modal">
         <div className="modal-header">
           <h2 id="mapModalTitle" className="modal-title">{location || 'Plats'}</h2>
-          <button className="modal-close" type="button" onClick={onClose} aria-label="Stäng karta">
+          <button className="icon-btn" type="button" onClick={onClose} aria-label="Stäng karta">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>

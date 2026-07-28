@@ -167,33 +167,33 @@ export default function ImportPanel() {
     <section className="ops-section">
       <h2 className="ops-section-title">
         Import — brottsplatskartan
-        <span className={`ops-live-dot ${live ? 'ops-live-dot--on' : ''}`} title={live ? 'Direktström' : 'Pollning'} />
+        <span className={`dot dot--sm${live ? ' dot--ok is-pulsing' : ''}`} title={live ? 'Direktström' : 'Pollning'} />
       </h2>
 
-      <div className="ops-metrics-grid ops-metrics-grid--4">
-        <div className="ops-metric">
-          <span className="ops-metric-value">{(state?.storedEvents ?? 0).toLocaleString('sv-SE')}</span>
-          <span className="ops-metric-label">Lagrade händelser</span>
+      <div className="stats-grid">
+        <div className="stat">
+          <span className="stat-value">{(state?.storedEvents ?? 0).toLocaleString('sv-SE')}</span>
+          <span className="stat-label">Lagrade händelser</span>
         </div>
-        <div className={`ops-metric ops-metric--${running ? 'warning' : state?.status === 'failed' ? 'error' : 'healthy'}`}>
-          <span className="ops-metric-value">{STATUS_LABEL[state?.status ?? 'idle'] ?? state?.status}</span>
-          <span className="ops-metric-label">
+        <div className={`stat stat--${running ? 'warn' : state?.status === 'failed' ? 'alert' : 'ok'}`}>
+          <span className="stat-value">{STATUS_LABEL[state?.status ?? 'idle'] ?? state?.status}</span>
+          <span className="stat-label">
             {running && progress ? MODE_LABEL[progress.mode] : state?.mode ? MODE_LABEL[state.mode] : 'Status'}
           </span>
         </div>
-        <div className="ops-metric">
-          <span className="ops-metric-value">{(progress?.imported ?? state?.imported ?? 0).toLocaleString('sv-SE')}</span>
-          <span className="ops-metric-label">Nya i körningen</span>
+        <div className="stat">
+          <span className="stat-value">{(progress?.imported ?? state?.imported ?? 0).toLocaleString('sv-SE')}</span>
+          <span className="stat-label">Nya i körningen</span>
         </div>
-        <div className="ops-metric">
-          <span className="ops-metric-value">{snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined ? `${snapshot.coveragePercent}%` : '—'}</span>
-          <span className="ops-metric-label">Täckning mot API</span>
+        <div className="stat">
+          <span className="stat-value">{snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined ? `${snapshot.coveragePercent}%` : '—'}</span>
+          <span className="stat-label">Täckning mot API</span>
         </div>
       </div>
 
-      <div className="ops-grid ops-grid--2">
-        <div className="ops-card">
-          <h3 className="ops-card-title">Pågående körning</h3>
+      <div className="card-grid">
+        <div className="card">
+          <h3 className="card-title">Pågående körning</h3>
 
           <div className="ops-progress">
             <div
@@ -205,66 +205,66 @@ export default function ImportPanel() {
             </span>
           </div>
 
-          <div className="ops-info-grid">
-            <div className="ops-info-row">
-              <span className="ops-info-label">Källa</span>
-              <span className="ops-info-value">{progress?.source ?? (running ? 'API' : '—')}</span>
+          <div className="info-list">
+            <div className="info-row">
+              <span className="info-label">Källa</span>
+              <span className="info-value">{progress?.source ?? (running ? 'API' : '—')}</span>
             </div>
             {progress?.linesRead !== null && progress?.linesRead !== undefined && (
-              <div className="ops-info-row">
-                <span className="ops-info-label">Rader lästa</span>
-                <span className="ops-info-value">
+              <div className="info-row">
+                <span className="info-label">Rader lästa</span>
+                <span className="info-value">
                   {progress.linesRead.toLocaleString('sv-SE')} ({formatBytes(progress.bytesRead)}
                   {progress.bytesTotal ? ` av ${formatBytes(progress.bytesTotal)}` : ''})
                 </span>
               </div>
             )}
             {progress?.pagesDone !== null && progress?.pagesDone !== undefined && (
-              <div className="ops-info-row">
-                <span className="ops-info-label">Sidor</span>
-                <span className="ops-info-value">
+              <div className="info-row">
+                <span className="info-label">Sidor</span>
+                <span className="info-value">
                   {progress.pagesDone.toLocaleString('sv-SE')}
                   {progress.totalPages ? ` av ${progress.totalPages.toLocaleString('sv-SE')}` : ''}
                 </span>
               </div>
             )}
-            <div className="ops-info-row">
-              <span className="ops-info-label">Nya / dubbletter / överhoppade</span>
-              <span className="ops-info-value">
+            <div className="info-row">
+              <span className="info-label">Nya / dubbletter / överhoppade</span>
+              <span className="info-value">
                 {(progress?.imported ?? 0).toLocaleString('sv-SE')} / {(progress?.duplicates ?? 0).toLocaleString('sv-SE')} /{' '}
                 {(progress?.skipped ?? 0).toLocaleString('sv-SE')}
               </span>
             </div>
-            <div className="ops-info-row">
-              <span className="ops-info-label">Takt</span>
-              <span className="ops-info-value">
+            <div className="info-row">
+              <span className="info-label">Takt</span>
+              <span className="info-value">
                 {progress?.perSecond ? `${progress.perSecond.toLocaleString('sv-SE')} /s` : '—'}
               </span>
             </div>
-            <div className="ops-info-row">
-              <span className="ops-info-label">Återstår</span>
-              <span className="ops-info-value">{formatDuration(progress?.etaSeconds ?? null)}</span>
+            <div className="info-row">
+              <span className="info-label">Återstår</span>
+              <span className="info-value">{formatDuration(progress?.etaSeconds ?? null)}</span>
             </div>
             {state?.lastError && (
-              <div className="ops-info-row">
-                <span className="ops-info-label">Senaste fel</span>
-                <span className="ops-info-value ops-info-value--muted">{state.lastError}</span>
+              <div className="info-row">
+                <span className="info-label">Senaste fel</span>
+                <span className="info-value info-value--muted">{state.lastError}</span>
               </div>
             )}
           </div>
         </div>
 
-        <div className="ops-card">
-          <h3 className="ops-card-title">Starta en import</h3>
+        <div className="card">
+          <h3 className="card-title">Starta en import</h3>
 
-          <div className="ops-import-controls">
-            <label className="ops-import-label" htmlFor="bpk-source">
+          <div className="ops-controls">
+            <label className="section-label" htmlFor="bpk-source">
               NDJSON-dump (fil i datakatalogen eller http(s)-URL)
             </label>
-            <div className="ops-import-row">
+            <div className="ops-row">
               <input
                 id="bpk-source"
-                className="ops-import-input"
+                className="field"
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="brottsplatskartan.ndjson"
@@ -280,7 +280,7 @@ export default function ImportPanel() {
               </datalist>
               <button
                 type="button"
-                className="ops-button ops-button--primary"
+                className="btn"
                 disabled={busy || running || source.trim() === ''}
                 onClick={() => start({ mode: 'ndjson', source })}
               >
@@ -289,15 +289,15 @@ export default function ImportPanel() {
             </div>
 
             {dumps.length > 0 && (
-              <p className="ops-import-hint">
+              <p className="ops-hint">
                 Hittade i datakatalogen: {dumps.map((d) => `${d.name} (${formatBytes(d.bytes)})`).join(', ')}
               </p>
             )}
 
-            <div className="ops-import-row">
+            <div className="ops-row">
               <button
                 type="button"
-                className="ops-button"
+                className="btn-quiet"
                 disabled={busy || running}
                 onClick={() => start({ mode: 'incremental' })}
               >
@@ -305,24 +305,24 @@ export default function ImportPanel() {
               </button>
               <button
                 type="button"
-                className="ops-button"
+                className="btn-quiet"
                 disabled={busy || running}
                 onClick={() => start({ mode: 'full' })}
               >
                 Full API-import
               </button>
-              <button type="button" className="ops-button ops-button--danger" disabled={busy || !running} onClick={cancel}>
+              <button type="button" className="btn-quiet btn-quiet--danger" disabled={busy || !running} onClick={cancel}>
                 Avbryt
               </button>
             </div>
 
-            {error && <p className="ops-import-error">{error}</p>}
+            {error && <p className="ops-alert">{error}</p>}
           </div>
 
-          <h3 className="ops-card-title">Logg</h3>
+          <h3 className="card-title">Logg</h3>
           <div className="ops-log" ref={logRef}>
             {(snapshot?.log ?? []).length === 0 ? (
-              <p className="ops-import-hint">Inga händelser ännu.</p>
+              <p className="ops-hint">Inga händelser ännu.</p>
             ) : (
               (snapshot?.log ?? []).map((entry, index) => (
                 <div key={`${entry.at}-${index}`} className="ops-log-line">

@@ -145,7 +145,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
       <div className="filter-row">
         {!showCustomLocation ? (
           <select
-            className="filter-select"
+            className="field"
             name="location"
             value={location}
             onChange={(e) => handleLocationChange(e.target.value)}
@@ -162,7 +162,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
         ) : (
           <div className="custom-location">
             <input
-              className="filter-input"
+              className="field"
               type="text"
               name="location"
               placeholder="Skriv plats"
@@ -187,7 +187,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
         )}
 
         <select
-          className="filter-select"
+          className="field"
           name="type"
           value={type}
           onChange={(e) => handleTypeChange(e.target.value)}
@@ -212,7 +212,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
             ] as const
           ).map(([name, label]) =>
             label ? (
-              <span className="filter-chip" key={name}>
+              <span className="badge badge--accent filter-chip" key={name}>
                 <span className="filter-chip-text">{label}</span>
                 <button
                   type="button"
