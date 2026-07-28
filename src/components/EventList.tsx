@@ -233,12 +233,12 @@ export default function EventList({
           <button type="button" onClick={refreshEvents} disabled={loading} className="new-events-btn">
             {loading ? (
               <>
-                <span className="spinner-small" />
+                <span className="spinner-sm" />
                 Laddar…
               </>
             ) : (
               <>
-                <span className="new-events-dot" />
+                <span className="dot dot--sm" />
                 {newEventsCount} {newEventsCount === 1 ? 'ny händelse' : 'nya händelser'}
               </>
             )}
@@ -251,7 +251,7 @@ export default function EventList({
           <strong>{events.length}</strong> {events.length === 1 ? 'händelse' : 'händelser'} visas
         </span>
         <span className="feed-live">
-          <span className="feed-live-dot" aria-hidden="true" />
+          <span className="dot dot--sm dot--ok" aria-hidden="true" />
           Uppdateras automatiskt
         </span>
       </div>
@@ -264,7 +264,7 @@ export default function EventList({
               <span className="day-heading-count">{group.events.length}</span>
             </div>
             {/* Only the newest day's first row carries the accent rail. */}
-            <div className={`event-list${groupIndex === 0 ? ' event-list--newest' : ''}`}>
+            <div className={`panel event-list${groupIndex === 0 ? ' event-list--newest' : ''}`}>
               {group.events.map((event, index) => (
                 <EventCard
                   key={event.id ?? `${group.key}-${index}`}
@@ -285,7 +285,7 @@ export default function EventList({
           <button className="btn-quiet" type="button" onClick={loadMore} disabled={loading}>
             {loading ? (
               <>
-                <span className="spinner-small" />
+                <span className="spinner-sm" />
                 Laddar…
               </>
             ) : (

@@ -38,10 +38,10 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
       return (
         <main id="main-content">
-          <div className="error-box">
+          <div className="empty">
             <p className="empty-title">Något gick fel</p>
             <p className="empty-text">Ett oväntat fel uppstod. Försök ladda om sidan.</p>
-            <div className="event-actions" style={{ justifyContent: 'center' }}>
+            <div className="empty-actions">
               <button onClick={this.handleRetry} className="btn">
                 Försök igen
               </button>
