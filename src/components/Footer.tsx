@@ -25,6 +25,11 @@ export default function Footer({ lastChecked }: FooterProps) {
           polisen.se
         </a>
       </span>
+      {/* The app has had keyboard shortcuts since it was built and has never
+          said so anywhere. Shown only where there is a keyboard to press. */}
+      <span className="footer-keys">
+        <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> byter vy · <kbd>/</kbd> söker
+      </span>
     </footer>
   );
 }

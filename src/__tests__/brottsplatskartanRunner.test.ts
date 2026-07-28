@@ -172,9 +172,17 @@ describe('startImport (ndjson)', () => {
 describe('cancelImport', () => {
   it('stops a running dump and keeps what it already stored', async () => {
     // Served over HTTP and deliberately never finished: the import gets a
-    // first chunk, stores it, then waits for more that never comes. That is a
-    // run genuinely in flight, without leaning on how fast the machine reads a
-    // file or how often progress happens to be published.
+    // first chunk, stores it, then waits for more that never comes. The run is
+    // therefore in flight by construction, on any machine.
+    //
+    // The obvious alternative — subscribe() and cancel on the first snapshot
+    // reporting imported > 0 — does not work, and was this test's original
+    // flake. Publishes to listeners are throttled to one per 500 ms, and a
+    // dump of this size finishes well inside that, so a subscriber saw two
+    // snapshots: one at the start with no progress attached, and one after the
+    // whole file had been read. Cancelling then aborts a run that has already
+    // finished. (Polling getImportSnapshot() instead reads live state with no
+    // throttle, which works but races the reader against the importer.)
     const chunk =
       Array.from({ length: 3000 }, (_, i) =>
         JSON.stringify({ id: 500_000 - i, pubdate_unix: String(1_785_171_476 - i * 60) })

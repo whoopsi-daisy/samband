@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Statistics } from '@/types';
+import { Statistics, getTypeStyle } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
 
 interface StatsViewProps {
@@ -11,6 +11,7 @@ interface StatsViewProps {
 }
 
 const WEEKDAY_NAMES = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+const WEEKDAY_LONG = ['måndagar', 'tisdagar', 'onsdagar', 'torsdagar', 'fredagar', 'lördagar', 'söndagar'];
 
 // Date only — these are coverage boundaries, not timestamps, so the time of
 // day is noise. Rendered against the viewer's clock, so it only produces
@@ -23,9 +24,13 @@ function formatDay(iso: string): string {
 function TopList({
   rows,
   onSelect,
+  withEmoji = false,
 }: {
   rows: { label: string; total: number }[];
   onSelect?: (label: string) => void;
+  /** Incident types carry their emoji here too, so the same row of the same
+      list reads the same way as it does in the feed and on the map. */
+  withEmoji?: boolean;
 }) {
   // Normalise against the largest row, not the grand total. Against the total,
   // the top entry of a long-tailed distribution fills ~10% of the track and
@@ -39,7 +44,14 @@ function TopList({
           <li key={row.label}>
             <button type="button" className="top-item" onClick={() => onSelect?.(row.label)}>
               <span className="top-rank">{i + 1}</span>
-              <span className="top-name">{row.label}</span>
+              <span className="top-name">
+                {withEmoji && (
+                  <span className="badge-emoji" aria-hidden="true">
+                    {getTypeStyle(row.label).emoji}
+                  </span>
+                )}
+                <span className="top-name-text">{row.label}</span>
+              </span>
               <span className="top-track">
                 <span className="top-bar" style={{ width: `${pct}%` }} />
               </span>
@@ -52,12 +64,26 @@ function TopList({
   );
 }
 
+// Which entry of a series is the tallest — the one sentence each chart exists
+// to say. A phone has no hover, so without it the weekday and hour charts are
+// shapes with no readable value anywhere on them.
+function peakIndex(values: number[]): number {
+  let best = 0;
+  for (let i = 1; i < values.length; i++) if (values[i] > values[best]) best = i;
+  return best;
+}
+
 function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const mounted = useMounted();
   const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '—');
   const maxDaily = Math.max(...stats.daily.map((d) => d.count), 1);
   const maxWeekday = Math.max(...stats.weekdays, 1);
   const maxHourly = Math.max(...stats.hourly, 1);
+
+  const peakWeekday = peakIndex(stats.weekdays);
+  const peakHour = peakIndex(stats.hourly);
+  const weekdayTotal = stats.weekdays.reduce((a, b) => a + b, 0);
+  const hourlyTotal = stats.hourly.reduce((a, b) => a + b, 0);
 
   return (
     <section aria-label="Statistik">
@@ -79,8 +105,8 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           <span className="stat-label">Senaste 30 dagar</span>
         </div>
         <div className="stat">
-          <span className="stat-value">~{stats.avgPerDay}</span>
-          <span className="stat-label">Genomsnitt/dag</span>
+          <span className="stat-value">{stats.avgPerDay.toLocaleString('sv-SE')}</span>
+          <span className="stat-label">Per dag i snitt</span>
         </div>
         <div className="stat">
           <span className="stat-value">{stats.uniqueLocations}</span>
@@ -90,14 +116,10 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           <span className="stat-value">{stats.uniqueTypes}</span>
           <span className="stat-label">Händelsetyper</span>
         </div>
-        <div className="stat">
-          <span className="stat-value">{stats.gpsPercent}%</span>
-          <span className="stat-label">Med GPS-position</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{stats.updatedPercent}%</span>
-          <span className="stat-label">Uppdaterade</span>
-        </div>
+        {/* "Med GPS-position" and "Uppdaterade" used to sit here. They measure
+            how complete the stored data is, not anything about crime in
+            Sweden, and they are on the operations dashboard at /stats where an
+            operator can act on them. */}
       </div>
 
       {/* What the tiles above are computed over. Without this, a database
@@ -121,7 +143,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
       </p>
 
       <div className="card">
-        <h2 className="card-title">Senaste 7 dagarna</h2>
+        <h2 className="card-title">Antal händelser per dag, senaste veckan</h2>
         <div className="chart">
           {stats.daily.map((day) => (
             <div key={day.date} className="chart-col" title={`${day.date}: ${day.count} händelser`}>
@@ -137,7 +159,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
 
       <div className="card-grid">
         <div className="card">
-          <h2 className="card-title">Per veckodag</h2>
+          <h2 className="card-title">Per veckodag, senaste 30 dagarna</h2>
           <div className="chart">
             {stats.weekdays.map((count, i) => (
               <div key={i} className="chart-col" title={`${WEEKDAY_NAMES[i]}: ${count} händelser`}>
@@ -148,10 +170,17 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
               </div>
             ))}
           </div>
+          {weekdayTotal > 0 && (
+            <p className="chart-caption">
+              Flest händelser inträffar på <strong>{WEEKDAY_LONG[peakWeekday]}</strong> —{' '}
+              {stats.weekdays[peakWeekday].toLocaleString('sv-SE')} av de{' '}
+              {weekdayTotal.toLocaleString('sv-SE')} senaste 30 dagarnas händelser.
+            </p>
+          )}
         </div>
 
         <div className="card">
-          <h2 className="card-title">Per timme</h2>
+          <h2 className="card-title">Per timme, senaste dygnet</h2>
           <div className="chart chart--dense">
             {stats.hourly.map((count, hour) => (
               <div
@@ -172,17 +201,29 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
             <span>18</span>
             <span>23</span>
           </div>
+          {hourlyTotal > 0 && (
+            <p className="chart-caption">
+              Flest händelser mellan{' '}
+              <strong>
+                kl {String(peakHour).padStart(2, '0')} och {String((peakHour + 1) % 24).padStart(2, '0')}
+              </strong>{' '}
+              — {stats.hourly[peakHour].toLocaleString('sv-SE')} av dygnets{' '}
+              {hourlyTotal.toLocaleString('sv-SE')}.
+            </p>
+          )}
         </div>
       </div>
 
       <div className="card-grid">
         <div className="card">
           <h2 className="card-title">Vanligaste händelsetyper</h2>
-          <TopList rows={stats.topTypes} onSelect={onTypeClick} />
+          <TopList rows={stats.topTypes} onSelect={onTypeClick} withEmoji />
+          <p className="chart-caption">Tryck på en typ för att se bara de händelserna i listan.</p>
         </div>
         <div className="card">
           <h2 className="card-title">Vanligaste platser</h2>
           <TopList rows={stats.topLocations} onSelect={onLocationClick} />
+          <p className="chart-caption">Tryck på en plats för att se bara de händelserna i listan.</p>
         </div>
       </div>
     </section>

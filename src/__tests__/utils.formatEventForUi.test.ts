@@ -99,12 +99,12 @@ describe('formatEventForUi', () => {
     expect(result.type).toBe('Okänd');
   });
 
-  it('includes color and icon from type styling', () => {
+  it('includes colour and emoji from type styling', () => {
     const event = createEvent({ type: 'Trafikolycka' });
     const result = formatEventForUi(event);
 
-    expect(result.color).toBeTruthy();
-    expect(result.icon).toBeTruthy();
+    expect(result.color).toBe('#3b82f6');
+    expect(result.emoji).toBe('🚗');
   });
 
   it('handles missing location gracefully', () => {

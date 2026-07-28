@@ -35,7 +35,7 @@ Put the dump next to the database, in the data directory the container mounts:
 ```bash
 cd /opt/samband
 cp ~/brottsplatskartan.ndjson data/
-sudo chown 1001:1001 data/brottsplatskartan.ndjson
+chmod 644 data/brottsplatskartan.ndjson   # uid 1001 only needs to read it
 ```
 
 Then either start it from **/stats** — the panel lists dumps it finds in the

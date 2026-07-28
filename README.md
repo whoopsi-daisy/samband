@@ -26,15 +26,13 @@ mkdir -p /opt/samband && cd /opt/samband
 curl -fsSLO https://raw.githubusercontent.com/whoopsi-daisy/samband/main/docker-compose.yml
 curl -fsSLo .env https://raw.githubusercontent.com/whoopsi-daisy/samband/main/.env.example
 
-# The container runs as uid 1001 and must own its data directory.
-mkdir -p data && sudo chown -R 1001:1001 data
-
+mkdir -p data
 docker compose up -d
 ```
 
 The app is on <http://localhost:3000>; `docker compose ps` should show
 `(healthy)` within 40 seconds. Edit `.env` to set a port, credentials for
-`/stats`, or a pinned release.
+`/stats` (which stays closed until you do), or a pinned release.
 
 That is the whole deployment. Everything else — reverse proxies, updating,
 rollback, backups, migrating an existing install — is in
@@ -51,7 +49,6 @@ For development, not deployment:
 
 ```bash
 git clone https://github.com/whoopsi-daisy/samband.git && cd samband
-mkdir -p data && sudo chown -R 1001:1001 data
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
@@ -70,7 +67,7 @@ Put an NDJSON dump (one API event per line) in the data directory and start it
 from `/stats`, or unattended:
 
 ```bash
-cp brottsplatskartan.ndjson data/ && sudo chown 1001:1001 data/brottsplatskartan.ndjson
+cp brottsplatskartan.ndjson data/   # readable by uid 1001; chmod 644 if it is not
 
 # in .env
 BPK_IMPORT_ON_START=ndjson

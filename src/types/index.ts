@@ -29,8 +29,7 @@ export interface FormattedEvent {
   location: string;
   gps: string;
   color: string;
-  icon: string;
-  iconKey: string;
+  emoji: string;
   date: {
     day: string;
     month: string;
@@ -86,28 +85,45 @@ export interface Statistics {
 
 // Type style mapping
 export interface TypeStyle {
-  icon: string;
-  iconKey: string;
+  /**
+   * Shown immediately before the type's name, never on its own. A line-art
+   * glyph sat here before, in a column of its own with the name elsewhere —
+   * which asked the reader to decode a small abstract drawing. An emoji beside
+   * its own word asks nothing.
+   */
+  emoji: string;
+  /** Marker colour on the map, and the map legend's key. */
   color: string;
-  class: string;
 }
 
+// One colour per type, all distinguishable side by side. Five types used to
+// share #ef4444 and three more shared #f97316, which was invisible while the
+// colours only tinted markers — and a plain contradiction once the map grew a
+// legend saying the colour tells you the type.
+//
+// Loosely grouped by hue so related types still read as related: reds for
+// violence, oranges/yellows for theft, blues for traffic, and a neutral grey
+// for the summary posts, which are not incidents at all.
+// Emoji are picked to be legible at 13px and distinct from one another, and
+// kept plain rather than lurid — these are real incidents, and the glyph is
+// there to speed up recognition, not to editorialise. Loudness roughly tracks
+// severity, so the most serious types read as the most serious at a glance.
 export const TYPE_STYLES: Record<string, TypeStyle> = {
-  'Inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--inbrott' },
-  'Brand': { icon: '🔥', iconKey: 'flame', color: '#ef4444', class: 'event-type--brand' },
-  'Rån': { icon: '💰', iconKey: 'banknote', color: '#f59e0b', class: 'event-type--ran' },
-  'Trafikolycka': { icon: '🚗', iconKey: 'car', color: '#3b82f6', class: 'event-type--trafikolycka' },
-  'Misshandel': { icon: '👊', iconKey: 'shield', color: '#ef4444', class: 'event-type--misshandel' },
-  'Skadegörelse': { icon: '🔨', iconKey: 'hammer', color: '#f59e0b', class: 'event-type--skadegorelse' },
-  'Bedrägeri': { icon: '🕵️', iconKey: 'search', color: '#8b5cf6', class: 'event-type--bedrageri' },
-  'Narkotikabrott': { icon: '💊', iconKey: 'pill', color: '#10b981', class: 'event-type--narkotikabrott' },
-  'Ofredande': { icon: '🚨', iconKey: 'siren', color: '#f43f5e', class: 'event-type--ofredande' },
-  'Sammanfattning': { icon: '📊', iconKey: 'chart', color: '#22c55e', class: 'event-type--sammanfattning' },
-  'Stöld': { icon: '🔓', iconKey: 'bag', color: '#f97316', class: 'event-type--stold' },
-  'Stöld/inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--stold' },
-  'Mord/dråp': { icon: '⚠️', iconKey: 'octagon', color: '#dc2626', class: 'event-type--mord' },
-  'Rattfylleri': { icon: '🚗', iconKey: 'car', color: '#ef4444', class: 'event-type--ratta' },
-  'default': { icon: '📌', iconKey: 'pin', color: '#fcd34d', class: 'event-type--default' },
+  'Mord/dråp': { emoji: '🚨', color: '#991b1b' },
+  'Brand': { emoji: '🔥', color: '#ef4444' },
+  'Misshandel': { emoji: '🤕', color: '#f43f5e' },
+  'Ofredande': { emoji: '😠', color: '#ec4899' },
+  'Rån': { emoji: '💰', color: '#f59e0b' },
+  'Inbrott': { emoji: '🪟', color: '#f97316' },
+  'Stöld/inbrott': { emoji: '🚪', color: '#c2410c' },
+  'Stöld': { emoji: '👜', color: '#fbbf24' },
+  'Skadegörelse': { emoji: '🔨', color: '#a16207' },
+  'Trafikolycka': { emoji: '🚗', color: '#3b82f6' },
+  'Rattfylleri': { emoji: '🍺', color: '#0891b2' },
+  'Narkotikabrott': { emoji: '💊', color: '#10b981' },
+  'Bedrägeri': { emoji: '💳', color: '#8b5cf6' },
+  'Sammanfattning': { emoji: '📋', color: '#64748b' },
+  'default': { emoji: '📍', color: '#94a3b8' },
 };
 
 export function getTypeStyle(type: string): TypeStyle {
@@ -121,10 +137,6 @@ export function getTypeStyle(type: string): TypeStyle {
     }
   }
   return TYPE_STYLES['default'];
-}
-
-export function getTypeClass(type: string): string {
-  return getTypeStyle(type).class;
 }
 
 // Operational monitoring types

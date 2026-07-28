@@ -20,7 +20,6 @@ export default function ScrollToTop() {
 
   return (
     <button
-      id="scrollTop"
       className={`scroll-top${visible ? ' visible' : ''}`}
       type="button"
       aria-label="Scrolla till toppen"

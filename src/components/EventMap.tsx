@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState, memo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { FormattedEvent } from '@/types';
-import { typeIconSvg } from './TypeIcon';
 
 interface EventMapProps {
   events: FormattedEvent[];
@@ -12,6 +11,8 @@ interface EventMapProps {
   loading?: boolean;
   /** That fetch failed. */
   error?: boolean;
+  /** Retry the fetch. */
+  onRetry?: () => void;
 }
 
 type TimeRange = '24h' | '48h' | '72h';
@@ -115,11 +116,10 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function EventMapInner({ events, isActive, loading = false, error = false }: EventMapProps) {
+function EventMapInner({ events, isActive, loading = false, error = false, onRetry }: EventMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersLayerRef = useRef<L.FeatureGroup | null>(null);
-  const infoControlRef = useRef<L.Control | null>(null);
   const leafletRef = useRef<typeof import('leaflet') | null>(null);
   const eventsRef = useRef<FormattedEvent[]>(events);
   const replayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -155,10 +155,6 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
       markersLayerRef.current = L.featureGroup().addTo(map);
     }
 
-    if (infoControlRef.current) {
-      map.removeControl(infoControlRef.current);
-      infoControlRef.current = null;
-    }
   }, []);
 
   // --- Add a single marker to the map ---
@@ -216,14 +212,14 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
     );
     const safeLocation = escapeHtml(e.location || '');
     const safeColor = escapeHtml(e.color || '');
-    const iconSvg = typeIconSvg(e.iconKey || 'pin', safeColor, 13);
+    const safeEmoji = escapeHtml(e.emoji || '');
     const safeUrl = e.url ? escapeHtml(e.url) : '';
     const gMaps = `https://www.google.com/maps/search/?api=1&query=${rawLat},${rawLng}`;
 
     marker.bindPopup(`
       <div class="map-popup">
         <div class="popup-head">
-          <span class="badge" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d">${iconSvg}${safeType}</span>
+          <span class="badge badge--type" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d"><span class="badge-emoji">${safeEmoji}</span>${safeType}</span>
           <span class="popup-time">${isRecent ? '<span class="popup-live"></span>' : ''}${relTime}</span>
         </div>
         <h3>${safeName}</h3>
@@ -238,33 +234,6 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
     markersLayerRef.current.addLayer(marker);
   }, []);
-
-  // --- Update the info badge ---
-  const updateInfoBadge = useCallback((count: number, cutoffTs?: number | null, rangeOverride?: TimeRange) => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    if (!L || !map) return;
-
-    if (infoControlRef.current) {
-      map.removeControl(infoControlRef.current);
-      infoControlRef.current = null;
-    }
-
-    const rangeLabel = TIME_RANGES.find(r => r.key === (rangeOverride ?? timeRange))?.label ?? '24 tim';
-    const timeLabel = cutoffTs
-      ? new Date(cutoffTs).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })
-      : null;
-
-    const InfoCtrl = L.Control.extend({
-      onAdd() {
-        const div = L.DomUtil.create('div', 'map-info');
-        div.innerHTML = `<div class="map-info-content">${count} händelser<br><small>senaste ${rangeLabel}${timeLabel ? ` (${timeLabel})` : ''}</small></div>`;
-        return div;
-      },
-    });
-    infoControlRef.current = new InfoCtrl({ position: 'topright' });
-    infoControlRef.current.addTo(map);
-  }, [timeRange]);
 
   // --- Full render of all markers (for non-playing states) ---
   const renderMarkers = useCallback((cutoffTs?: number | null, rangeOverride?: TimeRange) => {
@@ -295,14 +264,13 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
     const count = markersLayerRef.current.getLayers().length;
     setVisibleCount(visible.length);
-    updateInfoBadge(visible.length, cutoffTs, rangeOverride);
 
     // Fit bounds once on first meaningful render
     if (!hasFittedBoundsRef.current && !cutoffTs && count > 0) {
       map.fitBounds(markersLayerRef.current.getBounds(), { padding: [40, 40] });
       hasFittedBoundsRef.current = true;
     }
-  }, [getRangeMs, clearMarkers, addMarker, updateInfoBadge]);
+  }, [getRangeMs, clearMarkers, addMarker]);
 
   // --- Initialize map once ---
   useEffect(() => {
@@ -362,7 +330,6 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
         mapRef.current = null;
       }
       markersLayerRef.current = null;
-      infoControlRef.current = null;
       leafletRef.current = null;
       hasFittedBoundsRef.current = false;
       setMapReady(false);
@@ -475,7 +442,6 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
       const totalAdded = addedMarkerIdsRef.current.size;
       setVisibleCount(totalAdded);
-      updateInfoBadge(totalAdded, ts);
     }, REPLAY_INTERVAL_MS);
 
     return () => {
@@ -484,7 +450,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
         replayIntervalRef.current = null;
       }
     };
-  }, [isPlaying, mapReady, getRangeMs, renderMarkers, clearMarkers, addMarker, updateInfoBadge]);
+  }, [isPlaying, mapReady, getRangeMs, renderMarkers, clearMarkers, addMarker]);
 
   // --- Handlers ---
   const handleSlider = useCallback((val: number) => {
@@ -516,16 +482,35 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
     });
   }, []);
 
+  const rangeLabel = TIME_RANGES.find((r) => r.key === timeRange)?.label ?? '24 tim';
   const sliderLabel = replayTimestamp
     ? new Date(replayTimestamp).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })
     : 'Live';
+
+  // Key for the marker colours, built from the types actually on the map so it
+  // never lists a category the reader cannot see. The map has been
+  // colour-coded by type since it was built, with nothing anywhere saying so.
+  const legend = useMemo(() => {
+    const seen = new Map<string, { type: string; color: string; emoji: string; count: number }>();
+    const cutoff = (replayTimestamp ?? Date.now()) - getRangeMs();
+    const until = replayTimestamp ?? Date.now();
+    for (const e of events) {
+      const ts = new Date(e.date?.iso || e.datetime).getTime();
+      if (isNaN(ts) || ts < cutoff || ts > until || !e.gps) continue;
+      const key = e.type || 'Okänd';
+      const entry = seen.get(key);
+      if (entry) entry.count++;
+      else seen.set(key, { type: key, color: e.color, emoji: e.emoji, count: 1 });
+    }
+    return [...seen.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+  }, [events, replayTimestamp, getRangeMs]);
 
   return (
     <div className={`map-view${isActive ? ' active' : ''}`} aria-hidden={!isActive}>
       <div className="panel">
         <div className="map-canvas-wrap">
           {/* Map container first for immediate visibility */}
-          <div id="mapContainer" className="map-canvas" ref={mapContainerRef} />
+          <div className="map-canvas" ref={mapContainerRef} />
 
           {loading && (
             <div className="map-overlay" role="status" aria-live="polite">
@@ -536,8 +521,10 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
           {error && !loading && (
             <div className="map-overlay" role="alert">
-              <span>Kunde inte ladda kartan.</span>
-              <button type="button" className="btn-quiet" onClick={() => window.location.reload()}>
+              <span>Kunde inte hämta händelserna till kartan.</span>
+              {/* Refetch, rather than reloading the whole page and losing the
+                  reader's filters, scroll position and open rows. */}
+              <button type="button" className="btn-quiet" onClick={onRetry}>
                 Försök igen
               </button>
             </div>
@@ -546,16 +533,19 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
         {/* Replay controls, as a bar under the map rather than floating on it */}
         <div className="map-timeline">
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={togglePlay}
-            aria-label={isPlaying ? 'Pausa uppspelning' : 'Spela upp tidslinje'}
-          >
+          {/* Labelled, not a bare glyph: nothing else on the page said what
+              playing a map would do. */}
+          <button type="button" className="btn-ghost timeline-play" onClick={togglePlay}>
             {isPlaying ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                Pausa
+              </>
             ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6,3 20,12 6,21"/></svg>
+                Spela upp
+              </>
             )}
           </button>
 
@@ -570,17 +560,9 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
             aria-label="Tidslinje"
           />
 
-          <span className={`timeline-label${replayTimestamp ? '' : ' live'}`}>
-            {!replayTimestamp && <span className="dot dot--sm dot--ok" aria-hidden="true" />}
-            {sliderLabel}
-          </span>
-
-          <span className="timeline-counter" title={`${visibleCount} händelser visas`}>
-            {visibleCount}
-          </span>
         </div>
 
-        <div className="timeline-ranges" role="group" aria-label="Tidsintervall">
+        <div className="timeline-ranges" role="group" aria-label="Visa händelser från de senaste">
           {TIME_RANGES.map((r) => (
             <button
               key={r.key}
@@ -589,10 +571,47 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
               onClick={() => handleRangeChange(r.key)}
               aria-pressed={timeRange === r.key}
             >
-              {r.label}
+              Senaste {r.label}
             </button>
           ))}
         </div>
+
+        {/* Spelled out rather than left as a bare number beside the scrubber. */}
+        <p className="map-status" role="status">
+          <strong>{visibleCount.toLocaleString('sv-SE')}</strong>
+          <span>{visibleCount === 1 ? 'händelse' : 'händelser'} de senaste {rangeLabel}</span>
+          <span aria-hidden="true">·</span>
+          {replayTimestamp ? (
+            <span>visar läget kl {sliderLabel}</span>
+          ) : (
+            <span className="map-status-live">
+              <span className="dot dot--sm dot--ok" aria-hidden="true" /> nuläget
+            </span>
+          )}
+        </p>
+
+        {legend.length > 0 && (
+          <div className="map-legend" aria-label="Färgförklaring">
+            {legend.map((item) => (
+              <span className="map-legend-item" key={item.type}>
+                <span
+                  className="map-legend-dot"
+                  style={{ background: item.color }}
+                  aria-hidden="true"
+                />
+                <span className="badge-emoji" aria-hidden="true">
+                  {item.emoji}
+                </span>
+                {item.type} <span className="map-legend-count">({item.count})</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <p className="map-hint">
+          Färgen visar händelsetyp, storleken hur färsk notisen är. Dra i reglaget för att spola
+          tillbaka i tiden.
+        </p>
       </div>
     </div>
   );

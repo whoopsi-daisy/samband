@@ -18,6 +18,8 @@ import { FormattedEvent, Statistics } from '@/types';
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
+  /** Every event matching the current filters, not just the first page. */
+  totalEvents: number;
   hasMore: boolean;
   locations: string[];
   types: string[];
@@ -29,10 +31,35 @@ interface ClientAppProps {
   };
   initialView: string;
   highlightedEventId: number | null;
+  /** A ?event= link whose event is not in the first page. */
+  linkedEvent: FormattedEvent | null;
+  /** A ?event= link whose event no longer exists. */
+  linkedEventMissing: boolean;
 }
+
+/**
+ * What each view is, in the reader's words. Shown as the page heading so that
+ * arriving on any of the three states up front says what is being looked at
+ * rather than opening straight onto a control strip.
+ */
+const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
+  list: {
+    title: 'Senaste händelserna',
+    lede: 'Polisens händelsenotiser från hela Sverige, nyast först. Tryck på en händelse för att läsa hela texten.',
+  },
+  map: {
+    title: 'Händelser på karta',
+    lede: 'Var händelserna inträffade. Varje punkt är en notis — tryck på den för att läsa.',
+  },
+  stats: {
+    title: 'Statistik',
+    lede: 'Hur händelserna fördelar sig över dygnet, veckan, platser och typer.',
+  },
+};
 
 function ClientAppContent({
   initialEvents,
+  totalEvents,
   hasMore,
   locations,
   types,
@@ -40,6 +67,8 @@ function ClientAppContent({
   filters,
   initialView,
   highlightedEventId,
+  linkedEvent,
+  linkedEventMissing,
 }: ClientAppProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -124,32 +153,59 @@ function ClientAppContent({
 
   useKeyboardShortcuts(shortcutHandlers);
 
+  const clearFilters = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set('view', currentView);
+    router.push(`/?${params.toString()}`, { scroll: false });
+  }, [currentView, router]);
+
   // Map data loads on demand the first time the map view is opened.
   const map = useMapEvents(filters, currentView === 'map');
+
+  const intro = VIEW_INTRO[currentView] ?? VIEW_INTRO.list;
 
   return (
     <>
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
+        <div className="view-header">
+          <h1>{intro.title}</h1>
+          <p>{intro.lede}</p>
+        </div>
+
+        {/* The map reads the same filters as the list, so the controls belong
+            on both. Without them a filter set on the list silently narrowed the
+            map, with nothing on screen saying so or able to undo it. */}
+        {(currentView === 'list' || currentView === 'map') && (
+          <Filters locations={locations} types={types} currentView={currentView} filters={filters} />
+        )}
+
         {currentView === 'list' && (
-          <>
-            <Filters locations={locations} types={types} currentView={currentView} filters={filters} />
-            <EventList
-              initialEvents={initialEvents}
-              initialHasMore={hasMore}
-              filters={filters}
-              currentView={currentView}
-              onShowMap={handleShowMap}
-              highlightedEventId={highlightedEventId}
-              onLastCheckedChange={setLastChecked}
-            />
-          </>
+          <EventList
+            initialEvents={initialEvents}
+            initialTotal={totalEvents}
+            initialHasMore={hasMore}
+            filters={filters}
+            currentView={currentView}
+            onShowMap={handleShowMap}
+            highlightedEventId={highlightedEventId}
+            linkedEvent={linkedEvent}
+            linkedEventMissing={linkedEventMissing}
+            onLastCheckedChange={setLastChecked}
+            onClearFilters={clearFilters}
+          />
         )}
 
         {/* Kept mounted across view switches so the Leaflet instance and its
             loaded tiles survive a trip to the list and back. */}
-        <EventMap events={map.events} isActive={currentView === 'map'} loading={map.loading} error={map.error} />
+        <EventMap
+          events={map.events}
+          isActive={currentView === 'map'}
+          loading={map.loading}
+          error={map.error}
+          onRetry={map.retry}
+        />
 
         {currentView === 'stats' && (
           <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />
