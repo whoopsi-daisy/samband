@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { getEventsFromDb, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
+import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
@@ -16,7 +16,6 @@ interface PageProps {
     location?: string;
     type?: string;
     search?: string;
-    page?: string;
     event?: string;
   }>;
 }
@@ -40,13 +39,11 @@ async function HomeContent({ searchParams }: PageProps) {
     currentView = 'list';
   }
 
-  // Fetch data
-  const page = Math.max(1, parseInt(params.page || '1', 10) || 1);
-  const offset = (page - 1) * EVENTS_PER_PAGE;
-
-  const events = getEventsFromDb(filters, EVENTS_PER_PAGE, offset);
+  // Paging past the first page is the list's own job, over /api/events. A
+  // `?page=` here only ever produced a feed with an unreachable beginning.
+  const events = getEventsFromDb(filters, EVENTS_PER_PAGE, 0);
   const totalEvents = countEventsInDb(filters);
-  const hasMore = offset + EVENTS_PER_PAGE < totalEvents;
+  const hasMore = EVENTS_PER_PAGE < totalEvents;
 
   // Map events are deliberately NOT fetched here — the map loads them from
   // /api/map when it is opened. Embedding them added ~500 events to every
@@ -60,8 +57,14 @@ async function HomeContent({ searchParams }: PageProps) {
   const types = getFilterOptions('type');
   const stats = getStatsSummary();
 
-  // Parse highlighted event ID from URL
-  const highlightedEventId = params.event ? parseInt(params.event, 10) : null;
+  // A shared link (?event=123). The first page covers well under a day, so the
+  // linked event is usually not in it — look it up directly and hand it to the
+  // list, which pins it above the feed. Resolving it here also means the page
+  // can say the event no longer exists instead of quietly rendering the feed.
+  const parsedEventId = params.event ? parseInt(params.event, 10) : NaN;
+  const highlightedEventId = Number.isNaN(parsedEventId) ? null : parsedEventId;
+  const inFirstPage = formattedEvents.some((event) => event.id === highlightedEventId);
+  const linkedRow = highlightedEventId !== null && !inFirstPage ? getEventById(highlightedEventId) : null;
 
   return (
     <ClientApp
@@ -73,7 +76,9 @@ async function HomeContent({ searchParams }: PageProps) {
       stats={stats}
       filters={filters}
       initialView={currentView}
-      highlightedEventId={isNaN(highlightedEventId as number) ? null : highlightedEventId}
+      highlightedEventId={highlightedEventId}
+      linkedEvent={linkedRow ? formatEventForUi(linkedRow) : null}
+      linkedEventMissing={highlightedEventId !== null && !inFirstPage && !linkedRow}
     />
   );
 }

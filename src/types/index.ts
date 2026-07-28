@@ -29,7 +29,6 @@ export interface FormattedEvent {
   location: string;
   gps: string;
   color: string;
-  icon: string;
   iconKey: string;
   date: {
     day: string;
@@ -86,28 +85,36 @@ export interface Statistics {
 
 // Type style mapping
 export interface TypeStyle {
-  icon: string;
+  /** Which glyph TypeIcon draws for this type. */
   iconKey: string;
+  /** Marker colour on the map, and the map legend's key. */
   color: string;
-  class: string;
 }
 
+// One colour per type, all distinguishable side by side. Five types used to
+// share #ef4444 and three more shared #f97316, which was invisible while the
+// colours only tinted markers — and a plain contradiction once the map grew a
+// legend saying the colour tells you the type.
+//
+// Loosely grouped by hue so related types still read as related: reds for
+// violence, oranges/yellows for theft, blues for traffic, and a neutral grey
+// for the summary posts, which are not incidents at all.
 export const TYPE_STYLES: Record<string, TypeStyle> = {
-  'Inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--inbrott' },
-  'Brand': { icon: '🔥', iconKey: 'flame', color: '#ef4444', class: 'event-type--brand' },
-  'Rån': { icon: '💰', iconKey: 'banknote', color: '#f59e0b', class: 'event-type--ran' },
-  'Trafikolycka': { icon: '🚗', iconKey: 'car', color: '#3b82f6', class: 'event-type--trafikolycka' },
-  'Misshandel': { icon: '👊', iconKey: 'shield', color: '#ef4444', class: 'event-type--misshandel' },
-  'Skadegörelse': { icon: '🔨', iconKey: 'hammer', color: '#f59e0b', class: 'event-type--skadegorelse' },
-  'Bedrägeri': { icon: '🕵️', iconKey: 'search', color: '#8b5cf6', class: 'event-type--bedrageri' },
-  'Narkotikabrott': { icon: '💊', iconKey: 'pill', color: '#10b981', class: 'event-type--narkotikabrott' },
-  'Ofredande': { icon: '🚨', iconKey: 'siren', color: '#f43f5e', class: 'event-type--ofredande' },
-  'Sammanfattning': { icon: '📊', iconKey: 'chart', color: '#22c55e', class: 'event-type--sammanfattning' },
-  'Stöld': { icon: '🔓', iconKey: 'bag', color: '#f97316', class: 'event-type--stold' },
-  'Stöld/inbrott': { icon: '🔓', iconKey: 'door', color: '#f97316', class: 'event-type--stold' },
-  'Mord/dråp': { icon: '⚠️', iconKey: 'octagon', color: '#dc2626', class: 'event-type--mord' },
-  'Rattfylleri': { icon: '🚗', iconKey: 'car', color: '#ef4444', class: 'event-type--ratta' },
-  'default': { icon: '📌', iconKey: 'pin', color: '#fcd34d', class: 'event-type--default' },
+  'Mord/dråp': { iconKey: 'octagon', color: '#991b1b' },
+  'Brand': { iconKey: 'flame', color: '#ef4444' },
+  'Misshandel': { iconKey: 'shield', color: '#f43f5e' },
+  'Ofredande': { iconKey: 'siren', color: '#ec4899' },
+  'Rån': { iconKey: 'banknote', color: '#f59e0b' },
+  'Inbrott': { iconKey: 'door', color: '#f97316' },
+  'Stöld/inbrott': { iconKey: 'door', color: '#c2410c' },
+  'Stöld': { iconKey: 'bag', color: '#fbbf24' },
+  'Skadegörelse': { iconKey: 'hammer', color: '#a16207' },
+  'Trafikolycka': { iconKey: 'car', color: '#3b82f6' },
+  'Rattfylleri': { iconKey: 'car', color: '#0891b2' },
+  'Narkotikabrott': { iconKey: 'pill', color: '#10b981' },
+  'Bedrägeri': { iconKey: 'search', color: '#8b5cf6' },
+  'Sammanfattning': { iconKey: 'chart', color: '#64748b' },
+  'default': { iconKey: 'pin', color: '#94a3b8' },
 };
 
 export function getTypeStyle(type: string): TypeStyle {
@@ -121,10 +128,6 @@ export function getTypeStyle(type: string): TypeStyle {
     }
   }
   return TYPE_STYLES['default'];
-}
-
-export function getTypeClass(type: string): string {
-  return getTypeStyle(type).class;
 }
 
 // Operational monitoring types

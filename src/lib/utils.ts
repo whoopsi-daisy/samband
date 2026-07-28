@@ -70,7 +70,6 @@ export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
     location: event.location?.name || '',
     gps: event.location?.gps || '',
     color: style.color,
-    icon: style.icon,
     iconKey: style.iconKey,
     date: {
       day: String(date.getDate()).padStart(2, '0'),

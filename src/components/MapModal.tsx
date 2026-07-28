@@ -15,14 +15,14 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.CircleMarker | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const initMap = async () => {
       const L = await import('leaflet');
-      // Note: Leaflet CSS is loaded via CDN in layout.tsx to avoid webpack issues
-
       if (!mapContainerRef.current) return;
 
       // Always create a fresh map instance since the DOM container is recreated each time
@@ -76,22 +76,49 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
     };
   }, [isOpen, lat, lng]);
 
-  const handleEscape = useCallback((e: KeyboardEvent) => {
+  // Escape closes; Tab stays inside. `aria-modal` claimed a modality the
+  // dialog did not implement — focus never entered it, so a keyboard or
+  // screen-reader user was left tabbing the page behind the overlay.
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
+      return;
+    }
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+
+    const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
     }
   }, [onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
+    if (!isOpen) return;
+
+    // Remember where focus came from so closing can put it back.
+    const opener = document.activeElement as HTMLElement | null;
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
     return () => {
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
+      opener?.focus?.();
     };
-  }, [isOpen, handleEscape]);
+  }, [isOpen, handleKeyDown]);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -109,24 +136,33 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
       aria-modal="true"
       aria-labelledby="mapModalTitle"
     >
-      <div className="modal">
+      <div className="modal" ref={dialogRef}>
         <div className="modal-header">
           <h2 id="mapModalTitle" className="modal-title">{location || 'Plats'}</h2>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label="Stäng karta">
+          <button
+            ref={closeButtonRef}
+            className="icon-btn"
+            type="button"
+            onClick={onClose}
+            aria-label="Stäng karta"
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
         <div className="modal-body">
-          <div id="modalMap" ref={mapContainerRef} style={{ height: '100%' }} />
+          {/* Sits behind the Leaflet panes, so it shows while tiles are on
+              their way and stays put if they never arrive — the body was an
+              unexplained grey rectangle in both cases. */}
+          <p className="modal-map-placeholder">Kartan laddas…</p>
+          <div className="modal-map" ref={mapContainerRef} />
         </div>
         <div className="modal-footer">
-          <span className="modal-coords">
-            {lat}, {lng}
-          </span>
+          {/* A decimal-degree pair used to lead this row. Nobody reads
+              coordinates; what the reader wants is the place in a map app. */}
+          <span className="modal-note">Öppna platsen i</span>
           <a
-            id="mapModalGoogleLink"
             href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
             target="_blank"
             rel="noopener noreferrer"
@@ -134,7 +170,6 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
             Google Maps
           </a>
           <a
-            id="mapModalAppleLink"
             href={`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(location || 'Plats')}`}
             target="_blank"
             rel="noopener noreferrer"

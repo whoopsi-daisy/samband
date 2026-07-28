@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormattedEvent } from '@/types';
 
 interface Filters {
@@ -13,6 +13,8 @@ interface MapEventsState {
   events: FormattedEvent[];
   loading: boolean;
   error: boolean;
+  /** Retry the fetch in place. The map's error state used to reload the page. */
+  retry: () => void;
 }
 
 // Loads the map's events the first time the map view is opened, and again
@@ -22,12 +24,22 @@ interface MapEventsState {
 // ever used the list view still paid for ~500 serialised events. Fetching them
 // on demand keeps that cost with the view that needs it.
 export function useMapEvents(filters: Filters, isActive: boolean): MapEventsState {
-  const [state, setState] = useState<MapEventsState>({ events: [], loading: false, error: false });
+  const [state, setState] = useState<Omit<MapEventsState, 'retry'>>({
+    events: [],
+    loading: false,
+    error: false,
+  });
+  const [attempt, setAttempt] = useState(0);
 
   const filterKey = `${filters.location}|${filters.type}|${filters.search}`;
   // Which filter set we have already loaded, so re-opening the map does not
   // refetch data we still hold.
   const loadedKeyRef = useRef<string | null>(null);
+
+  const retry = useCallback(() => {
+    loadedKeyRef.current = null;
+    setAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!isActive || loadedKeyRef.current === filterKey) return;
@@ -65,7 +77,7 @@ export function useMapEvents(filters: Filters, isActive: boolean): MapEventsStat
       cancelled = true;
       controller.abort();
     };
-  }, [isActive, filterKey, filters.location, filters.type, filters.search]);
+  }, [isActive, filterKey, filters.location, filters.type, filters.search, attempt]);
 
-  return state;
+  return { ...state, retry };
 }

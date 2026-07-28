@@ -684,6 +684,30 @@ function rowToEvent(row: UnionRow): EventWithMetadata {
 
 // ---------------------------------------------------------------------------
 
+// One event by the id the UI shares in a link (?event=123).
+//
+// Shared links have to resolve to an event that is no longer near the top of
+// the feed — which is most of them, since the first page covers well under a
+// day. The sign of the id says which table to look in: ARCHIVE_COLUMNS
+// projects imported rows as `-b.id` so the two id spaces cannot collide.
+export function getEventById(id: number): EventWithMetadata | null {
+  if (!Number.isInteger(id) || id === 0) return null;
+  const pdo = getDatabase();
+
+  if (id > 0) {
+    const row = pdo
+      .prepare(`SELECT ${LIVE_COLUMNS} FROM events e WHERE e.id = ?`)
+      .get(id) as UnionRow | undefined;
+    return row ? rowToEvent(row) : null;
+  }
+
+  if (!hasArchiveEvents()) return null;
+  const row = pdo
+    .prepare(`SELECT ${ARCHIVE_COLUMNS} FROM bpk_events b WHERE b.id = ?`)
+    .get(-id) as UnionRow | undefined;
+  return row ? rowToEvent(row) : null;
+}
+
 // Get events from database with optional filters
 export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset = 0): EventWithMetadata[] {
   const pdo = getDatabase();
