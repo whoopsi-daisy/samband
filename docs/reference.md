@@ -22,11 +22,14 @@ Paginated police events from the database.
 
 ### GET /api/details
 
-Detailed text content for one event, fetched from polisen.se on demand.
+The body text of one event. Live events are fetched from polisen.se on demand;
+imported ones are served from the text the import stored, without touching the
+network — see [import.md](import.md#how-the-app-reads-it).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `url` | string | Event URL path (e.g. `/aktuellt/handelser/...`) |
+| `id` | number | Event id. A negative id is an imported event and is answered from the database |
+| `url` | string | Event URL path (e.g. `/aktuellt/handelser/...`), used for live events |
 
 ```json
 { "success": true, "details": { "content": "..." } }
@@ -113,6 +116,7 @@ per day) apply SQLite's `'localtime'` modifier at query time.
 | `BPK_IMPORT_SOURCE` | unset | Dump path or URL for `ndjson` |
 | `BPK_IMPORT_CONCURRENCY` | `4` | Requests in flight for an API walk, 1–8 |
 | `BPK_API_BASE_URL` | the public API | Point the importer at a mock or a caching proxy |
+| `BPK_SEARCH_TOKENIZER` | `trigram` | How the archive's full-text index tokenises. `trigram` matches substrings, including inside Swedish compounds (~350 MB for a full archive); `unicode61` matches words and prefixes for ~55 MB. Changing it rebuilds the index on the next start. See [import.md](import.md#searching-it) |
 
 ### Background refresh
 

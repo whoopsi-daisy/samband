@@ -1,4 +1,5 @@
 import { getDatabase } from './db';
+import { paragraphsToText } from './policeApi';
 import type { BpkEvent, BpkImportState } from '@/types';
 
 // Persistence for imported brottsplatskartan.se events.
@@ -45,6 +46,16 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  // The full-text index is an external-content FTS5 table, which means SQLite
+  // does not maintain it for us: rows have to be written to both, in the same
+  // transaction, or a search would miss what was just imported. Only rows that
+  // were actually inserted are indexed — INSERT OR IGNORE swallows the
+  // duplicates that page-based pagination re-serves, and indexing those again
+  // would return the same event twice from every search.
+  const index = db.prepare(
+    'INSERT INTO bpk_search (rowid, headline, description, content, title_location) VALUES (?, ?, ?, ?, ?)'
+  );
+
   const now = new Date().toISOString();
   let inserted = 0;
 
@@ -68,6 +79,9 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
         now
       );
       inserted += result.changes;
+      if (result.changes > 0) {
+        index.run(e.id, e.headline, e.description, e.content, e.titleLocation);
+      }
     }
   });
   run(events);
@@ -194,6 +208,34 @@ export function getNewestStoredPubdateUnix(): number | null {
 export function countBpkEvents(): number {
   const db = getDatabase();
   return (db.prepare('SELECT COUNT(*) AS c FROM bpk_events').get() as { c: number }).c;
+}
+
+/**
+ * The stored body of an imported event, as readable text.
+ *
+ * Imported events carry their full text — the import stores `content` verbatim
+ * — so expanding one must never depend on polisen.se still having the page.
+ * It usually does not: these go back to 2016 and polisen.se drops old events,
+ * which is exactly when someone is reading the archive.
+ *
+ * Takes the id as the feed presents it, negative for archive rows.
+ */
+export function getBpkEventText(feedId: number): string | null {
+  if (!Number.isInteger(feedId) || feedId >= 0) return null;
+
+  const db = getDatabase();
+  const row = db.prepare('SELECT content, description FROM bpk_events WHERE id = ?').get(-feedId) as
+    | { content: string | null; description: string | null }
+    | undefined;
+  if (!row) return null;
+
+  // Stored as `<p>…</p>`, the same markup the polisen.se scrape reduces to
+  // text. Where an event has no body, its description is all there is.
+  const fromContent = row.content ? paragraphsToText(row.content) : null;
+  if (fromContent) return fromContent;
+
+  const description = row.description?.trim();
+  return description ? description : null;
 }
 
 export function getRecentBpkEvents(limit = 20): BpkEvent[] {

@@ -20,7 +20,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -224,9 +224,84 @@ function migrateBrottsplatskartanForApp(database: Database.Database): void {
   }
 }
 
+// Migration 4: a full-text index over the imported archive.
+//
+// Search was a LIKE scan of every imported row — 160-225 ms at 333k events,
+// on the request path, and it could only afford to look at the headline, the
+// summary and the location. FTS5 answers in single-digit milliseconds and
+// makes the event body searchable, which is where the detail actually is.
+//
+// The tokenizer is the whole design decision. The default one indexes words,
+// so "guldsmed" does not match "guldsmedsaffär" — Swedish compounds would
+// silently stop being found, which is precisely what people search for. The
+// trigram tokenizer matches substrings the way LIKE does, at the cost of a
+// much larger index: ~350 MB against ~55 MB for a 333k-event archive. Disk is
+// the cheaper thing to spend here, so trigram is the default;
+// BPK_SEARCH_TOKENIZER=unicode61 trades the compound matches back for the
+// space, and changing it rebuilds the index on the next start.
+//
+// External content table: it indexes bpk_events in place rather than keeping a
+// second copy of the text.
+const SEARCH_TOKENIZERS = ['trigram', 'unicode61'] as const;
+const DEFAULT_SEARCH_TOKENIZER = 'trigram';
+
+function configuredSearchTokenizer(): (typeof SEARCH_TOKENIZERS)[number] {
+  const configured = process.env.BPK_SEARCH_TOKENIZER?.trim().toLowerCase();
+  return SEARCH_TOKENIZERS.find((name) => name === configured) ?? DEFAULT_SEARCH_TOKENIZER;
+}
+
+function buildSearchIndex(database: Database.Database, tokenizer: string): void {
+  const rows = (database.prepare('SELECT COUNT(*) AS c FROM bpk_events').get() as { c: number }).c;
+  const started = Date.now();
+
+  database.exec('DROP TABLE IF EXISTS bpk_search');
+  database.exec(`
+    CREATE VIRTUAL TABLE bpk_search USING fts5(
+      headline, description, content, title_location,
+      content='bpk_events', content_rowid='id', tokenize='${tokenizer}'
+    )
+  `);
+  // Populating from the content table beats inserting row by row by an order
+  // of magnitude, and is the only part of this that takes any time.
+  database.exec("INSERT INTO bpk_search(bpk_search) VALUES('rebuild')");
+  database
+    .prepare("INSERT INTO meta (key, value) VALUES ('bpk_search_tokenizer', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(tokenizer);
+
+  if (rows > 0) {
+    console.log(
+      `[db] search index (${tokenizer}) built over ${rows.toLocaleString('sv-SE')} imported events in ${Math.round(
+        (Date.now() - started) / 1000
+      )}s`
+    );
+  }
+}
+
+function migrateSearchIndex(database: Database.Database): void {
+  buildSearchIndex(database, configuredSearchTokenizer());
+}
+
+// Rebuild when the operator changes the tokenizer. Cheap to check on every
+// start, and the alternative is an index that quietly disagrees with the
+// setting it was built from.
+function reconcileSearchTokenizer(database: Database.Database): void {
+  const wanted = configuredSearchTokenizer();
+  const row = database.prepare("SELECT value FROM meta WHERE key = 'bpk_search_tokenizer'").get() as
+    | { value: string }
+    | undefined;
+
+  if (row?.value === wanted) return;
+
+  console.log(`[db] search tokenizer changed to ${wanted}; rebuilding the index`);
+  buildSearchIndex(database, wanted);
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
-  if (current >= SCHEMA_VERSION) return;
+  if (current >= SCHEMA_VERSION) {
+    reconcileSearchTokenizer(database);
+    return;
+  }
 
   if (current < 1) {
     migrateTimestampsToUtc(database);
@@ -238,6 +313,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 3) {
     migrateBrottsplatskartanForApp(database);
+  }
+
+  if (current < 4) {
+    migrateSearchIndex(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -661,6 +740,27 @@ function liveFilterSql(filters: EventFilters): SqlFragment {
   return { sql, params };
 }
 
+// The shortest string the trigram tokenizer can look up. Anything shorter has
+// no trigram to match, and FTS5 answers such a query with nothing at all
+// rather than an error — so those have to take the scan instead.
+const MIN_SEARCH_LENGTH = 3;
+
+/**
+ * A user's search box turned into an FTS5 query, or null if the index cannot
+ * answer it.
+ *
+ * Wrapped in double quotes so the whole thing is one phrase: FTS5 query syntax
+ * has operators (AND, OR, NOT, *, ^, :) and a bare term like `polisen OR` or
+ * `12:30` is a syntax error, which would surface as a failed search rather
+ * than an empty one. Inside a phrase, the only character with meaning is the
+ * quote itself, which doubles to escape.
+ */
+function toSearchMatch(search: string): string | null {
+  const trimmed = search.trim();
+  if (trimmed.length < MIN_SEARCH_LENGTH) return null;
+  return `"${trimmed.replace(/"/g, '""')}"`;
+}
+
 // The same filters against the archive's own column names, plus the cutoff
 // that keeps the two sources from overlapping.
 function archiveFilterSql(filters: EventFilters): SqlFragment {
@@ -676,12 +776,24 @@ function archiveFilterSql(filters: EventFilters): SqlFragment {
     params.push(filters.type);
   }
   if (filters.search) {
-    // Same three fields the live search covers: headline, summary, location.
-    sql +=
-      " AND (b.headline LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\'" +
-      ` OR ${ARCHIVE_LOCATION} LIKE ? ESCAPE '\\')`;
-    const term = '%' + escapeLikeWildcards(filters.search) + '%';
-    params.push(term, term, term);
+    const match = toSearchMatch(filters.search);
+    if (match) {
+      // The full-text index, which also covers the event body — a LIKE scan of
+      // 333k rows could not have afforded to look there.
+      sql += ' AND b.id IN (SELECT rowid FROM bpk_search WHERE bpk_search MATCH ?)';
+      params.push(match);
+    } else {
+      // Too short for the index to answer: the trigram tokenizer indexes three
+      // characters at a time, so a one- or two-character search has nothing to
+      // look up. Falls back to the scan this used to do — over the same three
+      // columns, deliberately not the body, which would triple the cost of the
+      // one query shape that still cannot use the index.
+      sql +=
+        " AND (b.headline LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\'" +
+        ` OR ${ARCHIVE_LOCATION} LIKE ? ESCAPE '\\')`;
+      const term = '%' + escapeLikeWildcards(filters.search) + '%';
+      params.push(term, term, term);
+    }
   }
 
   return { sql, params };

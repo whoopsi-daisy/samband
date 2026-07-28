@@ -142,6 +142,11 @@ function record(text: string, options: { console?: boolean } = {}): void {
 // what an eye notices and an order of magnitude less work.
 const PUBLISH_INTERVAL_MS = 500;
 let lastPublishAt = 0;
+// Whether this run has pushed a progress snapshot yet. The first one always
+// goes out: without it, a run that finishes inside one interval — a small
+// dump, or any run whose start line used up the interval — would be seen
+// starting and finishing with nothing in between.
+let publishedProgress = false;
 
 function publish(force = false): void {
   if (listeners.size === 0) return;
@@ -175,7 +180,8 @@ function updateProgress(next: LiveImportProgress): void {
     console.log(`[bpk] ${next.message}`);
   }
 
-  publish();
+  publish(!publishedProgress);
+  publishedProgress = true;
 }
 
 function rate(count: number, elapsedMs: number): number | null {
@@ -302,9 +308,8 @@ function begin(handle: RunHandle): void {
   current = handle;
   progress = null;
   lastConsoleAt = 0;
-  // Let the first progress update through the publish throttle, so even a run
-  // that finishes inside one interval is seen moving.
   lastPublishAt = 0;
+  publishedProgress = false;
 
   handle.promise
     .then((result) => {

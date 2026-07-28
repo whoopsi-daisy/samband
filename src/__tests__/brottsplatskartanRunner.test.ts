@@ -2,8 +2,10 @@
  * @jest-environment node
  */
 import fs from 'fs';
+import http from 'http';
 import os from 'os';
 import path from 'path';
+import type { AddressInfo } from 'net';
 
 // The runner is what the dashboard, the API and the container startup all go
 // through, so these cover the parts an operator sees: that a run starts, that
@@ -169,47 +171,56 @@ describe('startImport (ndjson)', () => {
 
 describe('cancelImport', () => {
   it('stops a running dump and keeps what it already stored', async () => {
-    // 20 batches at BATCH_SIZE=1000, so the importer yields to the event loop
-    // twenty times with rows already committed. The poll below cannot miss all
-    // twenty without the loop being starved outright.
-    writeMinimalDump('dump.ndjson', 20_000);
-
-    runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
-
-    // Poll getImportSnapshot rather than subscribing.
+    // Served over HTTP and deliberately never finished: the import gets a
+    // first chunk, stores it, then waits for more that never comes. The run is
+    // therefore in flight by construction, on any machine.
     //
-    // This test used to cancel from inside a subscribe() callback on the first
-    // snapshot reporting imported > 0, on the stated reasoning that it would
-    // fire "while the run is demonstrably mid-file, whatever the machine's
-    // speed". It does not. The runner throttles publishes to listeners to one
-    // per 500ms, and a 20k-line dump finishes in ~700ms, so a subscriber saw
-    // exactly two snapshots: one at ~130ms with no progress attached, and one
-    // at ~630ms reporting all 20 000 rows — - i.e. the callback first fired
-    // after the file had been fully read. cancelImport() then aborted a run
-    // that had already written status 'complete', and the assertion below
-    // failed on every machine, not intermittently.
-    //
-    // getImportSnapshot() reads live state with no throttle, so polling it
-    // observes each batch as it lands.
-    let cancelled: boolean | null = null;
-    while (runner.isImportRunning()) {
-      const progress = runner.getImportSnapshot().progress;
-      if (progress && progress.imported > 0) {
-        cancelled = runner.cancelImport();
-        break;
+    // The obvious alternative — subscribe() and cancel on the first snapshot
+    // reporting imported > 0 — does not work, and was this test's original
+    // flake. Publishes to listeners are throttled to one per 500 ms, and a
+    // dump of this size finishes well inside that, so a subscriber saw two
+    // snapshots: one at the start with no progress attached, and one after the
+    // whole file had been read. Cancelling then aborts a run that has already
+    // finished. (Polling getImportSnapshot() instead reads live state with no
+    // throttle, which works but races the reader against the importer.)
+    const chunk =
+      Array.from({ length: 3000 }, (_, i) =>
+        JSON.stringify({ id: 500_000 - i, pubdate_unix: String(1_785_171_476 - i * 60) })
+      ).join('\n') + '\n';
+
+    let open: http.ServerResponse | undefined;
+    const server = http.createServer((_req, res) => {
+      open = res;
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      res.write(chunk);
+      // No res.end(): the response stays open until the test tears it down.
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+
+    try {
+      runner.startImport({ mode: 'ndjson', source: `http://127.0.0.1:${port}/dump.ndjson` });
+
+      // Wait for rows to actually land, so this cancels a run with work to keep.
+      while (bpkDb.countBpkEvents() === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(runner.isImportRunning()).toBe(true);
+      expect(runner.cancelImport()).toBe(true);
+
+      await settle();
+
+      const state = bpkDb.getBpkImportState();
+      expect(state.status).toBe('cancelled');
+      // Cancelling keeps the work: every row that arrived before it is still
+      // stored, and nothing is rolled back.
+      expect(bpkDb.countBpkEvents()).toBe(3000);
+      // Nothing left running to cancel a second time.
+      expect(runner.cancelImport()).toBe(false);
+    } finally {
+      open?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-
-    await settle();
-
-    expect(cancelled).toBe(true);
-
-    const state = bpkDb.getBpkImportState();
-    expect(state.status).toBe('cancelled');
-    const stored = bpkDb.countBpkEvents();
-    expect(stored).toBeGreaterThan(0);
-    expect(stored).toBeLessThan(20_000);
-    expect(runner.cancelImport()).toBe(false);
-  });
+  }, 15_000);
 });

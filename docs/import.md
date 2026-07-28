@@ -278,10 +278,38 @@ Two details of how archived rows are presented:
 
 - **Negative ids.** Both sources number their events from 1, so archived rows
   are projected with the sign flipped. Nothing in the UI collides.
-- **Detail text.** Expanding an archived event fetches the polisen.se page from
-  `external_source_link`, the same as a live one. polisen.se removes old
-  events, so for older years that fetch comes back empty and the card shows the
-  stored summary alone.
+- **Detail text.** Expanding an archived event shows the `content` the import
+  stored, served straight from the database. It deliberately does not fetch
+  polisen.se: those pages are removed after a while, so for anything but the
+  most recent events that fetch comes back empty — precisely when someone is
+  reading the archive rather than the live feed. The polisen.se link is still
+  offered on the card for events whose page is still up.
+
+### Searching it
+
+Search runs on an FTS5 index over the imported events, rebuilt as part of the
+schema migration and kept in step by the importer as it writes. Two things
+follow from that:
+
+- **The event body is searchable.** The old search scanned every row and could
+  only afford to look at the headline, the summary and the location. A street
+  name mentioned only in the text of a 2019 incident is now findable.
+- **It is fast.** Single-digit milliseconds for an ordinary term, against
+  160–225 ms of scanning before, on a 333k-event archive.
+
+The tokenizer is the one decision worth knowing about. `BPK_SEARCH_TOKENIZER`
+defaults to `trigram`, which matches substrings the way the old scan did —
+searching `guldsmed` finds `guldsmedsaffär`, which matters constantly in
+Swedish. It costs about 350 MB of index for a full archive. Setting it to
+`unicode61` cuts that to ~55 MB and matches whole words and prefixes instead,
+so mid-compound searches stop finding anything. Changing the value rebuilds the
+index on the next start, which takes about 20 seconds per 333k events.
+
+Two edges: a one- or two-character search has no trigram to look up and falls
+back to the old scan, and a term that matches a large fraction of the archive
+is bounded by sorting those matches by date rather than by the index — around
+200 ms for a term hitting 50k events, which is still no worse than the scan it
+replaced.
 
 Statistics over a large archive are computed once and cached; the refresh
 scheduler and the importer both rebuild them off the request path, so a page
