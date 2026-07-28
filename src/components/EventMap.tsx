@@ -3,7 +3,6 @@
 import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { FormattedEvent } from '@/types';
-import { typeIconSvg } from './TypeIcon';
 
 interface EventMapProps {
   events: FormattedEvent[];
@@ -213,14 +212,14 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
     );
     const safeLocation = escapeHtml(e.location || '');
     const safeColor = escapeHtml(e.color || '');
-    const iconSvg = typeIconSvg(e.iconKey || 'pin', safeColor, 13);
+    const safeEmoji = escapeHtml(e.emoji || '');
     const safeUrl = e.url ? escapeHtml(e.url) : '';
     const gMaps = `https://www.google.com/maps/search/?api=1&query=${rawLat},${rawLng}`;
 
     marker.bindPopup(`
       <div class="map-popup">
         <div class="popup-head">
-          <span class="badge" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d">${iconSvg}${safeType}</span>
+          <span class="badge badge--type" style="background:${safeColor}1f;color:${safeColor};border-color:${safeColor}3d"><span class="badge-emoji">${safeEmoji}</span>${safeType}</span>
           <span class="popup-time">${isRecent ? '<span class="popup-live"></span>' : ''}${relTime}</span>
         </div>
         <h3>${safeName}</h3>
@@ -492,7 +491,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
   // never lists a category the reader cannot see. The map has been
   // colour-coded by type since it was built, with nothing anywhere saying so.
   const legend = useMemo(() => {
-    const seen = new Map<string, { type: string; color: string; count: number }>();
+    const seen = new Map<string, { type: string; color: string; emoji: string; count: number }>();
     const cutoff = (replayTimestamp ?? Date.now()) - getRangeMs();
     const until = replayTimestamp ?? Date.now();
     for (const e of events) {
@@ -501,7 +500,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
       const key = e.type || 'Okänd';
       const entry = seen.get(key);
       if (entry) entry.count++;
-      else seen.set(key, { type: key, color: e.color, count: 1 });
+      else seen.set(key, { type: key, color: e.color, emoji: e.emoji, count: 1 });
     }
     return [...seen.values()].sort((a, b) => b.count - a.count).slice(0, 8);
   }, [events, replayTimestamp, getRangeMs]);
@@ -600,6 +599,9 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
                   style={{ background: item.color }}
                   aria-hidden="true"
                 />
+                <span className="badge-emoji" aria-hidden="true">
+                  {item.emoji}
+                </span>
                 {item.type} <span className="map-legend-count">({item.count})</span>
               </span>
             ))}

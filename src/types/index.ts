@@ -29,7 +29,7 @@ export interface FormattedEvent {
   location: string;
   gps: string;
   color: string;
-  iconKey: string;
+  emoji: string;
   date: {
     day: string;
     month: string;
@@ -85,8 +85,13 @@ export interface Statistics {
 
 // Type style mapping
 export interface TypeStyle {
-  /** Which glyph TypeIcon draws for this type. */
-  iconKey: string;
+  /**
+   * Shown immediately before the type's name, never on its own. A line-art
+   * glyph sat here before, in a column of its own with the name elsewhere —
+   * which asked the reader to decode a small abstract drawing. An emoji beside
+   * its own word asks nothing.
+   */
+  emoji: string;
   /** Marker colour on the map, and the map legend's key. */
   color: string;
 }
@@ -99,22 +104,26 @@ export interface TypeStyle {
 // Loosely grouped by hue so related types still read as related: reds for
 // violence, oranges/yellows for theft, blues for traffic, and a neutral grey
 // for the summary posts, which are not incidents at all.
+// Emoji are picked to be legible at 13px and distinct from one another, and
+// kept plain rather than lurid — these are real incidents, and the glyph is
+// there to speed up recognition, not to editorialise. Loudness roughly tracks
+// severity, so the most serious types read as the most serious at a glance.
 export const TYPE_STYLES: Record<string, TypeStyle> = {
-  'Mord/dråp': { iconKey: 'octagon', color: '#991b1b' },
-  'Brand': { iconKey: 'flame', color: '#ef4444' },
-  'Misshandel': { iconKey: 'shield', color: '#f43f5e' },
-  'Ofredande': { iconKey: 'siren', color: '#ec4899' },
-  'Rån': { iconKey: 'banknote', color: '#f59e0b' },
-  'Inbrott': { iconKey: 'door', color: '#f97316' },
-  'Stöld/inbrott': { iconKey: 'door', color: '#c2410c' },
-  'Stöld': { iconKey: 'bag', color: '#fbbf24' },
-  'Skadegörelse': { iconKey: 'hammer', color: '#a16207' },
-  'Trafikolycka': { iconKey: 'car', color: '#3b82f6' },
-  'Rattfylleri': { iconKey: 'car', color: '#0891b2' },
-  'Narkotikabrott': { iconKey: 'pill', color: '#10b981' },
-  'Bedrägeri': { iconKey: 'search', color: '#8b5cf6' },
-  'Sammanfattning': { iconKey: 'chart', color: '#64748b' },
-  'default': { iconKey: 'pin', color: '#94a3b8' },
+  'Mord/dråp': { emoji: '🚨', color: '#991b1b' },
+  'Brand': { emoji: '🔥', color: '#ef4444' },
+  'Misshandel': { emoji: '🤕', color: '#f43f5e' },
+  'Ofredande': { emoji: '😠', color: '#ec4899' },
+  'Rån': { emoji: '💰', color: '#f59e0b' },
+  'Inbrott': { emoji: '🪟', color: '#f97316' },
+  'Stöld/inbrott': { emoji: '🚪', color: '#c2410c' },
+  'Stöld': { emoji: '👜', color: '#fbbf24' },
+  'Skadegörelse': { emoji: '🔨', color: '#a16207' },
+  'Trafikolycka': { emoji: '🚗', color: '#3b82f6' },
+  'Rattfylleri': { emoji: '🍺', color: '#0891b2' },
+  'Narkotikabrott': { emoji: '💊', color: '#10b981' },
+  'Bedrägeri': { emoji: '💳', color: '#8b5cf6' },
+  'Sammanfattning': { emoji: '📋', color: '#64748b' },
+  'default': { emoji: '📍', color: '#94a3b8' },
 };
 
 export function getTypeStyle(type: string): TypeStyle {

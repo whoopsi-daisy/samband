@@ -70,7 +70,7 @@ export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
     location: event.location?.name || '',
     gps: event.location?.gps || '',
     color: style.color,
-    iconKey: style.iconKey,
+    emoji: style.emoji,
     date: {
       day: String(date.getDate()).padStart(2, '0'),
       month: months[date.getMonth()],
