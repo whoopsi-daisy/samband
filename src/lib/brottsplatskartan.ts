@@ -158,6 +158,15 @@ function toText(value: unknown): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+// The app groups and filters by event type across both sources, and
+// brottsplatskartan serves some of them with a doubled space
+// ("Misshandel,  grov"). Left alone, that becomes a second type sitting next to
+// polisen.se's "Misshandel, grov" in every breakdown and filter dropdown.
+function toTypeText(value: unknown): string | null {
+  const text = toText(value);
+  return text === null ? null : text.replace(/\s+/g, ' ');
+}
+
 // Map an API event onto the row shape. Returns null for anything without a
 // usable id or date rather than storing a half-record.
 export function mapApiEvent(raw: ApiEvent): BpkEventInput | null {
@@ -194,8 +203,10 @@ export function mapApiEvent(raw: ApiEvent): BpkEventInput | null {
     id,
     pubdate,
     pubdateUnix: pubdateUnix ?? Math.floor(new Date(pubdate).getTime() / 1000),
-    titleType: toText(raw.title_type),
-    titleLocation: toText(raw.title_location),
+    titleType: toTypeText(raw.title_type),
+    // The app groups and filters by this, so it falls back to the fuller
+    // location string rather than being left empty (see migration 3).
+    titleLocation: toTypeText(raw.title_location) ?? toTypeText(raw.location_string),
     headline: toText(raw.headline),
     description: toText(raw.description),
     content: toText(raw.content),

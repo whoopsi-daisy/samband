@@ -248,11 +248,44 @@ Legacy records that carry `parsed_date` ("2016-10-14 21:27:00", Swedish local
 time) instead of `pubdate_iso8601` are handled — that is most of the older
 archive.
 
-**These events are not shown in the app's UI.** The feed, map and statistics
-still read only the polisen.se `events` table. Surfacing 333k archived events
-means merging two schemas into one timeline, with its own filtering and
-deduplication design — a separate piece of work, deliberately not bundled into
-the import.
+## How the app reads it
+
+Imported events are part of the dataset the moment an import finishes. The
+feed, the map, the search, the filter dropdowns and the statistics all read
+`bpk_events` alongside `events`, and the caches those views are served from are
+rebuilt as the import ends rather than expiring in their own time.
+
+**The two sources overlap.** Brottsplatskartan republishes polisen.se, so any
+period the live feed covers exists in both tables. The rule is a single cutoff:
+the oldest event the live feed holds. Live data wins from there forward, the
+archive supplies everything before it. So a 2016–today dump behind a feed that
+reaches back three months contributes 2016 → three months ago, and nothing is
+counted twice.
+
+The cutoff is shown in the statistics view, under the headline numbers:
+
+> Data från 2016-03-11 och framåt. Inkluderar 331 402 importerade händelser
+> från Brottsplatskartan fram till 2026-04-28, därefter polisens egen
+> händelseström.
+
+What that rule trades away: if the app was down for a stretch inside the live
+window, the archive does not fill that gap — the cutoff is a single point in
+time, not a per-day check. Re-importing does not change it. The alternative,
+matching individual incidents across two schemas, is guesswork on exactly the
+rows where it matters.
+
+Two details of how archived rows are presented:
+
+- **Negative ids.** Both sources number their events from 1, so archived rows
+  are projected with the sign flipped. Nothing in the UI collides.
+- **Detail text.** Expanding an archived event fetches the polisen.se page from
+  `external_source_link`, the same as a live one. polisen.se removes old
+  events, so for older years that fetch comes back empty and the card shows the
+  stored summary alone.
+
+Statistics over a large archive are computed once and cached; the refresh
+scheduler and the importer both rebuild them off the request path, so a page
+view does not wait for a scan of the whole archive.
 
 ## Does a full API import really get everything?
 

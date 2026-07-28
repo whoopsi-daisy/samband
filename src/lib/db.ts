@@ -20,7 +20,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -176,6 +176,54 @@ function migrateBrottsplatskartanTables(database: Database.Database): void {
   database.prepare('INSERT OR IGNORE INTO bpk_import_state (id) VALUES (1)').run();
 }
 
+// Migration 3: make imported events usable by the app's own queries.
+//
+// The feed, the map, the filters and the statistics now read this table
+// alongside `events`, which needs three things the import alone did not care
+// about. All of it is applied to new rows at import time too; this is for
+// everything imported before that.
+function migrateBrottsplatskartanForApp(database: Database.Database): void {
+  // Composite (label, pubdate) indexes: the statistics group by label over
+  // everything older than a cutoff, which these answer without touching the
+  // table — the difference between a scan of the whole archive and an
+  // index-only scan, several times per statistics rebuild.
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bpk_type_pubdate ON bpk_events(title_type, pubdate);
+    -- title_type is in this one so the location breakdown, which excludes
+    -- summary posts, never has to touch the table to check the type.
+    CREATE INDEX IF NOT EXISTS idx_bpk_title_location_pubdate ON bpk_events(title_location, pubdate, title_type);
+  `);
+
+  // Brottsplatskartan serves some types with a doubled space
+  // ("Misshandel,  grov"), which would otherwise sit in every breakdown and
+  // filter dropdown as a second type next to polisen.se's "Misshandel, grov".
+  const collapsed = database
+    .prepare(
+      `UPDATE bpk_events
+          SET title_type = TRIM(REPLACE(REPLACE(REPLACE(title_type, '  ', ' '), '  ', ' '), '  ', ' '))
+        WHERE title_type LIKE '%  %' OR title_type != TRIM(title_type)`
+    )
+    .run();
+
+  // The app groups and filters archive rows by title_location. Where the
+  // import found none, fall back to the fuller location string once here
+  // rather than in every query.
+  const filled = database
+    .prepare(
+      `UPDATE bpk_events SET title_location = location_string
+        WHERE (title_location IS NULL OR title_location = '')
+          AND location_string IS NOT NULL AND location_string != ''`
+    )
+    .run();
+
+  if (collapsed.changes > 0 || filled.changes > 0) {
+    console.log(
+      `[db] migration: normalised ${collapsed.changes} imported event types, ` +
+        `filled in ${filled.changes} imported locations`
+    );
+  }
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
   if (current >= SCHEMA_VERSION) return;
@@ -186,6 +234,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 2) {
     migrateBrottsplatskartanTables(database);
+  }
+
+  if (current < 3) {
+    migrateBrottsplatskartanForApp(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -444,39 +496,165 @@ export function pruneFetchLog(retentionDays = 30): number {
   return result.changes;
 }
 
-// Get events from database with optional filters
-export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset = 0): EventWithMetadata[] {
+// ---------------------------------------------------------------------------
+// The archive as part of the dataset
+//
+// Imported brottsplatskartan events live in bpk_events (see the migration note
+// above for why they are not rows in `events`). Everything below lets the app's
+// own queries — feed, map, filters, statistics — read both tables as one
+// dataset, so an import is usable the moment it finishes rather than being a
+// pile of rows nothing looks at.
+//
+// The two sources overlap: brottsplatskartan republishes polisen.se, so any
+// period the live feed already covers exists in both. The rule is a single
+// cutoff — the oldest event the live feed holds. Live data wins from there
+// forward; the archive supplies everything before it. That deduplicates
+// without guessing which archived row is "the same incident" as which live
+// one, and it is one comparison per row rather than a lookup per row.
+//
+// Archive rows are projected into the live shape, with negative ids: both
+// sources number from 1, and the UI uses the id as a key.
+
+const ARCHIVE_CUTOFF_NONE = '9999-12-31T23:59:59.999Z';
+
+// The aggregates below are pure functions of the tables and were previously
+// recomputed on every home-page request. New data only lands every 10 minutes,
+// so a short TTL is invisible to users but removes the repeated full scans.
+const AGGREGATE_CACHE_TTL_MS = 60_000;
+
+// The statistics scan the whole dataset, which is seconds of work once the
+// archive is hundreds of thousands of rows. They are exact rather than stale:
+// both paths that change the data — the polisen.se refresh and an import —
+// invalidate them explicitly, so the TTL is only a backstop and can be long.
+const STATS_CACHE_TTL_MS = 10 * 60_000;
+
+// Columns shared by both arms of a union, in one fixed order.
+const LIVE_COLUMNS = `e.raw_data AS raw_data, e.id AS id, e.event_time AS event_time,
+  e.publish_time AS publish_time, e.last_updated AS last_updated, e.name AS name,
+  e.summary AS summary, e.url AS url, e.type AS type, e.location_name AS location_name,
+  e.location_gps AS location_gps`;
+
+const ARCHIVE_COLUMNS = `NULL AS raw_data, -b.id AS id, b.pubdate AS event_time,
+  b.pubdate AS publish_time, b.pubdate AS last_updated, COALESCE(b.headline, '') AS name,
+  COALESCE(b.description, b.headline, '') AS summary,
+  -- 'https://polisen.se' is 18 characters, so the path starts at 19. The app
+  -- treats url as a path under polisen.se, for the detail fetch and the link.
+  CASE WHEN b.external_source_link LIKE 'https://polisen.se/%'
+       THEN SUBSTR(b.external_source_link, 19) ELSE '' END AS url,
+  COALESCE(b.title_type, '') AS type,
+  COALESCE(b.title_location, b.location_string, '') AS location_name,
+  CASE WHEN b.lat IS NOT NULL AND b.lng IS NOT NULL
+       THEN CAST(b.lat AS TEXT) || ',' || CAST(b.lng AS TEXT) ELSE '' END AS location_gps`;
+
+// The location the app groups and filters archive rows by. title_location is
+// filled in at import (falling back to location_string), and backfilled for
+// rows imported before that — so this is a plain indexed column rather than an
+// expression, which is what makes the grouping below an index-only scan.
+const ARCHIVE_LOCATION = 'b.title_location';
+
+interface UnionRow {
+  raw_data: string | null;
+  id: number;
+  event_time: string;
+  publish_time: string;
+  last_updated: string;
+  name: string;
+  summary: string;
+  url: string;
+  type: string;
+  location_name: string;
+  location_gps: string;
+}
+
+function countArchiveRows(): number {
   const pdo = getDatabase();
+  return (pdo.prepare('SELECT COUNT(*) AS count FROM bpk_events').get() as { count: number }).count;
+}
+
+// Cached: read on nearly every query, and only changes when an import runs
+// (which invalidates these) or the live feed reaches further back.
+const getArchiveRowCount = memoizeWithTtl(countArchiveRows, AGGREGATE_CACHE_TTL_MS, () => 'archive-rows');
+
+function computeArchiveCutoff(): string {
+  const pdo = getDatabase();
+  const row = pdo.prepare('SELECT MIN(event_time) AS oldest FROM events').get() as { oldest: string | null };
+  // No live events at all: the archive is the whole dataset.
+  return row?.oldest ?? ARCHIVE_CUTOFF_NONE;
+}
+
+const getArchiveCutoff = memoizeWithTtl(computeArchiveCutoff, AGGREGATE_CACHE_TTL_MS, () => 'archive-cutoff');
+
+/** Whether any imported events are in play. False keeps every query single-table. */
+export function hasArchiveEvents(): boolean {
+  return getArchiveRowCount() > 0;
+}
+
+/** Imported events older than the live feed's reach — the ones the app shows. */
+export function getArchiveCoverage(): { events: number; cutoff: string | null } {
+  if (!hasArchiveEvents()) return { events: 0, cutoff: null };
+  const pdo = getDatabase();
+  const cutoff = getArchiveCutoff();
+  const events = (
+    pdo.prepare('SELECT COUNT(*) AS count FROM bpk_events WHERE pubdate < ?').get(cutoff) as { count: number }
+  ).count;
+  return { events, cutoff: cutoff === ARCHIVE_CUTOFF_NONE ? null : cutoff };
+}
+
+interface SqlFragment {
+  sql: string;
+  params: (string | number)[];
+}
+
+// WHERE conditions for the live table, matching the filters the UI offers.
+function liveFilterSql(filters: EventFilters): SqlFragment {
   const params: (string | number)[] = [];
-  let query = 'SELECT raw_data, event_time, publish_time, last_updated FROM events WHERE 1=1';
+  let sql = '';
 
   if (filters.location) {
-    query += ' AND location_name = ?';
+    sql += ' AND e.location_name = ?';
     params.push(filters.location);
   }
-
   if (filters.type) {
-    query += ' AND type = ?';
+    sql += ' AND e.type = ?';
     params.push(filters.type);
   }
-
   if (filters.search) {
-    query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
-    const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
-    params.push(searchTerm, searchTerm, searchTerm);
+    sql += " AND (e.name LIKE ? ESCAPE '\\' OR e.summary LIKE ? ESCAPE '\\' OR e.location_name LIKE ? ESCAPE '\\')";
+    const term = '%' + escapeLikeWildcards(filters.search) + '%';
+    params.push(term, term, term);
   }
 
-  query += ' ORDER BY event_time DESC, id DESC LIMIT ? OFFSET ?';
-  params.push(limit, offset);
+  return { sql, params };
+}
 
-  const rows = pdo.prepare(query).all(...params) as Array<{
-    raw_data: string;
-    event_time: string;
-    publish_time: string;
-    last_updated: string;
-  }>;
+// The same filters against the archive's own column names, plus the cutoff
+// that keeps the two sources from overlapping.
+function archiveFilterSql(filters: EventFilters): SqlFragment {
+  const params: (string | number)[] = [getArchiveCutoff()];
+  let sql = ' AND b.pubdate < ?';
 
-  return rows.map(row => {
+  if (filters.location) {
+    sql += ` AND ${ARCHIVE_LOCATION} = ?`;
+    params.push(filters.location);
+  }
+  if (filters.type) {
+    sql += ' AND b.title_type = ?';
+    params.push(filters.type);
+  }
+  if (filters.search) {
+    // Same three fields the live search covers: headline, summary, location.
+    sql +=
+      " AND (b.headline LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\'" +
+      ` OR ${ARCHIVE_LOCATION} LIKE ? ESCAPE '\\')`;
+    const term = '%' + escapeLikeWildcards(filters.search) + '%';
+    params.push(term, term, term);
+  }
+
+  return { sql, params };
+}
+
+function rowToEvent(row: UnionRow): EventWithMetadata {
+  if (row.raw_data) {
     const event = JSON.parse(row.raw_data) as RawEvent;
     return {
       ...event,
@@ -485,33 +663,88 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
       last_updated: row.last_updated,
       was_updated: Boolean(row.last_updated && row.publish_time && row.last_updated !== row.publish_time),
     };
-  });
+  }
+
+  // An archive row: no stored polisen.se payload, so build the same shape from
+  // the columns the projection above produced.
+  return {
+    id: row.id,
+    datetime: row.event_time,
+    name: row.name,
+    summary: row.summary,
+    url: row.url,
+    type: row.type,
+    location: { name: row.location_name, gps: row.location_gps },
+    event_time: row.event_time,
+    publish_time: row.publish_time,
+    last_updated: row.last_updated,
+    was_updated: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+
+// Get events from database with optional filters
+export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset = 0): EventWithMetadata[] {
+  const pdo = getDatabase();
+  const live = liveFilterSql(filters);
+
+  if (!hasArchiveEvents()) {
+    const rows = pdo
+      .prepare(
+        `SELECT ${LIVE_COLUMNS} FROM events e WHERE 1=1${live.sql}
+         ORDER BY e.event_time DESC, e.id DESC LIMIT ? OFFSET ?`
+      )
+      .all(...live.params, limit, offset) as UnionRow[];
+    return rows.map(rowToEvent);
+  }
+
+  const archive = archiveFilterSql(filters);
+
+  // Each arm is limited to what the requested window could possibly need
+  // before the union is sorted, so neither side is materialised in full.
+  const window = limit + offset;
+  const rows = pdo
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM (
+           SELECT ${LIVE_COLUMNS} FROM events e WHERE 1=1${live.sql}
+           ORDER BY e.event_time DESC, e.id DESC LIMIT ?
+         )
+         UNION ALL
+         SELECT * FROM (
+           SELECT ${ARCHIVE_COLUMNS} FROM bpk_events b WHERE 1=1${archive.sql}
+           ORDER BY b.pubdate DESC, b.id DESC LIMIT ?
+         )
+       )
+       ORDER BY event_time DESC, id DESC LIMIT ? OFFSET ?`
+    )
+    .all(...live.params, window, ...archive.params, window, limit, offset) as UnionRow[];
+
+  return rows.map(rowToEvent);
 }
 
 // Count events in database with optional filters
 export function countEventsInDb(filters: EventFilters = {}): number {
   const pdo = getDatabase();
-  const params: (string | number)[] = [];
-  let query = 'SELECT COUNT(*) as count FROM events WHERE 1=1';
+  const live = liveFilterSql(filters);
 
-  if (filters.location) {
-    query += ' AND location_name = ?';
-    params.push(filters.location);
-  }
+  const liveCount = (
+    pdo.prepare(`SELECT COUNT(*) as count FROM events e WHERE 1=1${live.sql}`).get(...live.params) as {
+      count: number;
+    }
+  ).count;
 
-  if (filters.type) {
-    query += ' AND type = ?';
-    params.push(filters.type);
-  }
+  if (!hasArchiveEvents()) return liveCount;
 
-  if (filters.search) {
-    query += " AND (name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR location_name LIKE ? ESCAPE '\\')";
-    const searchTerm = '%' + escapeLikeWildcards(filters.search) + '%';
-    params.push(searchTerm, searchTerm, searchTerm);
-  }
+  const archive = archiveFilterSql(filters);
+  const archiveCount = (
+    pdo.prepare(`SELECT COUNT(*) as count FROM bpk_events b WHERE 1=1${archive.sql}`).get(...archive.params) as {
+      count: number;
+    }
+  ).count;
 
-  const result = pdo.prepare(query).get(...params) as { count: number };
-  return result.count;
+  return liveCount + archiveCount;
 }
 
 // Get last fetch time
@@ -538,65 +771,260 @@ function computeFilterOptions(column: 'location_name' | 'type'): string[] {
     throw new Error(`Invalid column for getFilterOptions: ${column}`);
   }
   const pdo = getDatabase();
-  const rows = pdo.prepare(`SELECT DISTINCT ${column} AS value FROM events WHERE ${column} != '' ORDER BY ${column} ASC`).all() as Array<{ value: string }>;
+
+  if (!hasArchiveEvents()) {
+    const rows = pdo
+      .prepare(`SELECT DISTINCT ${column} AS value FROM events WHERE ${column} != '' ORDER BY ${column} ASC`)
+      .all() as Array<{ value: string }>;
+    return rows.map(row => row.value);
+  }
+
+  // The dropdowns have to offer what the archive holds too, or a filter can
+  // never reach the years only the archive covers. UNION (not UNION ALL)
+  // deduplicates the labels the two sources share.
+  const archiveColumn = column === 'type' ? 'b.title_type' : ARCHIVE_LOCATION;
+  const rows = pdo
+    .prepare(
+      `SELECT value FROM (
+         SELECT DISTINCT ${column} AS value FROM events WHERE ${column} != ''
+         UNION
+         SELECT DISTINCT ${archiveColumn} AS value FROM bpk_events b
+          WHERE b.pubdate < ? AND ${archiveColumn} != ''
+       ) ORDER BY value ASC`
+    )
+    .all(getArchiveCutoff()) as Array<{ value: string }>;
   return rows.map(row => row.value);
 }
 
-// Get statistics summary
-function computeStatsSummary(): Statistics {
+// One source's contribution to the statistics. Both tables answer the same
+// questions with different column names, so the queries are written once
+// against this description and run per source.
+interface StatsSource {
+  /** Table with its alias, as it appears after FROM. */
+  from: string;
+  time: string;
+  /** Type as a predicate reads it — never NULL, so NOT LIKE behaves. */
+  type: string;
+  /** Type as the breakdown groups it: the bare column, so an index answers it. */
+  typeLabel: string;
+  location: string;
+  hasGps: string;
+  wasUpdated: string;
+  /** Extra always-on condition, e.g. the archive cutoff. */
+  where: string;
+  whereParams: (string | number)[];
+}
+
+const LIVE_STATS_SOURCE: StatsSource = {
+  from: 'events e',
+  time: 'e.event_time',
+  type: "COALESCE(e.type, '')",
+  typeLabel: 'e.type',
+  location: 'e.location_name',
+  hasGps: "e.location_gps != ''",
+  wasUpdated: 'e.last_updated != e.publish_time',
+  where: '',
+  whereParams: [],
+};
+
+function archiveStatsSource(): StatsSource {
+  return {
+    from: 'bpk_events b',
+    time: 'b.pubdate',
+    type: "COALESCE(b.title_type, '')",
+    typeLabel: 'b.title_type',
+    location: ARCHIVE_LOCATION,
+    hasGps: 'b.lat IS NOT NULL AND b.lng IS NOT NULL',
+    // Brottsplatskartan does not republish corrections, so nothing here is
+    // ever a revision of something already stored.
+    wasUpdated: '0',
+    where: ' AND b.pubdate < ?',
+    whereParams: [getArchiveCutoff()],
+  };
+}
+
+interface SourceStats {
+  last24h: number;
+  last7d: number;
+  last30d: number;
+  total: number;
+  oldest: string | null;
+  types: Map<string, number>;
+  locations: Map<string, number>;
+  hourly: number[];
+  /** Sunday-first, as SQLite's %w numbers them. */
+  weekdays: number[];
+  daily: Map<string, number>;
+  withGps: number;
+  updated: number;
+}
+
+function collectSourceStats(source: StatsSource, windows: { since24h: string; since7d: string; since30d: string }): SourceStats {
   const pdo = getDatabase();
-  const now = new Date();
-  const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
   const excludePattern = '%Sammanfattning%';
+  const { from, time, type, location, where, whereParams } = source;
 
-  // Last 24h
-  const last24h = (pdo.prepare('SELECT COUNT(*) as count FROM events WHERE event_time >= ? AND type NOT LIKE ?').get(since24h, excludePattern) as { count: number }).count;
+  // Every query carries the source's always-on condition and the summary-post
+  // exclusion, so the two sources are counted on identical terms.
+  const base = `FROM ${from} WHERE ${type} NOT LIKE ?${where}`;
+  const baseParams = [excludePattern, ...whereParams];
 
-  // Last 7 days
-  const last7d = (pdo.prepare('SELECT COUNT(*) as count FROM events WHERE event_time >= ? AND type NOT LIKE ?').get(since7d, excludePattern) as { count: number }).count;
+  // One pass for every scalar. Each of these was its own query once, and each
+  // one is a scan of the whole source — six scans of a 300k-row archive is
+  // seconds of work to answer six numbers.
+  const scalars = pdo
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN (${source.hasGps}) THEN 1 ELSE 0 END) AS withGps,
+         SUM(CASE WHEN (${source.wasUpdated}) THEN 1 ELSE 0 END) AS updated,
+         MIN(CASE WHEN ${type} NOT LIKE ? THEN ${time} END) AS oldest,
+         SUM(CASE WHEN ${type} NOT LIKE ? AND ${time} >= ? THEN 1 ELSE 0 END) AS last24h,
+         SUM(CASE WHEN ${type} NOT LIKE ? AND ${time} >= ? THEN 1 ELSE 0 END) AS last7d,
+         SUM(CASE WHEN ${type} NOT LIKE ? AND ${time} >= ? THEN 1 ELSE 0 END) AS last30d
+       FROM ${from} WHERE 1=1${where}`
+    )
+    // Bound in the order the placeholders appear in the statement text: the
+    // SELECT list first, then the WHERE clause. Passing the source's own
+    // parameters first would silently bind the cutoff to a summary-post
+    // pattern and the window to the cutoff.
+    .get(
+      excludePattern,
+      excludePattern,
+      windows.since24h,
+      excludePattern,
+      windows.since7d,
+      excludePattern,
+      windows.since30d,
+      ...whereParams
+    ) as {
+    total: number;
+    withGps: number | null;
+    updated: number | null;
+    oldest: string | null;
+    last24h: number | null;
+    last7d: number | null;
+    last30d: number | null;
+  };
 
-  // Last 30 days
-  const last30d = (pdo.prepare('SELECT COUNT(*) as count FROM events WHERE event_time >= ? AND type NOT LIKE ?').get(since30d, excludePattern) as { count: number }).count;
+  const groupToMap = (sql: string, params: (string | number)[]): Map<string, number> => {
+    const rows = pdo.prepare(sql).all(...params) as Array<{ label: string | null; total: number }>;
+    // A NULL label is a row with no type or no location; it is still counted
+    // as an event, and the '' key is skipped by the breakdowns.
+    return new Map(rows.map(row => [row.label ?? '', row.total]));
+  };
 
-  // Total stored (all events in database)
-  const totalStored = (pdo.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }).count;
+  const hourlyRows = pdo
+    .prepare(
+      // Timestamps are stored in UTC, but "events by hour of day" is only
+      // meaningful on the local (Swedish) wall clock, so bucket with the
+      // 'localtime' modifier — it applies the correct DST offset per row.
+      `SELECT strftime('%H', ${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY bucket`
+    )
+    .all(...baseParams, windows.since24h) as Array<{ bucket: string; total: number }>;
+  const hourly: number[] = Array(24).fill(0);
+  for (const row of hourlyRows) hourly[parseInt(row.bucket, 10)] = row.total;
 
+  const weekdayRows = pdo
+    .prepare(
+      `SELECT strftime('%w', ${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY bucket`
+    )
+    .all(...baseParams, windows.since30d) as Array<{ bucket: string; total: number }>;
+  const weekdays: number[] = Array(7).fill(0);
+  for (const row of weekdayRows) weekdays[parseInt(row.bucket, 10)] = row.total;
+
+  const dailyRows = pdo
+    .prepare(
+      `SELECT date(${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY bucket`
+    )
+    .all(...baseParams, windows.since7d) as Array<{ bucket: string; total: number }>;
+
+  return {
+    // The totals count every row: they answer "how much is stored". The rest
+    // exclude summary posts, as the live feed's statistics always have.
+    last24h: scalars.last24h ?? 0,
+    last7d: scalars.last7d ?? 0,
+    last30d: scalars.last30d ?? 0,
+    total: scalars.total,
+    oldest: scalars.oldest,
+    // Grouped on the bare column so an index can answer it without the table.
+    types: groupToMap(`SELECT ${source.typeLabel} AS label, COUNT(*) AS total ${base} GROUP BY label`, baseParams),
+    locations: groupToMap(`SELECT ${location} AS label, COUNT(*) AS total ${base} GROUP BY label`, baseParams),
+    hourly,
+    weekdays,
+    daily: new Map(dailyRows.map(row => [row.bucket, row.total])),
+    withGps: scalars.withGps ?? 0,
+    updated: scalars.updated ?? 0,
+  };
+}
+
+function mergeCounts(target: Map<string, number>, extra: Map<string, number>): void {
+  for (const [label, count] of extra) {
+    target.set(label, (target.get(label) ?? 0) + count);
+  }
+}
+
+/** Distinct labels, ignoring rows that carry none. */
+function countLabels(counts: Map<string, number>): number {
+  let total = 0;
+  for (const label of counts.keys()) if (label !== '') total++;
+  return total;
+}
+
+function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
+  return [...counts]
+    .filter(([label]) => label !== '')
+    .map(([label, total]) => ({ label, total }))
+    .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, 'sv'))
+    .slice(0, limit);
+}
+
+// Get statistics summary
+//
+// Covers the whole dataset: the live polisen.se feed plus every imported event
+// older than the feed reaches. Both sources are counted on the same terms and
+// added together, so an import shows up here as soon as it finishes.
+function computeStatsSummary(): Statistics {
+  const now = new Date();
+  const windows = {
+    since24h: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+    since7d: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    since30d: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  const live = collectSourceStats(LIVE_STATS_SOURCE, windows);
+  const archive = hasArchiveEvents() ? collectSourceStats(archiveStatsSource(), windows) : null;
+
+  const last24h = live.last24h + (archive?.last24h ?? 0);
+  const last7d = live.last7d + (archive?.last7d ?? 0);
+  const last30d = live.last30d + (archive?.last30d ?? 0);
+  const totalStored = live.total + (archive?.total ?? 0);
   // Total should match totalStored so the footer shows consistent counts
   const total = totalStored;
 
-  // Oldest event for average calculation
-  const oldest = pdo.prepare('SELECT MIN(event_time) as oldest FROM events WHERE type NOT LIKE ?').get(excludePattern) as { oldest: string | null };
+  const oldestCandidates = [live.oldest, archive?.oldest ?? null].filter((v): v is string => Boolean(v));
+  const oldest = oldestCandidates.length > 0 ? oldestCandidates.sort()[0] : null;
+
   let avgPerDay = 0;
-  if (oldest?.oldest) {
-    const oldestDate = new Date(oldest.oldest);
-    const daysDiff = Math.max(1, Math.floor((now.getTime() - oldestDate.getTime()) / (24 * 60 * 60 * 1000)));
+  if (oldest) {
+    const daysDiff = Math.max(1, Math.floor((now.getTime() - new Date(oldest).getTime()) / (24 * 60 * 60 * 1000)));
     avgPerDay = Math.round((total / daysDiff) * 10) / 10;
   }
 
-  // Top types
-  const topTypes = pdo.prepare('SELECT type AS label, COUNT(*) AS total FROM events WHERE type NOT LIKE ? GROUP BY type ORDER BY total DESC LIMIT 8').all(excludePattern) as TopItem[];
+  const typeCounts = new Map(live.types);
+  const locationCounts = new Map(live.locations);
+  const hourly = [...live.hourly];
+  const weekdayData = [...live.weekdays];
+  const dailyMap = new Map(live.daily);
 
-  // Top locations
-  const topLocations = pdo.prepare('SELECT location_name AS label, COUNT(*) AS total FROM events WHERE type NOT LIKE ? GROUP BY location_name ORDER BY total DESC LIMIT 8').all(excludePattern) as TopItem[];
-
-  // Per hour last 24h. Timestamps are stored in UTC, but "events by hour of day"
-  // is only meaningful in the local (Swedish) wall clock, so bucket with the
-  // 'localtime' modifier — it applies the correct DST offset per row.
-  const hourlyRows = pdo.prepare("SELECT strftime('%H', event_time, 'localtime') AS hour, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY hour ORDER BY hour").all(since24h, excludePattern) as Array<{ hour: string; total: number }>;
-  const hourly: number[] = Array(24).fill(0);
-  for (const row of hourlyRows) {
-    hourly[parseInt(row.hour, 10)] = row.total;
+  if (archive) {
+    mergeCounts(typeCounts, archive.types);
+    mergeCounts(locationCounts, archive.locations);
+    for (let i = 0; i < 24; i++) hourly[i] += archive.hourly[i];
+    for (let i = 0; i < 7; i++) weekdayData[i] += archive.weekdays[i];
+    for (const [day, count] of archive.daily) dailyMap.set(day, (dailyMap.get(day) ?? 0) + count);
   }
 
-  // Per weekday last 30 days
-  const weekdayRows = pdo.prepare("SELECT strftime('%w', event_time, 'localtime') AS weekday, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY weekday ORDER BY weekday").all(since30d, excludePattern) as Array<{ weekday: string; total: number }>;
-  const weekdayData: number[] = Array(7).fill(0);
-  for (const row of weekdayRows) {
-    weekdayData[parseInt(row.weekday, 10)] = row.total;
-  }
   // Convert to Monday-Sunday order (Swedish)
   const weekdays = [
     weekdayData[1], // Monday
@@ -608,13 +1036,6 @@ function computeStatsSummary(): Statistics {
     weekdayData[0], // Sunday
   ];
 
-  // Events per day last 7 days
-  const dailyRows = pdo.prepare("SELECT date(event_time, 'localtime') AS day, COUNT(*) AS total FROM events WHERE event_time >= ? AND type NOT LIKE ? GROUP BY day ORDER BY day").all(since7d, excludePattern) as Array<{ day: string; total: number }>;
-  const dailyMap: Record<string, number> = {};
-  for (const row of dailyRows) {
-    dailyMap[row.day] = row.total;
-  }
-
   const daily: DailyStats[] = [];
   const dayNames = ['Sön', 'Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör'];
   for (let i = 6; i >= 0; i--) {
@@ -625,21 +1046,16 @@ function computeStatsSummary(): Statistics {
     daily.push({
       date: dateStr,
       day: dayNames[date.getDay()],
-      count: dailyMap[dateStr] || 0,
+      count: dailyMap.get(dateStr) ?? 0,
     });
   }
 
-  // GPS coverage
-  const eventsWithGps = (pdo.prepare("SELECT COUNT(*) as count FROM events WHERE location_gps != ''").get() as { count: number }).count;
+  const eventsWithGps = live.withGps + (archive?.withGps ?? 0);
   const gpsPercent = totalStored > 0 ? Math.round((eventsWithGps / totalStored) * 100) : 0;
-
-  // Updated events
-  const updatedEvents = (pdo.prepare("SELECT COUNT(*) as count FROM events WHERE last_updated != publish_time").get() as { count: number }).count;
+  const updatedEvents = live.updated + (archive?.updated ?? 0);
   const updatedPercent = totalStored > 0 ? Math.round((updatedEvents / totalStored) * 100) : 0;
 
-  // Unique counts
-  const uniqueLocations = (pdo.prepare('SELECT COUNT(DISTINCT location_name) as count FROM events').get() as { count: number }).count;
-  const uniqueTypes = (pdo.prepare('SELECT COUNT(DISTINCT type) as count FROM events').get() as { count: number }).count;
+  const coverage = getArchiveCoverage();
 
   return {
     total,
@@ -648,22 +1064,21 @@ function computeStatsSummary(): Statistics {
     last7d,
     last30d,
     avgPerDay,
-    topTypes,
-    topLocations,
+    topTypes: topItems(typeCounts),
+    topLocations: topItems(locationCounts),
     hourly,
     weekdays,
     daily,
     gpsPercent,
     updatedPercent,
-    uniqueLocations,
-    uniqueTypes,
+    // Distinct across both sources: a location present in each counts once.
+    uniqueLocations: countLabels(locationCounts),
+    uniqueTypes: countLabels(typeCounts),
+    oldestEvent: oldest,
+    archiveEvents: coverage.events,
+    archiveCutoff: coverage.cutoff,
   };
 }
-
-// Both of these are pure aggregates over the events table and were previously
-// recomputed on every home-page request. New data only lands every 10 minutes,
-// so a short TTL is invisible to users but removes the repeated full scans.
-const AGGREGATE_CACHE_TTL_MS = 60_000;
 
 export const getFilterOptions = memoizeWithTtl(
   computeFilterOptions,
@@ -671,13 +1086,35 @@ export const getFilterOptions = memoizeWithTtl(
   (column) => column
 );
 
-export const getStatsSummary = memoizeWithTtl(computeStatsSummary, AGGREGATE_CACHE_TTL_MS, () => 'stats');
+export const getStatsSummary = memoizeWithTtl(computeStatsSummary, STATS_CACHE_TTL_MS, () => 'stats');
+
+/**
+ * Recompute the statistics off the request path.
+ *
+ * Called after the data changes — a refresh, or a finished import — so the
+ * next page view is served from a warm cache instead of waiting out a scan of
+ * the whole archive.
+ */
+export function warmAggregateCaches(): void {
+  try {
+    getStatsSummary();
+    getFilterOptions('type');
+    getFilterOptions('location_name');
+  } catch (error) {
+    // Warming is an optimisation; a failure here must not take down the caller.
+    console.error('[db] failed to warm aggregate caches:', error);
+  }
+}
 
 // Drop cached aggregates. Called after a refresh writes new events so the next
 // request reflects them immediately rather than waiting out the TTL.
 export function invalidateAggregateCaches(): void {
   getFilterOptions.invalidate();
   getStatsSummary.invalidate();
+  // An import changes both of these: how much archive there is, and — once the
+  // live feed reaches further back — how much of it the app counts.
+  getArchiveRowCount.invalidate();
+  getArchiveCutoff.invalidate();
 }
 
 // Get operational statistics for monitoring

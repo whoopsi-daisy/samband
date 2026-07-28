@@ -1630,6 +1630,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
 }
+/* What the hero numbers are computed over: live feed, archive, or both. */
+.stats-coverage {
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-muted);
+}
+.stats-coverage strong {
+    color: var(--text);
+    font-weight: 600;
+}
 .stats-metric {
     background: var(--surface-solid);
     border: 1px solid var(--border);

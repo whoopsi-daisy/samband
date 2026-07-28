@@ -91,7 +91,9 @@ CREATE TABLE meta (
 ```
 
 `bpk_events` and `bpk_import_state` are described in
-[import.md](import.md#what-is-kept).
+[import.md](import.md#what-is-kept). The app's own queries read that table
+alongside `events` — see [how the app reads it](import.md#how-the-app-reads-it)
+for the rule that keeps the overlapping period from being counted twice.
 
 All timestamp columns hold canonical UTC ISO 8601
 (`2026-07-27T12:30:00.000Z`). SQLite compares them as text, so a single shape is
@@ -147,7 +149,9 @@ summary, lazy-loaded details, and a map link when the event has coordinates.
 with details and links.
 
 **Statistics** — totals (24h/7d/30d), a 7-day trend, events by weekday, hourly
-distribution, top types and top locations.
+distribution, top types and top locations, over the whole dataset: the live
+feed plus every imported event older than the feed reaches. A line under the
+headline numbers names that boundary. See [import.md](import.md#how-the-app-reads-it).
 
 **Operational dashboard** (`/stats`) — system health (uptime, success rate, data
 freshness), fetch statistics and hourly chart, live import panel, database

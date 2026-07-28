@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import { Statistics } from '@/types';
+import { useMounted } from '@/hooks/useMounted';
 
 interface StatsViewProps {
   stats: Statistics;
@@ -10,7 +11,17 @@ interface StatsViewProps {
   onLocationClick?: (location: string) => void;
 }
 
+// Date only — these are coverage boundaries, not timestamps, so the time of
+// day is noise. Rendered against the viewer's clock, which means it only
+// produces stable markup after mount (see the `mounted` gate below).
+function formatDay(iso: string): string {
+  const date = new Date(iso);
+  return isNaN(date.getTime()) ? '—' : date.toLocaleDateString('sv-SE');
+}
+
 function StatsView({ stats, isActive, onTypeClick, onLocationClick }: StatsViewProps) {
+  const mounted = useMounted();
+  const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '—');
   const maxDaily = Math.max(...stats.daily.map(d => d.count), 1);
   const maxWeekday = Math.max(...stats.weekdays, 1);
   const maxHourly = Math.max(...stats.hourly, 1);
@@ -63,6 +74,26 @@ function StatsView({ stats, isActive, onTypeClick, onLocationClick }: StatsViewP
             <span className="stats-metric__label">Uppdaterade</span>
           </div>
         </div>
+
+        {/* What the numbers above are computed over. Without this, a database
+            holding years of imported history looks the same as one holding a
+            week of live events. */}
+        <p className="stats-coverage">
+          {stats.oldestEvent && (
+            <>
+              Data från <strong>{coverageDay(stats.oldestEvent)}</strong> och framåt.{' '}
+            </>
+          )}
+          {stats.archiveEvents > 0 ? (
+            <>
+              Inkluderar {stats.archiveEvents.toLocaleString('sv-SE')} importerade händelser från
+              Brottsplatskartan{stats.archiveCutoff ? ` fram till ${coverageDay(stats.archiveCutoff)}` : ''}, därefter
+              polisens egen händelseström.
+            </>
+          ) : (
+            <>Endast polisens egen händelseström — inget arkiv är importerat.</>
+          )}
+        </p>
       </div>
 
       {/* Trend section */}
