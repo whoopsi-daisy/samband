@@ -162,14 +162,22 @@ docker compose up -d
 The database lives in the bind-mounted `./data`, so pulls and restarts never
 touch it. Schema migrations run automatically at startup and log what they did.
 
-The first start after upgrading into a release that changes the schema can take
-a little longer than usual — on a database with an imported archive, migration
-3 builds two indexes over every imported row and normalises event types, and
-migration 4 builds the full-text search index, about 20 seconds per 333k
-events. Each logs a line when it is done, and each runs once.
+Migrations only have work to do where there is data. On a database that
+already holds an imported archive, the first start after upgrading takes a
+little longer than usual: migration 3 builds two indexes over every imported
+row and normalises event types, and migration 4 builds the full-text search
+index, about 20 seconds per 333k events. Each logs a line when it is done, and
+each runs once.
 
-Budget disk for the search index too: roughly 350 MB alongside a full archive,
-or ~55 MB with `BPK_SEARCH_TOKENIZER=unicode61` — see
+**Starting empty and importing afterwards costs nothing at startup** — the
+usual case for a new deployment. The first open of an empty database is a few
+tens of milliseconds, and the importer indexes each event as it stores it, so
+there is no pause and no rebuild to wait for. A 333k-event dump takes about
+30 seconds longer than it would without the index; an API walk, which is
+network-bound for hours, does not notice.
+
+Budget disk for the search index either way: roughly 350 MB alongside a full
+archive, or ~55 MB with `BPK_SEARCH_TOKENIZER=unicode61` — see
 [import.md](import.md#searching-it).
 
 Take a snapshot first if the release notes mention a migration:
