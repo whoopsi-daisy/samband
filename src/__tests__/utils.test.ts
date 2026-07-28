@@ -1,4 +1,4 @@
-import { formatRelativeTime, sanitizeInput, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
+import { formatRelativeTime, sanitizeInput, sanitizeLocation, sanitizeType, sanitizeSearch, swedishDayKey } from '@/lib/utils';
 
 describe('formatRelativeTime', () => {
   const baseDate = new Date('2024-01-15T12:00:00Z');
@@ -79,5 +79,41 @@ describe('sanitizeSearch', () => {
   it('limits to 200 characters', () => {
     const input = 'a'.repeat(300);
     expect(sanitizeSearch(input)).toHaveLength(200);
+  });
+});
+
+describe('swedishDayKey', () => {
+  // The feed groups incidents by day on the server and again in the browser.
+  // If those two disagree, React discards the server-rendered feed — so this
+  // has to answer for Stockholm regardless of the runtime's own timezone.
+  it('returns the Swedish calendar day', () => {
+    expect(swedishDayKey(new Date('2026-07-28T10:00:00.000Z'))).toBe('2026-07-28');
+  });
+
+  it('puts a Swedish late evening on the Swedish day, not the UTC one', () => {
+    // 23:30 in Stockholm during CEST is 21:30 UTC — same day either way.
+    expect(swedishDayKey(new Date('2026-07-28T21:30:00.000Z'))).toBe('2026-07-28');
+    // 00:30 Stockholm is 22:30 UTC the day before. UTC would say the 28th.
+    expect(swedishDayKey(new Date('2026-07-28T22:30:00.000Z'))).toBe('2026-07-29');
+  });
+
+  it('follows the offset across DST, not a fixed one', () => {
+    // CET (+01:00) in winter: 00:30 local is 23:30 UTC the previous day.
+    expect(swedishDayKey(new Date('2026-01-14T23:30:00.000Z'))).toBe('2026-01-15');
+    // CEST (+02:00) in summer: the same UTC wall time is 01:30 local.
+    expect(swedishDayKey(new Date('2026-07-14T23:30:00.000Z'))).toBe('2026-07-15');
+  });
+
+  it('is independent of the process timezone', () => {
+    const original = process.env.TZ;
+    try {
+      // A reader in Los Angeles must still see Swedish days.
+      process.env.TZ = 'America/Los_Angeles';
+      expect(swedishDayKey(new Date('2026-07-28T22:30:00.000Z'))).toBe('2026-07-29');
+      process.env.TZ = 'Pacific/Kiritimati';
+      expect(swedishDayKey(new Date('2026-07-28T22:30:00.000Z'))).toBe('2026-07-29');
+    } finally {
+      process.env.TZ = original;
+    }
   });
 });

@@ -47,7 +47,7 @@ export function TypeIcon({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.9}
+      strokeWidth={1.75}
       strokeLinecap="round"
       strokeLinejoin="round"
       style={color ? { color } : undefined}
@@ -60,5 +60,5 @@ export function TypeIcon({
 /** Serialised SVG string for non-React contexts (e.g. Leaflet div markers). */
 export function typeIconSvg(name: string, color: string, size = 18): string {
   const inner = ICON_PATHS[name] ?? ICON_PATHS.pin;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" color="${color}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" color="${color}" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 }

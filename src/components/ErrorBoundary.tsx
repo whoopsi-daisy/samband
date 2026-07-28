@@ -37,20 +37,20 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
       }
 
       return (
-        <div className="error-boundary">
-          <div className="error-boundary-content">
-            <h2>Något gick fel</h2>
-            <p>Ett oväntat fel uppstod. Försök ladda om sidan.</p>
-            <div className="error-boundary-actions">
-              <button onClick={this.handleRetry} className="error-boundary-btn">
+        <main id="main-content">
+          <div className="empty">
+            <p className="empty-title">Något gick fel</p>
+            <p className="empty-text">Ett oväntat fel uppstod. Försök ladda om sidan.</p>
+            <div className="empty-actions">
+              <button onClick={this.handleRetry} className="btn">
                 Försök igen
               </button>
-              <button onClick={() => window.location.reload()} className="error-boundary-btn error-boundary-btn-secondary">
+              <button onClick={() => window.location.reload()} className="btn-quiet">
                 Ladda om sidan
               </button>
             </div>
           </div>
-        </div>
+        </main>
       );
     }
 
