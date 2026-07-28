@@ -46,6 +46,16 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  // The full-text index is an external-content FTS5 table, which means SQLite
+  // does not maintain it for us: rows have to be written to both, in the same
+  // transaction, or a search would miss what was just imported. Only rows that
+  // were actually inserted are indexed — INSERT OR IGNORE swallows the
+  // duplicates that page-based pagination re-serves, and indexing those again
+  // would return the same event twice from every search.
+  const index = db.prepare(
+    'INSERT INTO bpk_search (rowid, headline, description, content, title_location) VALUES (?, ?, ?, ?, ?)'
+  );
+
   const now = new Date().toISOString();
   let inserted = 0;
 
@@ -69,6 +79,9 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
         now
       );
       inserted += result.changes;
+      if (result.changes > 0) {
+        index.run(e.id, e.headline, e.description, e.content, e.titleLocation);
+      }
     }
   });
   run(events);

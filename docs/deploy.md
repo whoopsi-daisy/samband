@@ -164,8 +164,13 @@ touch it. Schema migrations run automatically at startup and log what they did.
 
 The first start after upgrading into a release that changes the schema can take
 a little longer than usual — on a database with an imported archive, migration
-3 builds two indexes over every imported row and normalises event types. It
-logs a line when it is done, and only runs once.
+3 builds two indexes over every imported row and normalises event types, and
+migration 4 builds the full-text search index, about 20 seconds per 333k
+events. Each logs a line when it is done, and each runs once.
+
+Budget disk for the search index too: roughly 350 MB alongside a full archive,
+or ~55 MB with `BPK_SEARCH_TOKENIZER=unicode61` — see
+[import.md](import.md#searching-it).
 
 Take a snapshot first if the release notes mention a migration:
 

@@ -116,6 +116,7 @@ per day) apply SQLite's `'localtime'` modifier at query time.
 | `BPK_IMPORT_SOURCE` | unset | Dump path or URL for `ndjson` |
 | `BPK_IMPORT_CONCURRENCY` | `4` | Requests in flight for an API walk, 1–8 |
 | `BPK_API_BASE_URL` | the public API | Point the importer at a mock or a caching proxy |
+| `BPK_SEARCH_TOKENIZER` | `trigram` | How the archive's full-text index tokenises. `trigram` matches substrings, including inside Swedish compounds (~350 MB for a full archive); `unicode61` matches words and prefixes for ~55 MB. Changing it rebuilds the index on the next start. See [import.md](import.md#searching-it) |
 
 ### Background refresh
 
