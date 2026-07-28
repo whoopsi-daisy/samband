@@ -243,12 +243,46 @@ function runMigrations(database: Database.Database): void {
   setSchemaVersion(database, SCHEMA_VERSION);
 }
 
+/**
+ * Fail with instructions rather than a bare SQLITE_CANTOPEN.
+ *
+ * Nearly every report of that error is the same thing: the mounted data
+ * directory is not writable by the uid the container runs as. better-sqlite3
+ * cannot say that — it only knows the open failed — so the log filled with a
+ * stack trace through minified chunks and no mention of ownership, on a
+ * container that then kept serving with no database behind it.
+ */
+function assertDataDirWritable(): void {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.accessSync(DATA_DIR, fs.constants.W_OK | fs.constants.X_OK);
+  } catch (cause) {
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 'unknown';
+    let owner = 'unknown';
+    try {
+      const stat = fs.statSync(DATA_DIR);
+      owner = `${stat.uid}:${stat.gid}`;
+    } catch {
+      owner = 'missing';
+    }
+
+    throw new Error(
+      `Cannot write to the data directory ${DATA_DIR}.\n` +
+        `  running as uid: ${uid}\n` +
+        `  directory owner: ${owner}\n` +
+        `The SQLite database and its -wal/-shm sidecars live here, so the app\n` +
+        `cannot start without write access. On the host holding the bind mount:\n` +
+        `  sudo chown -R 1001:1001 <your data directory>\n` +
+        `Note that "mkdir -p data" does not fix this on a cloned repository —\n` +
+        `data/ already exists from the clone, owned by whoever cloned it.`,
+      { cause }
+    );
+  }
+}
+
 export function getDatabase(): Database.Database {
   if (!db) {
-    // Ensure the data directory exists before opening the database
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
+    assertDataDirWritable();
 
     db = new Database(DB_PATH, { readonly: false });
 
@@ -748,6 +782,32 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
   return rows.map(rowToEvent);
 }
 
+/**
+ * The map's slice of the feed, cached per filter set.
+ *
+ * The map asks for 500 rows and gets them from the same union-and-sort as the
+ * list, and it asked again on every open and every filter change — per visitor,
+ * with no reuse between them, even though the underlying rows only change when
+ * a fetch lands every ten minutes. Two people looking at the unfiltered map ran
+ * the query twice; one person switching list → map → list ran it twice.
+ *
+ * Cached as database rows rather than formatted events on purpose: formatting
+ * stamps a relative time ("2 timmar sedan") that would be frozen at whatever it
+ * said when the entry was created. Formatting is cheap; the query is not.
+ */
+const MAP_EVENT_LIMIT = 500;
+const MAP_CACHE_TTL_MS = 60_000;
+
+const getMapEventRows = memoizeWithTtl(
+  (filters: EventFilters): EventWithMetadata[] => getEventsFromDb(filters, MAP_EVENT_LIMIT, 0),
+  MAP_CACHE_TTL_MS,
+  (filters) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}`
+);
+
+export function getMapEvents(filters: EventFilters = {}): EventWithMetadata[] {
+  return getMapEventRows(filters);
+}
+
 // Count events in database with optional filters
 export function countEventsInDb(filters: EventFilters = {}): number {
   const pdo = getDatabase();
@@ -1135,6 +1195,9 @@ export function warmAggregateCaches(): void {
 export function invalidateAggregateCaches(): void {
   getFilterOptions.invalidate();
   getStatsSummary.invalidate();
+  // The map reads the same rows the list does, so a fetch that changes them
+  // has to drop this too — otherwise the map lags the feed by up to a minute.
+  getMapEventRows.invalidate();
   // An import changes both of these: how much archive there is, and — once the
   // live feed reaches further back — how much of it the app counts.
   getArchiveRowCount.invalidate();

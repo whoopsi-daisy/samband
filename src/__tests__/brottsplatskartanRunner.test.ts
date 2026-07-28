@@ -169,21 +169,39 @@ describe('startImport (ndjson)', () => {
 
 describe('cancelImport', () => {
   it('stops a running dump and keeps what it already stored', async () => {
+    // 20 batches at BATCH_SIZE=1000, so the importer yields to the event loop
+    // twenty times with rows already committed. The poll below cannot miss all
+    // twenty without the loop being starved outright.
     writeMinimalDump('dump.ndjson', 20_000);
 
-    // Cancel from inside the progress stream rather than after a delay: this
-    // fires while the run is demonstrably mid-file, whatever the machine's
-    // speed, so the assertions below are about cancellation and not timing.
-    let cancelled: boolean | null = null;
-    const unsubscribe = runner.subscribe((snapshot) => {
-      if (cancelled === null && snapshot.progress && snapshot.progress.imported > 0) {
-        cancelled = runner.cancelImport();
-      }
-    });
-
     runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
+
+    // Poll getImportSnapshot rather than subscribing.
+    //
+    // This test used to cancel from inside a subscribe() callback on the first
+    // snapshot reporting imported > 0, on the stated reasoning that it would
+    // fire "while the run is demonstrably mid-file, whatever the machine's
+    // speed". It does not. The runner throttles publishes to listeners to one
+    // per 500ms, and a 20k-line dump finishes in ~700ms, so a subscriber saw
+    // exactly two snapshots: one at ~130ms with no progress attached, and one
+    // at ~630ms reporting all 20 000 rows — - i.e. the callback first fired
+    // after the file had been fully read. cancelImport() then aborted a run
+    // that had already written status 'complete', and the assertion below
+    // failed on every machine, not intermittently.
+    //
+    // getImportSnapshot() reads live state with no throttle, so polling it
+    // observes each batch as it lands.
+    let cancelled: boolean | null = null;
+    while (runner.isImportRunning()) {
+      const progress = runner.getImportSnapshot().progress;
+      if (progress && progress.imported > 0) {
+        cancelled = runner.cancelImport();
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
     await settle();
-    unsubscribe();
 
     expect(cancelled).toBe(true);
 
