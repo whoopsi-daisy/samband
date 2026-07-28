@@ -66,6 +66,7 @@ async function HomeContent({ searchParams }: PageProps) {
   return (
     <ClientApp
       initialEvents={formattedEvents}
+      totalEvents={totalEvents}
       hasMore={hasMore}
       locations={locations}
       types={types}

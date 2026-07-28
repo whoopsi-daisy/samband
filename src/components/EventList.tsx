@@ -10,6 +10,8 @@ const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000;
 
 interface EventListProps {
   initialEvents: FormattedEvent[];
+  /** Every event matching the current filters, not just the first page. */
+  initialTotal: number;
   initialHasMore: boolean;
   filters: {
     location: string;
@@ -20,18 +22,22 @@ interface EventListProps {
   onShowMap?: (lat: number, lng: number, location: string) => void;
   highlightedEventId: number | null;
   onLastCheckedChange?: (date: Date) => void;
+  onClearFilters?: () => void;
 }
 
 export default function EventList({
   initialEvents,
+  initialTotal,
   initialHasMore,
   filters,
   currentView,
   onShowMap,
   highlightedEventId,
   onLastCheckedChange,
+  onClearFilters,
 }: EventListProps) {
   const [events, setEvents] = useState<FormattedEvent[]>(initialEvents);
+  const [total, setTotal] = useState(initialTotal);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -53,11 +59,12 @@ export default function EventList({
 
   useEffect(() => {
     setEvents(initialEvents);
+    setTotal(initialTotal);
     setHasMore(initialHasMore);
     setPage(1);
     setNewEventsCount(0);
     lastRefreshRef.current = Date.now();
-  }, [filterKey, initialEvents, initialHasMore]);
+  }, [filterKey, initialEvents, initialTotal, initialHasMore]);
 
   // Poll for new incidents every 10 minutes while the list is open and visible
   useEffect(() => {
@@ -133,6 +140,7 @@ export default function EventList({
       if (data.error) return;
 
       setEvents(data.events);
+      if (typeof data.total === 'number') setTotal(data.total);
       setHasMore(data.hasMore);
       setPage(1);
       setNewEventsCount(0);
@@ -169,6 +177,7 @@ export default function EventList({
         const newUnique = (data.events as FormattedEvent[]).filter((e) => !existingIds.has(e.id));
         return [...prev, ...newUnique];
       });
+      if (typeof data.total === 'number') setTotal(data.total);
       setHasMore(data.hasMore);
       setPage(nextPage);
     } catch {
@@ -215,6 +224,7 @@ export default function EventList({
   }, [events]);
 
   if (events.length === 0) {
+    const hasFilters = Boolean(filters.location || filters.type || filters.search);
     return (
       <section id="eventsGrid" className="empty">
         <span className="empty-icon" aria-hidden="true">
@@ -223,8 +233,20 @@ export default function EventList({
             <path d="M20 20l-4.3-4.3" />
           </svg>
         </span>
-        <p className="empty-title">Inga händelser</p>
-        <p className="empty-text">Inga händelser matchar dina filter. Prova att ta bort något av dem.</p>
+        <p className="empty-title">Inga träffar</p>
+        <p className="empty-text">
+          {hasFilters
+            ? 'Ingen händelse matchar det du sökt eller filtrerat på. Prova ett bredare sökord, eller ta bort ett filter.'
+            : 'Det finns inga händelser att visa just nu. Listan fylls på när polisen publicerar nästa notis.'}
+        </p>
+        {/* An empty result used to describe the way out without offering it. */}
+        {hasFilters && onClearFilters && (
+          <div className="empty-actions">
+            <button type="button" className="btn" onClick={onClearFilters}>
+              Rensa alla filter
+            </button>
+          </div>
+        )}
       </section>
     );
   }
@@ -249,13 +271,17 @@ export default function EventList({
         </div>
       )}
 
-      <div className="feed-lede">
+      {/* "40 händelser visas" left the reader with no idea whether that was all
+          of them or the first page of nine hundred. */}
+      <div className="feed-lede" role="status">
         <span>
-          <strong>{events.length}</strong> {events.length === 1 ? 'händelse' : 'händelser'} visas
+          Visar <strong>{events.length.toLocaleString('sv-SE')}</strong> av{' '}
+          <strong>{Math.max(total, events.length).toLocaleString('sv-SE')}</strong>{' '}
+          {total === 1 ? 'händelse' : 'händelser'}
         </span>
         <span className="feed-live">
           <span className="dot dot--sm dot--ok" aria-hidden="true" />
-          Uppdateras automatiskt
+          Live
         </span>
       </div>
 
@@ -292,13 +318,13 @@ export default function EventList({
                 Laddar…
               </>
             ) : (
-              'Ladda fler'
+              `Visa fler händelser${total > events.length ? ` (${(total - events.length).toLocaleString('sv-SE')} kvar)` : ''}`
             )}
           </button>
         )}
         {!hasMore && (
           <p className="all-loaded-message" role="status">
-            Alla händelser visas
+            Du har nått slutet — alla {events.length.toLocaleString('sv-SE')} händelser visas.
           </p>
         )}
       </div>

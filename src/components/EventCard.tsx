@@ -78,6 +78,19 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
   const handleShare = useCallback(async () => {
     if (event.id === null) return;
     const url = `${window.location.origin}/?event=${event.id}`;
+
+    // On a phone this is what "dela" means to the reader — the OS share sheet,
+    // with the messaging apps they actually use in it. Copying a URL to the
+    // clipboard is the desktop fallback, not the primary behaviour.
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: `${event.type} — ${event.location}`, url });
+        return;
+      } catch {
+        // Dismissed, or unavailable in this context — fall through to copying.
+      }
+    }
+
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -93,7 +106,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [event.id]);
+  }, [event.id, event.type, event.location]);
 
   // Keep the relative time fresh without breaking hydration: until the shared
   // clock reports in, reuse the string the server already computed, so the
@@ -103,6 +116,21 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     if (now === null) return event.date.relative;
     return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
   }, [now, event.date.iso, event.date.relative, event.datetime]);
+
+  // "28 jul, 14:32" — the clock time behind "2 timmar sedan". Shown outright
+  // once the row is open; a title attribute alone is unreachable on a phone.
+  const absoluteTime = `${event.date.day} ${event.date.month.toLowerCase()}, ${event.date.time}`;
+
+  // `event.updated` arrives as "2026-07-28 18:06". Rendered raw it put a
+  // machine timestamp next to the human one on the same line.
+  const updatedTime = useMemo(() => {
+    if (!event.updated) return '';
+    const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(event.updated);
+    if (!match) return event.updated;
+    const [, , month, day, time] = match;
+    const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+    return `${day} ${months[parseInt(month, 10) - 1]}, ${time}`;
+  }, [event.updated]);
 
   const rowClasses = [
     'event-row',
@@ -119,18 +147,22 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
           <TypeIcon name={event.iconKey} size={20} />
         </span>
 
+        {/* Where, then what, then the summary — each on its own line, so the
+            same information sits in the same place in every row. */}
         <span className="event-main">
           <span className="event-head">
-            <span className="badge badge--accent">{event.type}</span>
             <span className="event-location">{event.location}</span>
+            <span className="event-time" title={absoluteTime}>
+              {relativeTime}
+            </span>
+          </span>
+          <span className="event-meta">
+            <span className="badge badge--accent">{event.type}</span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
               </span>
             )}
-            <span className="event-time" title={`${event.date.day} ${event.date.month} ${event.date.time}`}>
-              {relativeTime}
-            </span>
           </span>
           <span className="event-text">{event.summary}</span>
         </span>
@@ -144,10 +176,22 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
       {expanded && (
         <div className="event-detail">
-          {loading && <span className="event-detail-status">Laddar detaljer…</span>}
+          <p className="event-detail-time">
+            Inträffade {absoluteTime}
+            {event.wasUpdated && updatedTime ? ` · uppdaterad ${updatedTime}` : ''}
+          </p>
+
+          {loading && (
+            <span className="event-detail-status">
+              <span className="spinner-sm" />
+              Hämtar hela texten…
+            </span>
+          )}
+          {/* The summary above is already the substance of the notice, so a
+              failed detail fetch is a footnote rather than an error banner. */}
           {error && (
-            <span className="event-detail-status event-detail-status--error">
-              Kunde inte hämta detaljer. Öppna polisen.se för att läsa mer.
+            <span className="event-detail-status">
+              Hela texten kunde inte hämtas just nu — läs den på polisen.se nedan.
             </span>
           )}
           {details && <p>{details}</p>}
@@ -160,7 +204,11 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
                 target="_blank"
                 rel="noopener noreferrer nofollow"
               >
-                polisen.se
+                Läs hos polisen
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+                </svg>
+                <span className="sr-only">(öppnas i ny flik)</span>
               </a>
             )}
             {gpsCoords && (
@@ -168,7 +216,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
                 type="button"
                 className="btn-ghost"
                 onClick={handleShowMap}
-                title="Platsen visar var anmälan upprättades"
+                title="Kartan visar var anmälan upprättades, inte alltid exakt brottsplats"
               >
                 Visa på karta
               </button>
@@ -178,9 +226,9 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
                 type="button"
                 className={`btn-ghost${copied ? ' btn-ghost--done' : ''}`}
                 onClick={handleShare}
-                title="Kopiera länk till händelse"
+                title="Dela en länk till den här händelsen"
               >
-                {copied ? 'Kopierad!' : 'Dela'}
+                {copied ? 'Länk kopierad' : 'Dela'}
               </button>
             )}
           </div>
