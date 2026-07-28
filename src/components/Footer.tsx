@@ -19,12 +19,6 @@ export default function Footer({ lastChecked }: FooterProps) {
         Uppdaterad{' '}
         {mounted ? lastChecked.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
       </span>
-      <span>
-        Data från{' '}
-        <a href="https://polisen.se/aktuellt/handelser/" target="_blank" rel="noopener noreferrer">
-          polisen.se
-        </a>
-      </span>
       {/* The app has had keyboard shortcuts since it was built and has never
           said so anywhere. Shown only where there is a keyboard to press. */}
       <span className="footer-keys">

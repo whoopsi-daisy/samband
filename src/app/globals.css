@@ -1120,7 +1120,12 @@ main {
   gap: var(--space-3);
 }
 
-.event-location {
+/* The kind of incident is the row's headline: it is what a reader scans for,
+   and it decides whether the rest is worth reading. */
+.event-type {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
   font-size: var(--text-body);
@@ -1128,6 +1133,24 @@ main {
   line-height: var(--leading-snug);
   letter-spacing: var(--tracking-tight);
   color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-type-emoji {
+  flex-shrink: 0;
+  font-size: var(--text-ui);
+  line-height: 1;
+}
+
+/* Where it happened — meta, one step below the headline and the body text. */
+.event-location {
+  min-width: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1248,6 +1271,15 @@ main {
 }
 
 .load-more .notice { align-self: stretch; text-align: center; }
+
+.load-more-hint {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-align: center;
+  text-wrap: balance;
+  max-width: 44ch;
+}
 
 .all-loaded-message {
   font-size: var(--text-xs);
