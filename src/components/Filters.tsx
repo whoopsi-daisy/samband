@@ -126,20 +126,39 @@ export default function Filters({ locations, types, currentView, filters }: Filt
   };
 
   return (
-    <section className="filters" role="search" aria-label="Filtrera händelser">
+    <section className="filters" role="search" aria-label="Sök och filtrera händelser">
       <form className="search-form" onSubmit={(e) => e.preventDefault()}>
+        <span className="search-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-4.3-4.3" />
+          </svg>
+        </span>
         <input
           className="search-input"
           type="search"
           name="search"
-          placeholder="Sök händelser…"
+          placeholder="Sök på plats, brott eller ord i texten"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Sök händelser"
         />
-        <span className="search-kbd" aria-hidden="true">
-          /
-        </span>
+        {search ? (
+          <button
+            type="button"
+            className="search-clear"
+            onClick={() => setSearch('')}
+            aria-label="Rensa sökningen"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        ) : (
+          <span className="search-kbd" aria-hidden="true">
+            /
+          </span>
+        )}
       </form>
 
       <div className="filter-row">
@@ -204,21 +223,25 @@ export default function Filters({ locations, types, currentView, filters }: Filt
 
       {hasActiveFilters && (
         <div className="active-filters" role="status" aria-live="polite">
+          <span className="active-filters-label">Filtrerar på</span>
           {(
             [
-              ['location', filters.location],
-              ['type', filters.type],
-              ['search', filters.search ? `”${filters.search}”` : ''],
+              ['location', 'Plats', filters.location],
+              ['type', 'Typ', filters.type],
+              ['search', 'Sökord', filters.search],
             ] as const
-          ).map(([name, label]) =>
+          ).map(([name, key, label]) =>
             label ? (
               <span className="badge badge--accent filter-chip" key={name}>
+                {/* Which control the chip came from — a bare "Borås" said
+                    nothing about whether it was a place, a type or free text. */}
+                <span className="filter-chip-key">{key}:</span>
                 <span className="filter-chip-text">{label}</span>
                 <button
                   type="button"
                   className="filter-chip-remove"
                   onClick={() => removeFilter(name)}
-                  aria-label={`Ta bort filter: ${label}`}
+                  aria-label={`Ta bort filter — ${key}: ${label}`}
                 >
                   ×
                 </button>
