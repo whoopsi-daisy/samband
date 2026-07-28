@@ -211,6 +211,29 @@ export function decodeHtmlEntities(text: string): string {
 }
 
 // Fetch event details from polisen.se
+// Readable text out of a fragment of HTML: the paragraphs, tags stripped and
+// entities decoded. Returns null when the fragment has no paragraph markup —
+// on a scraped page that means the layout was not what we expected, and a
+// caller with plain text of its own can fall back to it.
+//
+// Shared by the polisen.se scrape below and by imported brottsplatskartan
+// events, which store their body as the same `<p>` markup.
+export function paragraphsToText(html: string): string | null {
+  const paragraphs: string[] = [];
+  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+
+  while ((match = pRegex.exec(html)) !== null) {
+    const text = decodeHtmlEntities(match[1].replace(/<[^>]+>/g, '')).trim();
+    if (text) paragraphs.push(text);
+  }
+
+  // Null, not an empty string: callers treat that as "nothing to show".
+  if (paragraphs.length === 0) return null;
+
+  return paragraphs.slice(0, 4).join('\n\n');
+}
+
 export async function fetchDetailsText(url: string): Promise<string | null> {
   // Validate and construct URL safely using URL constructor
   let absoluteUrl: string;
@@ -261,30 +284,7 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
 
     const content = articleMatch?.[1] || mainMatch?.[1] || '';
 
-    // Extract text from paragraphs
-    const paragraphs: string[] = [];
-    const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-    let match;
-
-    while ((match = pRegex.exec(content)) !== null) {
-      // Remove HTML tags from paragraph content
-      let text = match[1].replace(/<[^>]+>/g, '');
-
-      // Decode all HTML entities (named and numeric)
-      text = decodeHtmlEntities(text);
-
-      text = text.trim();
-
-      if (text) {
-        paragraphs.push(text);
-      }
-    }
-
-    if (paragraphs.length === 0) {
-      return null;
-    }
-
-    return paragraphs.slice(0, 4).join('\n\n');
+    return paragraphsToText(content);
   } catch {
     return null;
   }

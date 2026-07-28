@@ -2,8 +2,10 @@
  * @jest-environment node
  */
 import fs from 'fs';
+import http from 'http';
 import os from 'os';
 import path from 'path';
+import type { AddressInfo } from 'net';
 
 // The runner is what the dashboard, the API and the container startup all go
 // through, so these cover the parts an operator sees: that a run starts, that
@@ -169,29 +171,48 @@ describe('startImport (ndjson)', () => {
 
 describe('cancelImport', () => {
   it('stops a running dump and keeps what it already stored', async () => {
-    writeMinimalDump('dump.ndjson', 20_000);
+    // Served over HTTP and deliberately never finished: the import gets a
+    // first chunk, stores it, then waits for more that never comes. That is a
+    // run genuinely in flight, without leaning on how fast the machine reads a
+    // file or how often progress happens to be published.
+    const chunk =
+      Array.from({ length: 3000 }, (_, i) =>
+        JSON.stringify({ id: 500_000 - i, pubdate_unix: String(1_785_171_476 - i * 60) })
+      ).join('\n') + '\n';
 
-    // Cancel from inside the progress stream rather than after a delay: this
-    // fires while the run is demonstrably mid-file, whatever the machine's
-    // speed, so the assertions below are about cancellation and not timing.
-    let cancelled: boolean | null = null;
-    const unsubscribe = runner.subscribe((snapshot) => {
-      if (cancelled === null && snapshot.progress && snapshot.progress.imported > 0) {
-        cancelled = runner.cancelImport();
-      }
+    let open: http.ServerResponse | undefined;
+    const server = http.createServer((_req, res) => {
+      open = res;
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      res.write(chunk);
+      // No res.end(): the response stays open until the test tears it down.
     });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
 
-    runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
-    await settle();
-    unsubscribe();
+    try {
+      runner.startImport({ mode: 'ndjson', source: `http://127.0.0.1:${port}/dump.ndjson` });
 
-    expect(cancelled).toBe(true);
+      // Wait for rows to actually land, so this cancels a run with work to keep.
+      while (bpkDb.countBpkEvents() === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
 
-    const state = bpkDb.getBpkImportState();
-    expect(state.status).toBe('cancelled');
-    const stored = bpkDb.countBpkEvents();
-    expect(stored).toBeGreaterThan(0);
-    expect(stored).toBeLessThan(20_000);
-    expect(runner.cancelImport()).toBe(false);
-  });
+      expect(runner.isImportRunning()).toBe(true);
+      expect(runner.cancelImport()).toBe(true);
+
+      await settle();
+
+      const state = bpkDb.getBpkImportState();
+      expect(state.status).toBe('cancelled');
+      // Cancelling keeps the work: every row that arrived before it is still
+      // stored, and nothing is rolled back.
+      expect(bpkDb.countBpkEvents()).toBe(3000);
+      // Nothing left running to cancel a second time.
+      expect(runner.cancelImport()).toBe(false);
+    } finally {
+      open?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 15_000);
 });

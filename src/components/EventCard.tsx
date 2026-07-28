@@ -24,12 +24,21 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Imported archive events are served from our own database rather than
+  // scraped from polisen.se, so they have detail text even when they have no
+  // usable link. See /api/details.
+  const isArchived = (event.id ?? 0) < 0;
+  const hasDetails = isArchived || Boolean(event.url);
+
   const fetchDetails = useCallback(async () => {
-    if (!event.url) return;
+    if (!hasDetails) return;
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch(`/api/details?url=${encodeURIComponent(event.url)}`);
+      const params = new URLSearchParams();
+      if (isArchived) params.set('id', String(event.id));
+      if (event.url) params.set('url', event.url);
+      const res = await fetch(`/api/details?${params}`);
       const data = await res.json();
       if (data.success && data.details?.content) {
         setDetails(data.details.content);
@@ -41,7 +50,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     } finally {
       setLoading(false);
     }
-  }, [event.url]);
+  }, [event.url, event.id, isArchived, hasDetails]);
 
   // A deep link (?event=123) opens the incident already expanded.
   useEffect(() => {
@@ -58,10 +67,10 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
       return;
     }
     setExpanded(true);
-    if (event.url && !details && !loading) {
+    if (hasDetails && !details && !loading) {
       fetchDetails();
     }
-  }, [expanded, event.url, details, loading, fetchDetails]);
+  }, [expanded, hasDetails, details, loading, fetchDetails]);
 
   const gpsCoords = useMemo(() => {
     if (!event.gps || !event.gps.includes(',')) return null;
@@ -150,7 +159,10 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
               Kunde inte hämta detaljer. Öppna polisen.se för att läsa mer.
             </span>
           )}
-          {details && <p>{details}</p>}
+          {/* The text arrives as paragraphs separated by blank lines — from
+              the scraped page or, for imported events, from their stored
+              body. Rendered as one <p>, those breaks would collapse. */}
+          {details?.split('\n\n').map((paragraph, i) => <p key={i}>{paragraph}</p>)}
 
           <div className="event-actions">
             {event.url && (

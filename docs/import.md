@@ -278,10 +278,12 @@ Two details of how archived rows are presented:
 
 - **Negative ids.** Both sources number their events from 1, so archived rows
   are projected with the sign flipped. Nothing in the UI collides.
-- **Detail text.** Expanding an archived event fetches the polisen.se page from
-  `external_source_link`, the same as a live one. polisen.se removes old
-  events, so for older years that fetch comes back empty and the card shows the
-  stored summary alone.
+- **Detail text.** Expanding an archived event shows the `content` the import
+  stored, served straight from the database. It deliberately does not fetch
+  polisen.se: those pages are removed after a while, so for anything but the
+  most recent events that fetch comes back empty — precisely when someone is
+  reading the archive rather than the live feed. The polisen.se link is still
+  offered on the card for events whose page is still up.
 
 Statistics over a large archive are computed once and cached; the refresh
 scheduler and the importer both rebuild them off the request path, so a page

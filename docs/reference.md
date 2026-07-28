@@ -22,11 +22,14 @@ Paginated police events from the database.
 
 ### GET /api/details
 
-Detailed text content for one event, fetched from polisen.se on demand.
+The body text of one event. Live events are fetched from polisen.se on demand;
+imported ones are served from the text the import stored, without touching the
+network — see [import.md](import.md#how-the-app-reads-it).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `url` | string | Event URL path (e.g. `/aktuellt/handelser/...`) |
+| `id` | number | Event id. A negative id is an imported event and is answered from the database |
+| `url` | string | Event URL path (e.g. `/aktuellt/handelser/...`), used for live events |
 
 ```json
 { "success": true, "details": { "content": "..." } }
