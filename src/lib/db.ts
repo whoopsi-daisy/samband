@@ -13,6 +13,12 @@ const DATA_DIR = process.env.SAMBAND_DATA_DIR
   : path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'events.db');
 
+// The resolved data directory, for code that needs to place files next to the
+// database (see importSource.ts).
+export function getDataDir(): string {
+  return DATA_DIR;
+}
+
 // Bump when a migration is added below.
 const SCHEMA_VERSION = 2;
 

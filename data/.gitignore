@@ -5,6 +5,10 @@
 *.lock
 backups/*.db
 
+# NDJSON dumps are imported from here and are hundreds of megabytes
+*.ndjson
+*.jsonl
+
 # Keep these files
 !.gitignore
 !.htaccess

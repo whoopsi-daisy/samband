@@ -40,16 +40,20 @@ function startRefreshScheduler(): void {
 
 // Opt-in brottsplatskartan.se import.
 //
-// BPK_IMPORT_ON_START=full        - import the whole archive (hours), then
+// BPK_IMPORT_ON_START=ndjson      - load the dump named by BPK_IMPORT_SOURCE
+//                                   (minutes), then keep it current on later
+//                                   boots. The recommended way to seed.
+// BPK_IMPORT_ON_START=full        - walk the whole API archive (hours), then
 //                                   keep it current on later boots
 // BPK_IMPORT_ON_START=incremental - only pull what is new since last time
 //
-// Left unset, nothing here touches the network. A full import only starts if
-// one has not already completed, so restarting the container does not kick off
-// another; an interrupted run resumes from its recorded page instead.
+// Left unset, nothing here touches the network or the disk. A seeding import
+// only starts if one has not already succeeded, so restarting the container
+// does not kick off another; an interrupted API run resumes from its recorded
+// page instead.
 function startBrottsplatskartanImport(): void {
   const setting = process.env.BPK_IMPORT_ON_START?.trim().toLowerCase();
-  if (setting !== 'full' && setting !== 'incremental') return;
+  if (setting !== 'full' && setting !== 'incremental' && setting !== 'ndjson') return;
 
   // A previous process may have died mid-import, leaving status = 'running'.
   reconcileImportState();
@@ -58,13 +62,32 @@ function startBrottsplatskartanImport(): void {
   const concurrency = parseInt(process.env.BPK_IMPORT_CONCURRENCY || '', 10) || undefined;
 
   if (setting === 'incremental') {
-    startImport('incremental', concurrency);
+    startImport({ mode: 'incremental', concurrency });
     return;
   }
 
-  if (state.status === 'complete' && state.storedEvents > 0) {
-    console.log('[bpk] archive already imported; running an incremental sync');
-    startImport('incremental', concurrency);
+  const alreadySeeded = state.storedEvents > 0 && (state.status === 'complete' || setting === 'ndjson');
+  if (alreadySeeded) {
+    console.log(
+      `[bpk] archive already holds ${state.storedEvents.toLocaleString('sv-SE')} events; running an incremental sync`
+    );
+    startImport({ mode: 'incremental', concurrency });
+    return;
+  }
+
+  if (setting === 'ndjson') {
+    const source = process.env.BPK_IMPORT_SOURCE?.trim();
+    if (!source) {
+      console.error('[bpk] BPK_IMPORT_ON_START=ndjson needs BPK_IMPORT_SOURCE (a dump path or URL); skipping import');
+      return;
+    }
+    try {
+      // Operator-supplied, so it may point anywhere the container can read.
+      startImport({ mode: 'ndjson', source, allowAnyPath: true });
+    } catch (error) {
+      // A bad path must not take the whole app down on boot.
+      console.error(`[bpk] dump import not started: ${(error as Error).message}`);
+    }
     return;
   }
 
@@ -73,5 +96,5 @@ function startBrottsplatskartanImport(): void {
       ? `[bpk] resuming full import from page ${state.lastPageDone + 1}`
       : '[bpk] starting full import; this takes a few hours'
   );
-  startImport('full', concurrency);
+  startImport({ mode: 'full', concurrency });
 }

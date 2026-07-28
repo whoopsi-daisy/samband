@@ -115,6 +115,108 @@ describe('importNdjson', () => {
     expect(result.imported).toBe(5);
   });
 
+  it('imports a real dump line, keeping the applicable fields and dropping the rest', async () => {
+    // The exact bytes of a four-line export from the operator's mirror script.
+    const dump = path.join(tempDir, 'bpk-dump-sample.ndjson');
+    fs.copyFileSync(path.join(__dirname, 'fixtures/bpk-dump-sample.ndjson'), dump);
+
+    const result = await ndjson.importNdjson({ source: dump });
+    expect(result.imported).toBe(4);
+
+    const row = db
+      .getDatabase()
+      .prepare('SELECT * FROM bpk_events WHERE id = 506862')
+      .get() as Record<string, unknown>;
+
+    expect(row).toMatchObject({
+      id: 506862,
+      pubdate: '2026-07-27T19:57:53.000Z',
+      pubdate_unix: 1785182273,
+      title_type: 'Misshandel,  grov',
+      title_location: 'Hörby',
+      headline: 'Flicka i 15-årsåldern grips misstänkt för grov misshandel.',
+      location_string: 'Hörby, Skåne län',
+      county: 'Skåne län',
+      permalink: 'https://brottsplatskartan.se/skane-lan/misshandel-grov-horby-506862',
+      external_source_link:
+        'https://polisen.se/aktuellt/handelser/2026/juli/27/27-juli-20.22-misshandel-grov-horby/',
+    });
+    expect(row.lat).toBeCloseTo(55.8508109, 5);
+    expect(row.lng).toBeCloseTo(13.6599486, 5);
+
+    // Swedish characters survive the byte-counting stream in one piece.
+    expect(row.content).toContain('centrala delen av Hörby');
+
+    // The dump carries teasers, viewport corners, map images and a relative
+    // "4 timmar sedan"; none of that belongs in the database.
+    expect(Object.keys(row).sort()).toEqual([
+      'content',
+      'county',
+      'description',
+      'external_source_link',
+      'headline',
+      'id',
+      'imported_at',
+      'lat',
+      'lng',
+      'location_string',
+      'permalink',
+      'pubdate',
+      'pubdate_unix',
+      'title_location',
+      'title_type',
+    ]);
+  });
+
+  it('reports progress against the size of the dump', async () => {
+    const file = writeDump(realEventLines(3000));
+    const size = fs.statSync(file).size;
+    const updates: Array<{ bytesRead: number; bytesTotal: number | null; imported: number }> = [];
+
+    const result = await ndjson.importNdjson({
+      source: file,
+      onProgress: (p) => updates.push({ bytesRead: p.bytesRead, bytesTotal: p.bytesTotal, imported: p.imported }),
+    });
+
+    expect(updates.length).toBeGreaterThan(1);
+    expect(updates.every((u) => u.bytesTotal === size)).toBe(true);
+    // Monotonic, and it ends on the whole file having been read.
+    for (let i = 1; i < updates.length; i++) {
+      expect(updates[i].bytesRead).toBeGreaterThanOrEqual(updates[i - 1].bytesRead);
+    }
+    expect(result.bytesRead).toBe(size);
+    expect(result.imported).toBe(3000);
+  });
+
+  it('writes counters to the database while it runs, not only at the end', async () => {
+    const file = writeDump(realEventLines(4000));
+    let seenRunning: { status: string; imported: number } | null = null;
+
+    await ndjson.importNdjson({
+      source: file,
+      onProgress: () => {
+        if (seenRunning) return;
+        const state = bpkDb.getBpkImportState();
+        // Grab the first sighting where the run has recorded rows mid-flight.
+        if (state.status === 'running' && state.imported > 0) {
+          seenRunning = { status: state.status, imported: state.imported };
+        }
+      },
+    });
+
+    expect(seenRunning).not.toBeNull();
+    expect(bpkDb.getBpkImportState()).toMatchObject({ status: 'complete', imported: 4000, mode: 'ndjson' });
+  });
+
+  it('resolves a bare name against the data directory', async () => {
+    fs.writeFileSync(path.join(tempDir, 'archive.ndjson'), realEventLines(5).join('\n') + '\n', 'utf8');
+
+    const result = await ndjson.importNdjson({ source: 'archive.ndjson' });
+
+    expect(result.imported).toBe(5);
+    expect(result.source).toBe('archive.ndjson');
+  });
+
   it('is idempotent — re-importing the same dump stores nothing new', async () => {
     const file = writeDump(realEventLines(100));
 

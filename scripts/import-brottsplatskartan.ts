@@ -8,8 +8,13 @@
  *   npm run import:bpk -- --mode=full        walk the whole archive (hours)
  *   npm run import:bpk -- --mode=full --concurrency=6 --max-pages=50
  *
- * Progress is written to the database after every batch, so Ctrl-C is safe:
- * re-running with --mode=full continues from the last completed page.
+ * A bare name or relative path for --from-ndjson is resolved against the data
+ * directory, so `--from-ndjson=brottsplatskartan.ndjson` finds the dump next to
+ * the database. Absolute paths and http(s) URLs work too.
+ *
+ * Progress prints live and is written to the database after every batch, so
+ * Ctrl-C is safe: re-running with --mode=full continues from the last
+ * completed page, and re-running a dump skips what it already stored.
  *
  * SAMBAND_DATA_DIR selects the database, the same as for the app itself.
  */
@@ -75,6 +80,41 @@ function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['kB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+// On a terminal, rewrite one line in place so progress reads as a live meter.
+// Piped to a file or a log collector, print a new line every few seconds
+// instead — carriage returns there produce an unreadable single-line blob.
+function makeProgressPrinter(): (text: string, force?: boolean) => void {
+  const isTty = Boolean(process.stdout.isTTY);
+  const intervalMs = isTty ? 250 : 5000;
+  let lastAt = 0;
+  let dirty = false;
+
+  return (text: string, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastAt < intervalMs) return;
+    lastAt = now;
+    if (isTty) {
+      process.stdout.write(`\r[2K  ${text}`);
+      dirty = true;
+      if (force && dirty) process.stdout.write('\n');
+    } else {
+      process.stdout.write(`  ${text}\n`);
+    }
+  };
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
@@ -107,7 +147,7 @@ async function main(): Promise<void> {
   }
 
   const started = Date.now();
-  let lastLine = 0;
+  const print = makeProgressPrinter();
 
   const controller = new AbortController();
   const onSignal = () => {
@@ -124,18 +164,21 @@ async function main(): Promise<void> {
       maxPages: args.maxPages,
       signal: controller.signal,
       onProgress: (p) => {
-        // Throttle output so a long run does not spam the log.
-        if (Date.now() - lastLine < 2000) return;
-        lastLine = Date.now();
+        const elapsed = Date.now() - started;
         const pct = p.totalPages ? ((p.pagesDone / p.totalPages) * 100).toFixed(1) + '%' : '';
-        console.log(
-          `  ${pct.padStart(6)} ${p.pagesDone.toLocaleString('sv-SE')}` +
+        const perSecond = elapsed > 1000 ? p.pagesDone / (elapsed / 1000) : 0;
+        const left = p.totalPages !== null ? Math.max(0, p.totalPages - p.pagesDone) : null;
+        const eta = left !== null && perSecond > 0 ? ` ETA ${formatDuration((left / perSecond) * 1000)}` : '';
+        print(
+          `${pct.padStart(6)} ${p.pagesDone.toLocaleString('sv-SE')}` +
             `${p.totalPages ? '/' + p.totalPages.toLocaleString('sv-SE') : ''} pages, ` +
-            `${p.imported.toLocaleString('sv-SE')} new, ${p.duplicates.toLocaleString('sv-SE')} known`
+            `${p.imported.toLocaleString('sv-SE')} new, ${p.duplicates.toLocaleString('sv-SE')} known` +
+            `${perSecond > 0 ? `, ${perSecond.toFixed(1)} pages/s` : ''}${eta}`
         );
       },
     });
 
+    print('', true);
     console.log('\nFinished.');
     console.log(`  mode        ${result.mode}`);
     console.log(`  pages       ${result.pagesFetched.toLocaleString('sv-SE')} at ${result.perPage}/page`);
@@ -176,7 +219,7 @@ async function main(): Promise<void> {
 async function runNdjsonImport(source: string): Promise<void> {
   console.log(`Importing from ${source}`);
   const started = Date.now();
-  let lastLine = 0;
+  const print = makeProgressPrinter();
 
   const controller = new AbortController();
   const onSignal = () => {
@@ -191,16 +234,24 @@ async function runNdjsonImport(source: string): Promise<void> {
       source,
       signal: controller.signal,
       onProgress: (p) => {
-        if (Date.now() - lastLine < 2000) return;
-        lastLine = Date.now();
-        console.log(
-          `  ${p.linesRead.toLocaleString('sv-SE')} lines, ` +
-            `${p.imported.toLocaleString('sv-SE')} new, ${p.duplicates.toLocaleString('sv-SE')} known`
+        const elapsed = Date.now() - started;
+        const pct = p.bytesTotal ? ((p.bytesRead / p.bytesTotal) * 100).toFixed(1) + '%' : '';
+        const bytesPerSecond = elapsed > 1000 ? p.bytesRead / (elapsed / 1000) : 0;
+        const left = p.bytesTotal !== null ? Math.max(0, p.bytesTotal - p.bytesRead) : null;
+        const eta =
+          left !== null && bytesPerSecond > 0 ? ` ETA ${formatDuration((left / bytesPerSecond) * 1000)}` : '';
+        print(
+          `${pct.padStart(6)} ${formatBytes(p.bytesRead)}` +
+            `${p.bytesTotal ? '/' + formatBytes(p.bytesTotal) : ''}, ` +
+            `${p.linesRead.toLocaleString('sv-SE')} lines, ` +
+            `${p.imported.toLocaleString('sv-SE')} new, ${p.duplicates.toLocaleString('sv-SE')} known${eta}`
         );
       },
     });
 
+    print('', true);
     console.log('\nFinished.');
+    console.log(`  source      ${result.source}`);
     console.log(`  lines read  ${result.linesRead.toLocaleString('sv-SE')}`);
     console.log(`  imported    ${result.imported.toLocaleString('sv-SE')}`);
     console.log(`  already had ${result.duplicates.toLocaleString('sv-SE')}`);

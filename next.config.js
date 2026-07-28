@@ -22,6 +22,18 @@ const nextConfig = {
   turbopack: {},
   // Security headers
   async headers() {
+    // React's development build and the dev server's HMR client both use
+    // eval(). Without this, `npm run dev` serves a page whose client bundle
+    // never hydrates — no filters, no import panel, no theme toggle — while
+    // the production build is fine, which is a confusing way to lose an hour.
+    // Production keeps the strict policy.
+    const isProduction = process.env.NODE_ENV === 'production';
+    const scriptSrc = isProduction
+      ? "script-src 'self' 'unsafe-inline'"
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+    // Same story for hot reload, which talks over a websocket.
+    const devConnectSrc = isProduction ? '' : ' ws: wss:';
+
     return [
       {
         source: '/:path*',
@@ -36,7 +48,7 @@ const nextConfig = {
               "default-src 'self'",
               // 'unsafe-inline' is required by the inline theme bootstrap in
               // layout.tsx, which must run before first paint to avoid a flash.
-              "script-src 'self' 'unsafe-inline'",
+              scriptSrc,
               // Fonts are self-hosted via next/font, so no third-party style or
               // font origins are needed. unpkg.com was allowed but never used.
               "style-src 'self' 'unsafe-inline'",
@@ -46,7 +58,7 @@ const nextConfig = {
               // exactly when CartoDB is down and it is needed.
               "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
               "font-src 'self'",
-              "connect-src 'self' https://polisen.se https://*.basemaps.cartocdn.com https://tile.openstreetmap.org",
+              `connect-src 'self' https://polisen.se https://*.basemaps.cartocdn.com https://tile.openstreetmap.org${devConnectSrc}`,
               "frame-ancestors 'self'",
             ].join('; '),
           },
