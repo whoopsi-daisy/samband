@@ -1,94 +1,36 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { FormattedEvent, getTypeClass } from '@/types';
+import { FormattedEvent } from '@/types';
 import { TypeIcon } from './TypeIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
-import type { Density } from './ClientApp';
 
 interface EventCardProps {
   event: FormattedEvent;
-  currentView: string;
   onShowMap?: (lat: number, lng: number, location: string) => void;
   isHighlighted?: boolean;
-  autoExpand?: boolean;
-  density?: Density;
 }
 
-export default function EventCard({ event, currentView, onShowMap, isHighlighted, autoExpand, density }: EventCardProps) {
+/**
+ * One incident, as a row in the day's list. Collapsed it shows type, place,
+ * time and a two-line summary; expanding fetches the full text from polisen.se
+ * and reveals the actions.
+ */
+export default function EventCard({ event, onShowMap, isHighlighted }: EventCardProps) {
   const [expanded, setExpanded] = useState(isHighlighted || false);
   const [details, setDetails] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Auto-expand and fetch details if highlighted
-  useEffect(() => {
-    if (isHighlighted && !details && event.url) {
-      const fetchDetails = async () => {
-        setLoading(true);
-        try {
-          const res = await fetch(`/api/details?url=${encodeURIComponent(event.url)}`);
-          const data = await res.json();
-          if (data.success && data.details?.content) {
-            setDetails(data.details.content);
-          }
-        } catch {
-          // Silently fail - user can still expand manually
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchDetails();
-    }
-  }, [isHighlighted, details, event.url]);
-
-  // Auto-expand when "Read More" setting is enabled
-  useEffect(() => {
-    if (autoExpand) {
-      setExpanded(true);
-      // Skip fetch if isHighlighted — that effect already handles it
-      if (!isHighlighted && !details && event.url && !loading) {
-        setLoading(true);
-        setError(false);
-        fetch(`/api/details?url=${encodeURIComponent(event.url)}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && data.details?.content) {
-              setDetails(data.details.content);
-            }
-          })
-          .catch(() => {
-            setError(true);
-          })
-          .finally(() => setLoading(false));
-      }
-    } else if (!isHighlighted) {
-      setExpanded(false);
-    }
-  }, [autoExpand, event.url, isHighlighted]);
-
-  const typeClass = getTypeClass(event.type);
-
-  const toggleAccordion = useCallback(async () => {
-    if (expanded) {
-      setExpanded(false);
-      return;
-    }
-
-    setExpanded(true);
-
-    // Skip fetching if no URL or already have details
-    if (!event.url || details) return;
-
+  const fetchDetails = useCallback(async () => {
+    if (!event.url) return;
     setLoading(true);
     setError(false);
-
     try {
       const res = await fetch(`/api/details?url=${encodeURIComponent(event.url)}`);
       const data = await res.json();
-
       if (data.success && data.details?.content) {
         setDetails(data.details.content);
       } else {
@@ -99,39 +41,47 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
     } finally {
       setLoading(false);
     }
-  }, [expanded, event.url, details]);
+  }, [event.url]);
 
-  const handleShowMap = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!event.gps || !onShowMap) return;
-
-    const [lat, lng] = event.gps.split(',').map(s => parseFloat(s.trim()));
-    if (!isNaN(lat) && !isNaN(lng)) {
-      onShowMap(lat, lng, event.location);
+  // A deep link (?event=123) opens the incident already expanded.
+  useEffect(() => {
+    if (isHighlighted && !details) {
+      fetchDetails();
     }
-  }, [event.gps, event.location, onShowMap]);
+    // Runs for the deep-linked row only; `details` and `fetchDetails` are
+    // stable enough that re-running on them would just re-fetch what we have.
+  }, [isHighlighted, details, fetchDetails]);
 
-  const hasGps = event.gps && event.gps.includes(',');
-  let gpsCoords: { lat: number; lng: number } | null = null;
-  if (hasGps) {
-    const [lat, lng] = event.gps.split(',').map(s => parseFloat(s.trim()));
-    if (!isNaN(lat) && !isNaN(lng)) {
-      gpsCoords = { lat, lng };
+  const toggle = useCallback(() => {
+    if (expanded) {
+      setExpanded(false);
+      return;
     }
-  }
+    setExpanded(true);
+    if (event.url && !details && !loading) {
+      fetchDetails();
+    }
+  }, [expanded, event.url, details, loading, fetchDetails]);
 
-  const handleShare = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const gpsCoords = useMemo(() => {
+    if (!event.gps || !event.gps.includes(',')) return null;
+    const [lat, lng] = event.gps.split(',').map((s) => parseFloat(s.trim()));
+    return isNaN(lat) || isNaN(lng) ? null : { lat, lng };
+  }, [event.gps]);
+
+  const handleShowMap = useCallback(() => {
+    if (gpsCoords && onShowMap) {
+      onShowMap(gpsCoords.lat, gpsCoords.lng, event.location);
+    }
+  }, [gpsCoords, event.location, onShowMap]);
+
+  const handleShare = useCallback(async () => {
     if (event.id === null) return;
-
     const url = `${window.location.origin}/?event=${event.id}`;
-
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for older browsers
+      // Older browsers, or a page without clipboard permission
       const textArea = document.createElement('textarea');
       textArea.value = url;
       textArea.style.position = 'fixed';
@@ -140,16 +90,10 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [event.id]);
-
-  const cardClasses = [
-    'event-card',
-    expanded ? 'expanded' : '',
-    isHighlighted ? 'highlighted' : '',
-  ].filter(Boolean).join(' ');
 
   // Keep the relative time fresh without breaking hydration: until the shared
   // clock reports in, reuse the string the server already computed, so the
@@ -160,172 +104,71 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
     return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
   }, [now, event.date.iso, event.date.relative, event.datetime]);
 
-  // Stream mode: completely different ticker/feed layout
-  if (density === 'stream') {
-    const isRecent = relativeTime.includes('min') || relativeTime.includes('Just');
-    return (
-      <article
-        className={`stream-item${expanded ? ' stream-item--expanded' : ''}${isHighlighted ? ' stream-item--highlighted' : ''}`}
-        data-url={event.url}
-        data-event-id={event.id ?? undefined}
-        onClick={toggleAccordion}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleAccordion();
-          }
-        }}
-      >
-        <div className="stream-item__indicator">
-          <span className={`stream-item__dot${isRecent ? ' stream-item__dot--recent' : ''}`} style={{ background: event.color }} />
-        </div>
-        <div className="stream-item__time">
-          <span className={`stream-item__relative${isRecent ? ' stream-item__relative--recent' : ''}`}>{relativeTime}</span>
-        </div>
-        <div className="stream-item__content">
-          <div className="stream-item__headline">
-            <span className="stream-item__type">
-              <TypeIcon name={event.iconKey} size={14} color={event.color} className="stream-item__type-icon" />
-              {event.type}
-            </span>
-            <span className="stream-item__headline-location">
-              <span className="stream-item__sep" aria-hidden="true"></span>
-              <span className="stream-item__location">
-                {event.location}
-              </span>
-            </span>
-          </div>
-          <p className="stream-item__summary">{event.summary}</p>
-          {expanded && (
-            <div className="stream-item__details">
-              {loading && <span className="stream-item__loading">Laddar detaljer...</span>}
-              {error && <span className="stream-item__error">Kunde inte hämta detaljer.</span>}
-              {details && <p className="stream-item__detail-text">{details}</p>}
-              <div className="stream-item__actions">
-                {event.url && (
-                  <a
-                    className="stream-item__link"
-                    href={`https://polisen.se${event.url}`}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    polisen.se
-                  </a>
-                )}
-                {gpsCoords && (
-                  <button type="button" className="stream-item__link" onClick={handleShowMap} title="Platsen visar vart anmälan vart upprättad">
-                    Visa på karta
-                  </button>
-                )}
-                {event.id !== null && (
-                  <button type="button" className="stream-item__link" onClick={handleShare}>
-                    {copied ? 'Kopierad!' : 'Dela'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="stream-item__region">
-          {event.location}
-        </div>
-      </article>
-    );
-  }
+  const rowClasses = [
+    'event-row',
+    expanded ? 'event-row--expanded' : '',
+    isHighlighted ? 'event-row--highlighted' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <article
-      className={cardClasses}
-      data-url={event.url}
-      data-event-id={event.id ?? undefined}
-    >
-      <div
-        className="event-node"
-        aria-hidden="true"
-        style={{ '--node-color': event.color } as React.CSSProperties}
-      >
-        <span className="event-node__icon" style={{ color: event.color }}>
+    <article className={rowClasses} data-event-id={event.id ?? undefined}>
+      <button type="button" className="event-summary-btn" onClick={toggle} aria-expanded={expanded}>
+        <span className="event-icon">
           <TypeIcon name={event.iconKey} size={20} />
         </span>
-      </div>
-      <div
-        className="event-card-header"
-        tabIndex={0}
-        role="button"
-        aria-expanded={expanded}
-        aria-label={`Expandera händelse: ${event.type} i ${event.location}`}
-        onClick={toggleAccordion}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleAccordion();
-          }
-        }}
-      >
-        <div className="event-header-content">
-          <div className="event-meta-row">
-            <span className="event-relative">{event.date.time}</span>
-            <span className="meta-separator">•</span>
-            <span className="event-datetime">
-              {event.date.day} {event.date.month}
-            </span>
-            {event.url && (
-              <>
-                <span className="meta-separator">•</span>
-                <a
-                  className="event-source"
-                  href={`https://polisen.se${event.url}`}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Källa
-                </a>
-              </>
-            )}
+
+        <span className="event-main">
+          <span className="event-head">
+            <span className="event-type">{event.type}</span>
+            <span className="event-location">{event.location}</span>
             {event.wasUpdated && event.updated && (
-              <span className="updated-indicator" title={`Uppdaterad ${event.updated}`}>
+              <span className="event-updated" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
               </span>
             )}
-          </div>
-          <div className="event-title-group">
-            <a
-              href={`/?type=${encodeURIComponent(event.type)}&view=${currentView}`}
-              className={`event-type ${typeClass}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {event.type}
-            </a>
-            <span className="event-location-link">
-              {event.location}
+            <span className="event-time" title={`${event.date.day} ${event.date.month} ${event.date.time}`}>
+              {relativeTime}
             </span>
-          </div>
-          <p className="event-summary">{event.summary}</p>
-          <div className="event-header-actions">
-            <button
-              type="button"
-              className={`expand-details-btn${loading ? ' loading' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleAccordion();
-              }}
-            >
-              {loading && <span className="spinner-small" />}
-              {expanded ? 'Dölj' : 'Läs mer'}
-            </button>
+          </span>
+          <span className="event-text">{event.summary}</span>
+        </span>
+
+        <span className="event-chevron" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="event-detail">
+          {loading && <span className="event-detail-status">Laddar detaljer…</span>}
+          {error && (
+            <span className="event-detail-status event-detail-status--error">
+              Kunde inte hämta detaljer. Öppna polisen.se för att läsa mer.
+            </span>
+          )}
+          {details && <p>{details}</p>}
+
+          <div className="event-actions">
+            {event.url && (
+              <a
+                className="event-action"
+                href={`https://polisen.se${event.url}`}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+              >
+                polisen.se
+              </a>
+            )}
             {gpsCoords && (
               <button
                 type="button"
-                className="show-map-link"
-                data-lat={gpsCoords.lat}
-                data-lng={gpsCoords.lng}
-                data-location={event.location}
+                className="event-action"
                 onClick={handleShowMap}
-                title="Platsen visar vart anmälan vart upprättad"
+                title="Platsen visar var anmälan upprättades"
               >
                 Visa på karta
               </button>
@@ -333,7 +176,7 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
             {event.id !== null && (
               <button
                 type="button"
-                className={`share-event-btn${copied ? ' copied' : ''}`}
+                className={`event-action${copied ? ' event-action--done' : ''}`}
                 onClick={handleShare}
                 title="Kopiera länk till händelse"
               >
@@ -342,19 +185,7 @@ export default function EventCard({ event, currentView, onShowMap, isHighlighted
             )}
           </div>
         </div>
-        <span className="event-card-chevron" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </span>
-      </div>
-      <div className="event-card-body">
-        <div className={`event-details${expanded ? ' visible' : ''}${loading ? ' loading' : ''}${error ? ' error' : ''}`}>
-          {loading && 'Laddar detaljer...'}
-          {error && 'Kunde inte hämta detaljer. Klicka på polisen.se-länken för att läsa mer.'}
-          {details && details}
-        </div>
-      </div>
+      )}
     </article>
   );
 }

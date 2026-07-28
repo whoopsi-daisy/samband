@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, Suspense, useMemo, useEffect } from 'react';
+import { useState, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from './Header';
+import BottomNav from './BottomNav';
 import Filters from './Filters';
 import EventList from './EventList';
 import EventMap from './EventMap';
@@ -14,10 +15,6 @@ import ErrorBoundary from './ErrorBoundary';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { FormattedEvent, Statistics } from '@/types';
-
-export type Density = 'comfortable' | 'compact' | 'stream';
-export type Theme = 'system' | 'light' | 'dark' | 'radar';
-
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
@@ -47,76 +44,13 @@ function ClientAppContent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentView, setCurrentView] = useState(initialView);
-  const [density, setDensity] = useState<Density>('comfortable');
-  const [theme, setTheme] = useState<Theme>('system');
-  const [expandSummaries, setExpandSummaries] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [mapModal, setMapModal] = useState<{
     isOpen: boolean;
     lat: number;
     lng: number;
     location: string;
-  }>({
-    isOpen: false,
-    lat: 0,
-    lng: 0,
-    location: '',
-  });
-
-  // Load preferences from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('density');
-      if (saved === 'comfortable' || saved === 'compact' || saved === 'stream') {
-        setDensity(saved);
-      }
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'radar') {
-        setTheme(savedTheme);
-        document.documentElement.setAttribute('data-theme', savedTheme);
-      }
-      // 'system' (and the legacy 'default') leave no attribute, so the
-      // prefers-color-scheme media query drives the palette.
-      const savedExpand = localStorage.getItem('expandSummaries');
-      if (savedExpand === 'true') {
-        setExpandSummaries(true);
-      }
-    } catch {
-      // localStorage unavailable
-    }
-  }, []);
-
-  const handleDensityChange = useCallback((d: Density) => {
-    setDensity(d);
-    try {
-      localStorage.setItem('density', d);
-    } catch {
-      // localStorage unavailable
-    }
-  }, []);
-
-  const handleThemeChange = useCallback((t: Theme) => {
-    setTheme(t);
-    if (t === 'system') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme', t);
-    }
-    try {
-      localStorage.setItem('theme', t);
-    } catch {
-      // localStorage unavailable
-    }
-  }, []);
-
-  const handleExpandSummariesChange = useCallback((expand: boolean) => {
-    setExpandSummaries(expand);
-    try {
-      localStorage.setItem('expandSummaries', String(expand));
-    } catch {
-      // localStorage unavailable
-    }
-  }, []);
+  }>({ isOpen: false, lat: 0, lng: 0, location: '' });
 
   const handleViewChange = useCallback(
     (view: string) => {
@@ -136,60 +70,58 @@ function ClientAppContent({
     setMapModal((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
-  const handleTypeClick = useCallback(
-    (type: string) => {
+  const handleFacetClick = useCallback(
+    (key: 'type' | 'location', value: string) => {
       setCurrentView('list');
       const params = new URLSearchParams(searchParams.toString());
       params.set('view', 'list');
-      params.set('type', type);
+      params.set(key, value);
       router.push(`/?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
+  );
+
+  const handleTypeClick = useCallback(
+    (type: string) => handleFacetClick('type', type),
+    [handleFacetClick]
   );
 
   const handleLocationClick = useCallback(
-    (location: string) => {
-      setCurrentView('list');
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('view', 'list');
-      params.set('location', location);
-      router.push(`/?${params.toString()}`, { scroll: false });
-    },
-    [router, searchParams]
+    (location: string) => handleFacetClick('location', location),
+    [handleFacetClick]
   );
 
-  // Navigate to home: reset view to list and clear all filters
+  // Navigate home: reset view to list and clear all filters
   const handleLogoClick = useCallback(() => {
     setCurrentView('list');
     router.push('/', { scroll: false });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [router]);
 
-  // Focus search input
   const focusSearch = useCallback(() => {
-    const searchInput = document.querySelector('.search-input') as HTMLInputElement;
+    const searchInput = document.querySelector('.search-input') as HTMLInputElement | null;
     if (searchInput) {
       searchInput.focus();
       searchInput.select();
     }
   }, []);
 
-  // Scroll to top
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Keyboard shortcuts handlers - memoized to prevent re-renders
-  const shortcutHandlers = useMemo(() => ({
-    onSearch: focusSearch,
-    onEscape: handleCloseMapModal,
-    onListView: () => handleViewChange('list'),
-    onMapView: () => handleViewChange('map'),
-    onStatsView: () => handleViewChange('stats'),
-    onScrollTop: scrollToTop,
-  }), [focusSearch, handleCloseMapModal, handleViewChange, scrollToTop]);
+  const shortcutHandlers = useMemo(
+    () => ({
+      onSearch: focusSearch,
+      onEscape: handleCloseMapModal,
+      onListView: () => handleViewChange('list'),
+      onMapView: () => handleViewChange('map'),
+      onStatsView: () => handleViewChange('stats'),
+      onScrollTop: scrollToTop,
+    }),
+    [focusSearch, handleCloseMapModal, handleViewChange, scrollToTop]
+  );
 
-  // Register keyboard shortcuts
   useKeyboardShortcuts(shortcutHandlers);
 
   // Map data loads on demand the first time the map view is opened.
@@ -197,53 +129,35 @@ function ClientAppContent({
 
   return (
     <>
-      <div className={`container view-${currentView} density-${density}${expandSummaries ? ' summaries-expanded' : ''}`}>
-        <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} density={density} onDensityChange={handleDensityChange} theme={theme} onThemeChange={handleThemeChange} expandSummaries={expandSummaries} onExpandSummariesChange={handleExpandSummariesChange} showDensitySettings={currentView === 'list'} />
+      <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
-        {currentView !== 'map' && currentView !== 'stats' && (
-          <Filters
-            locations={locations}
-            types={types}
-            currentView={currentView}
-            filters={filters}
-          />
+      <main id="main-content" tabIndex={-1}>
+        {currentView === 'list' && (
+          <>
+            <Filters locations={locations} types={types} currentView={currentView} filters={filters} />
+            <EventList
+              initialEvents={initialEvents}
+              initialHasMore={hasMore}
+              filters={filters}
+              currentView={currentView}
+              onShowMap={handleShowMap}
+              highlightedEventId={highlightedEventId}
+              onLastCheckedChange={setLastChecked}
+            />
+          </>
         )}
 
-        <main className="main-content">
-          <div className="content-area">
-            {currentView === 'list' && (
-              <EventList
-                initialEvents={initialEvents}
-                initialHasMore={hasMore}
-                filters={filters}
-                currentView={currentView}
-                onShowMap={handleShowMap}
-                highlightedEventId={highlightedEventId}
-                onLastCheckedChange={setLastChecked}
-                expandSummaries={expandSummaries}
-                density={density}
-              />
-            )}
+        {/* Kept mounted across view switches so the Leaflet instance and its
+            loaded tiles survive a trip to the list and back. */}
+        <EventMap events={map.events} isActive={currentView === 'map'} loading={map.loading} error={map.error} />
 
-            <EventMap
-              events={map.events}
-              isActive={currentView === 'map'}
-              loading={map.loading}
-              error={map.error}
-            />
-          </div>
+        {currentView === 'stats' && (
+          <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />
+        )}
+      </main>
 
-          <StatsView
-              stats={stats}
-              isActive={currentView === 'stats'}
-              onTypeClick={handleTypeClick}
-              onLocationClick={handleLocationClick}
-            />
-        </main>
-
-        <Footer lastChecked={lastChecked} />
-      </div>
-
+      <Footer lastChecked={lastChecked} />
+      <BottomNav currentView={currentView} onViewChange={handleViewChange} />
       <ScrollToTop />
 
       <MapModal
@@ -260,7 +174,15 @@ function ClientAppContent({
 export default function ClientApp(props: ClientAppProps) {
   return (
     <ErrorBoundary>
-      <Suspense fallback={<div className="container"><div className="spinner" /></div>}>
+      <Suspense
+        fallback={
+          <main id="main-content">
+            <div className="loading-center">
+              <div className="spinner" />
+            </div>
+          </main>
+        }
+      >
         <ClientAppContent {...props} />
       </Suspense>
     </ErrorBoundary>
