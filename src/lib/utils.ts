@@ -1,5 +1,27 @@
 import { EventWithMetadata, FormattedEvent, getTypeStyle } from '@/types';
 
+// Which Swedish calendar day an instant falls on, as "YYYY-MM-DD".
+//
+// Fixed to Europe/Stockholm rather than the runtime's own zone. These are
+// Swedish police incidents, dated in Swedish local time everywhere else in the
+// app — and the day grouping this feeds renders on the server as well as in
+// the browser, so leaving it to the runtime would give a reader outside Sweden
+// different day headings than the server produced. React reports that as a
+// hydration mismatch and throws the server-rendered feed away. Any feed that
+// spans midnight hits it, which an imported archive always does.
+//
+// sv-SE already formats dates in exactly this shape.
+const swedishDayFormat = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Stockholm',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+export function swedishDayKey(date: Date): string {
+  return swedishDayFormat.format(date);
+}
+
 export function formatRelativeTime(date: Date, now: Date): string {
   const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 

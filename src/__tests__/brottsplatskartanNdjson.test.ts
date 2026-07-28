@@ -132,7 +132,10 @@ describe('importNdjson', () => {
       id: 506862,
       pubdate: '2026-07-27T19:57:53.000Z',
       pubdate_unix: 1785182273,
-      title_type: 'Misshandel,  grov',
+      // The dump has "Misshandel,  grov" with a doubled space; the app groups
+      // and filters by type across both sources, so it is stored the way
+      // polisen.se spells it.
+      title_type: 'Misshandel, grov',
       title_location: 'Hörby',
       headline: 'Flicka i 15-årsåldern grips misstänkt för grov misshandel.',
       location_string: 'Hörby, Skåne län',

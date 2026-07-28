@@ -147,6 +147,12 @@ docker compose up -d
 
 The database lives in the bind-mounted `./data`, so pulls and restarts never
 touch it. Schema migrations run automatically at startup and log what they did.
+
+The first start after upgrading into a release that changes the schema can take
+a little longer than usual — on a database with an imported archive, migration
+3 builds two indexes over every imported row and normalises event types. It
+logs a line when it is done, and only runs once.
+
 Take a snapshot first if the release notes mention a migration:
 
 ```bash

@@ -1468,6 +1468,22 @@ main {
   color: var(--muted);
 }
 
+/* What the tiles above are computed over: live feed, imported archive, or
+   both. Without it, a database holding years of history reads the same as one
+   holding a week. Sits with the meta text, not the numbers. */
+.stats-coverage {
+  margin: calc(var(--space-6) * -1) 0 var(--space-6);
+  padding-top: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+}
+
+.stats-coverage strong {
+  color: var(--fg-secondary);
+  font-weight: var(--weight-semi);
+}
+
 /* Status-carrying tiles get a left rail rather than a coloured fill, so the
    number itself stays legible. */
 .stat--ok { box-shadow: var(--shadow-sm), inset var(--rail) 0 0 var(--ok); }

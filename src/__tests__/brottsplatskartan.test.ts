@@ -126,10 +126,21 @@ describe('schema', () => {
     // ...and a brottsplatskartan import that also contains id 3.
     await bpk.importBrottsplatskartan({ mode: 'full' });
 
-    const polisen = db.getEventsFromDb({}, 10, 0);
+    // The feed serves both sources, so id 3 now exists on each side of it.
+    // The polisen row must survive intact, and nothing may share its id.
+    const feed = db.getEventsFromDb({}, 10, 0);
+
+    const polisen = feed.filter((event) => event.id > 0);
     expect(polisen).toHaveLength(1);
     expect(polisen[0].name).toBe('Polisen event 3');
+    expect(polisen[0].id).toBe(3);
 
+    // Archive rows are projected with negative ids for exactly this reason.
+    const archived = feed.filter((event) => event.id < 0);
+    expect(archived).toHaveLength(5);
+    expect(archived.some((event) => event.id === -3)).toBe(true);
+
+    expect(new Set(feed.map((event) => event.id)).size).toBe(feed.length);
     expect(bpkDb.countBpkEvents()).toBe(5);
   });
 });

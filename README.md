@@ -17,7 +17,7 @@ single container with a bind-mounted data directory.
 | **polisen.se feed** | The live source. Refreshes every 10 minutes, backfills ~a week on a fresh database, renders the list/map/statistics views |
 | **Deployment** | One path: pull the image from GHCR and run `docker compose up -d`. Building from source is an override file, for development |
 | **Brottsplatskartan archive** | Opt-in importer for ~333k historic events (2016→). Loads an NDJSON dump in under a minute, or walks the API over a few hours. Live progress on `/stats` |
-| **Archive in the UI** | Not surfaced yet. Imported events live in their own `bpk_events` table; the views still read only polisen.se data |
+| **Archive in the UI** | Part of the dataset. Feed, map, search, filters and statistics read the imported events alongside the live feed; the live feed wins for the period it covers, the archive supplies everything before it |
 
 ## Quick start
 
@@ -90,8 +90,14 @@ docker compose logs -f
 ```
 
 Without a dump, the importer can walk the API instead (a few hours, ~670
-requests, resumable). Full guide, HTTP reference and the mapping of dump fields
-to columns: **[docs/import.md](docs/import.md)**.
+requests, resumable).
+
+Imported events are part of the dataset as soon as the import finishes: the
+statistics cover them, and search reaches back through every period they hold.
+Where the two sources overlap, the live feed wins for the period it covers and
+the archive supplies everything before it, so nothing is counted twice — the
+statistics view names that boundary. Full guide, HTTP reference and the mapping
+of dump fields to columns: **[docs/import.md](docs/import.md)**.
 
 ## Development
 
@@ -99,7 +105,7 @@ to columns: **[docs/import.md](docs/import.md)**.
 npm install
 npm run dev            # http://localhost:3000
 npm run lint
-npm test               # 164 tests
+npm test               # 179 tests
 npx tsc --noEmit
 npm run build          # production build
 ```

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import EventCard from './EventCard';
 import { FormattedEvent } from '@/types';
+import { swedishDayKey } from '@/lib/utils';
 
 // Auto-refresh interval: 10 minutes (matches server-side fetch interval)
 const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000;
@@ -177,33 +178,35 @@ export default function EventList({
     }
   }, [loading, hasMore, page, filters]);
 
-  // Group incidents into local calendar days
+  // Group incidents into Swedish calendar days
   const dayGroups = useMemo(() => {
     const weekdays = ['Söndag', 'Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag'];
     const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
-    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const today = startOfDay(new Date());
 
-    // The key must be the *local* calendar day. Slicing the UTC ISO string
-    // instead put 00:00–02:00 local events in the previous day's bucket while
-    // the label still said today, splitting one day into two groups.
-    const dayKey = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // Grouped on the Swedish calendar day, not the reader's — see
+    // swedishDayKey for why that distinction is load-bearing here.
+    const dayKey = swedishDayKey;
 
-    const label = (d: Date) => {
-      const diffDays = Math.round((today - startOfDay(d)) / 86400000);
+    // "2026-07-28" -> the calendar day as a number of days, for Idag/Igår.
+    const dayNumber = (key: string) => Date.parse(`${key}T12:00:00Z`) / 86400000;
+    const today = dayKey(new Date());
+
+    const label = (key: string) => {
+      const diffDays = Math.round(dayNumber(today) - dayNumber(key));
       if (diffDays === 0) return 'Idag';
       if (diffDays === 1) return 'Igår';
-      return `${weekdays[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+      // Noon UTC, so the weekday cannot be pushed across a boundary by an
+      // offset or by DST.
+      const at = new Date(`${key}T12:00:00Z`);
+      return `${weekdays[at.getUTCDay()]} ${at.getUTCDate()} ${months[at.getUTCMonth()]}`;
     };
 
     const groups: { key: string; label: string; events: FormattedEvent[] }[] = [];
     let current: { key: string; label: string; events: FormattedEvent[] } | null = null;
     for (const ev of events) {
-      const d = new Date(ev.date.iso || ev.datetime);
-      const key = dayKey(d);
+      const key = dayKey(new Date(ev.date.iso || ev.datetime));
       if (!current || current.key !== key) {
-        current = { key, label: label(d), events: [] };
+        current = { key, label: label(key), events: [] };
         groups.push(current);
       }
       current.events.push(ev);

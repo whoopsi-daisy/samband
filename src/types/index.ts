@@ -76,6 +76,12 @@ export interface Statistics {
   updatedPercent: number;
   uniqueLocations: number;
   uniqueTypes: number;
+  /** Oldest event in the dataset, live feed and archive together. */
+  oldestEvent: string | null;
+  /** Imported events the app counts — those older than the live feed reaches. */
+  archiveEvents: number;
+  /** Where the archive hands over to the live feed. Null when nothing is imported. */
+  archiveCutoff: string | null;
 }
 
 // Type style mapping

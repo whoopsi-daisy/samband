@@ -7,7 +7,7 @@
 // import means the Edge bundle never reaches it.
 
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
-import { pruneFetchLog } from '@/lib/db';
+import { pruneFetchLog, warmAggregateCaches } from '@/lib/db';
 import { getBpkImportState } from '@/lib/brottsplatskartanDb';
 import { reconcileImportState, startImport } from '@/lib/brottsplatskartanRunner';
 
@@ -27,6 +27,9 @@ function startRefreshScheduler(): void {
     try {
       await refreshEventsIfNeeded();
       pruneFetchLog(FETCH_LOG_RETENTION_DAYS);
+      // The refresh drops the cached aggregates. Rebuild them here rather than
+      // leaving the next visitor to wait out a scan of the whole archive.
+      warmAggregateCaches();
     } catch (error) {
       console.error('[scheduler] refresh tick failed:', error);
     }

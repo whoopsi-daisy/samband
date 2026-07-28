@@ -34,6 +34,19 @@ function writeDump(name: string, count: number): string {
   return file;
 }
 
+// Lines carrying only what the mapper needs. The tests below are about the
+// runner's mechanics — progress, cancellation, refusal — not about field
+// mapping, and a dump of real-shaped events is ~2 KB a line, which turns a
+// 20,000-row run into 44 MB of file I/O inside a 5-second timeout.
+function writeMinimalDump(name: string, count: number): string {
+  const lines = Array.from({ length: count }, (_, i) =>
+    JSON.stringify({ id: 500_000 - i, pubdate_unix: String(1_785_171_476 - i * 60) })
+  );
+  const file = path.join(tempDir, name);
+  fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
+  return file;
+}
+
 async function settle(): Promise<void> {
   // Let the background promise chain in the runner finish.
   while (runner.isImportRunning()) {
@@ -71,7 +84,7 @@ describe('startImport (ndjson)', () => {
   });
 
   it('publishes live progress to subscribers while it runs', async () => {
-    writeDump('dump.ndjson', 4000);
+    writeMinimalDump('dump.ndjson', 20_000);
 
     const seen: Array<{ imported: number; percent: number | null; source: string | null }> = [];
     const unsubscribe = runner.subscribe((snapshot) => {
@@ -104,7 +117,7 @@ describe('startImport (ndjson)', () => {
   });
 
   it('refuses a second import while one is running', async () => {
-    writeDump('dump.ndjson', 2000);
+    writeMinimalDump('dump.ndjson', 20_000);
 
     runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
     const second = runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
@@ -156,19 +169,29 @@ describe('startImport (ndjson)', () => {
 
 describe('cancelImport', () => {
   it('stops a running dump and keeps what it already stored', async () => {
-    writeDump('dump.ndjson', 20_000);
+    writeMinimalDump('dump.ndjson', 20_000);
+
+    // Cancel from inside the progress stream rather than after a delay: this
+    // fires while the run is demonstrably mid-file, whatever the machine's
+    // speed, so the assertions below are about cancellation and not timing.
+    let cancelled: boolean | null = null;
+    const unsubscribe = runner.subscribe((snapshot) => {
+      if (cancelled === null && snapshot.progress && snapshot.progress.imported > 0) {
+        cancelled = runner.cancelImport();
+      }
+    });
 
     runner.startImport({ mode: 'ndjson', source: 'dump.ndjson' });
-    // Give it a moment to get going, then pull the plug.
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const cancelled = runner.cancelImport();
-    expect(cancelled).toBe(true);
-
     await settle();
+    unsubscribe();
+
+    expect(cancelled).toBe(true);
 
     const state = bpkDb.getBpkImportState();
     expect(state.status).toBe('cancelled');
-    expect(bpkDb.countBpkEvents()).toBeLessThan(20_000);
+    const stored = bpkDb.countBpkEvents();
+    expect(stored).toBeGreaterThan(0);
+    expect(stored).toBeLessThan(20_000);
     expect(runner.cancelImport()).toBe(false);
   });
 });

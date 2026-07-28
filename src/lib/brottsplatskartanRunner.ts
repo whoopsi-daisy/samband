@@ -1,6 +1,7 @@
 import { importBrottsplatskartan, type ImportResult } from './brottsplatskartan';
 import { importNdjson, type NdjsonImportResult } from './brottsplatskartanNdjson';
 import { getBpkImportState, updateBpkImportState } from './brottsplatskartanDb';
+import { invalidateAggregateCaches, warmAggregateCaches } from './db';
 import { resolveImportSource } from './importSource';
 import type { BpkImportMode, BpkImportState } from '@/types';
 
@@ -334,6 +335,15 @@ function begin(handle: RunHandle): void {
       }
     })
     .finally(() => {
+      // The feed, the filters and the statistics read the imported events, and
+      // all three are served from cached aggregates. Drop those now so the app
+      // reflects the import immediately rather than up to a minute later —
+      // including a run that was cancelled or failed partway, which still
+      // stored everything it got through. Rebuilding them here means the first
+      // page view after an import is not the one that pays for it.
+      invalidateAggregateCaches();
+      warmAggregateCaches();
+
       if (current === handle) {
         current = null;
         progress = null;
