@@ -533,6 +533,25 @@ select.field {
   50% { opacity: 0.35; }
 }
 
+/* A short message in the flow of the page — a failed fetch, a dead link.
+   Quieter than .empty, which takes over a whole view. */
+.notice {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.notice--alert {
+  border-color: color-mix(in srgb, var(--alert) 30%, transparent);
+  background: color-mix(in srgb, var(--alert) 8%, transparent);
+  color: var(--fg);
+}
+
 /* Empty / error state. */
 .empty {
   display: flex;
@@ -860,34 +879,6 @@ main {
 
 .filter-row .field:hover { background-color: var(--surface-hover); }
 
-.custom-location {
-  display: flex;
-  flex: 1 1 100%;
-  min-width: 0;
-  gap: var(--space-1);
-}
-
-.custom-location .field { flex: 1; min-width: 0; }
-
-.custom-location-cancel {
-  flex-shrink: 0;
-  width: var(--control-xl);
-  height: var(--control-xl);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  color: var(--muted);
-  font-size: var(--text-lg);
-  line-height: 1;
-  cursor: pointer;
-  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
-}
-
-.custom-location-cancel:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-
 .active-filters {
   display: flex;
   flex-wrap: wrap;
@@ -1007,6 +998,22 @@ main {
   font-size: var(--text-2xs);
   font-weight: var(--weight-semi);
   color: var(--muted);
+}
+
+/* A ?event= link whose event is older than the first page: shown on its own
+   above the feed rather than silently dropping the reader on the front page. */
+.linked-event {
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.linked-event-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 /* One container per day, rows divided by hairlines: a list of solid rows,
@@ -1158,8 +1165,6 @@ main {
   color: var(--muted);
 }
 
-.event-detail-status--error { color: var(--alert); }
-
 .event-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1219,6 +1224,8 @@ main {
   margin-top: var(--space-6);
 }
 
+.load-more .notice { align-self: stretch; text-align: center; }
+
 .all-loaded-message {
   font-size: var(--text-xs);
   color: var(--muted);
@@ -1238,6 +1245,14 @@ main {
   height: min(68vh, 600px);
   width: 100%;
   background: var(--subtle);
+}
+
+/* A phone held sideways used to get *less* map than upright: the mobile rule
+   below is keyed on width, so landscape fell through to the desktop 68vh of a
+   very short viewport. Short-and-wide gets the room instead. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .map-canvas { height: 82vh; }
+  .view-header { display: none; }
 }
 
 .map-overlay {
@@ -1356,12 +1371,14 @@ main {
   color: var(--fg-secondary);
 }
 
+/* The ring is load-bearing, not decoration: the palette runs to a pale yellow
+   that would otherwise vanish against the light theme's background. */
 .map-legend-dot {
   width: 10px;
   height: 10px;
   flex-shrink: 0;
   border-radius: var(--radius-full);
-  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
 .map-legend-count { color: var(--muted); }
@@ -1542,9 +1559,22 @@ main {
 }
 
 .modal-body {
+  position: relative;
   flex: 1;
   min-height: 260px;
   background: var(--subtle);
+}
+
+.modal-map { position: absolute; inset: 0; }
+
+.modal-map-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-ui);
+  color: var(--muted);
 }
 
 .modal-footer {
@@ -1557,10 +1587,7 @@ main {
   color: var(--muted);
 }
 
-.modal-coords {
-  font-family: var(--font-mono);
-  margin-right: auto;
-}
+.modal-note { margin-right: auto; }
 
 .modal-footer a { color: var(--accent); text-decoration: none; }
 .modal-footer a:hover { text-decoration: underline; }

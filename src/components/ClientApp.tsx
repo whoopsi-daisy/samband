@@ -31,6 +31,10 @@ interface ClientAppProps {
   };
   initialView: string;
   highlightedEventId: number | null;
+  /** A ?event= link whose event is not in the first page. */
+  linkedEvent: FormattedEvent | null;
+  /** A ?event= link whose event no longer exists. */
+  linkedEventMissing: boolean;
 }
 
 /**
@@ -63,6 +67,8 @@ function ClientAppContent({
   filters,
   initialView,
   highlightedEventId,
+  linkedEvent,
+  linkedEventMissing,
 }: ClientAppProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -184,6 +190,8 @@ function ClientAppContent({
             currentView={currentView}
             onShowMap={handleShowMap}
             highlightedEventId={highlightedEventId}
+            linkedEvent={linkedEvent}
+            linkedEventMissing={linkedEventMissing}
             onLastCheckedChange={setLastChecked}
             onClearFilters={clearFilters}
           />
@@ -191,7 +199,13 @@ function ClientAppContent({
 
         {/* Kept mounted across view switches so the Leaflet instance and its
             loaded tiles survive a trip to the list and back. */}
-        <EventMap events={map.events} isActive={currentView === 'map'} loading={map.loading} error={map.error} />
+        <EventMap
+          events={map.events}
+          isActive={currentView === 'map'}
+          loading={map.loading}
+          error={map.error}
+          onRetry={map.retry}
+        />
 
         {currentView === 'stats' && (
           <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />

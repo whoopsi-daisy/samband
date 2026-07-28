@@ -12,6 +12,8 @@ interface EventMapProps {
   loading?: boolean;
   /** That fetch failed. */
   error?: boolean;
+  /** Retry the fetch. */
+  onRetry?: () => void;
 }
 
 type TimeRange = '24h' | '48h' | '72h';
@@ -115,7 +117,7 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function EventMapInner({ events, isActive, loading = false, error = false }: EventMapProps) {
+function EventMapInner({ events, isActive, loading = false, error = false, onRetry }: EventMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersLayerRef = useRef<L.FeatureGroup | null>(null);
@@ -509,7 +511,7 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
       <div className="panel">
         <div className="map-canvas-wrap">
           {/* Map container first for immediate visibility */}
-          <div id="mapContainer" className="map-canvas" ref={mapContainerRef} />
+          <div className="map-canvas" ref={mapContainerRef} />
 
           {loading && (
             <div className="map-overlay" role="status" aria-live="polite">
@@ -520,8 +522,10 @@ function EventMapInner({ events, isActive, loading = false, error = false }: Eve
 
           {error && !loading && (
             <div className="map-overlay" role="alert">
-              <span>Kunde inte ladda kartan.</span>
-              <button type="button" className="btn-quiet" onClick={() => window.location.reload()}>
+              <span>Kunde inte hämta händelserna till kartan.</span>
+              {/* Refetch, rather than reloading the whole page and losing the
+                  reader's filters, scroll position and open rows. */}
+              <button type="button" className="btn-quiet" onClick={onRetry}>
                 Försök igen
               </button>
             </div>

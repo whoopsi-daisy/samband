@@ -40,13 +40,14 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
         <main id="main-content">
           <div className="empty">
             <p className="empty-title">Något gick fel</p>
-            <p className="empty-text">Ett oväntat fel uppstod. Försök ladda om sidan.</p>
+            <p className="empty-text">
+              Sidan kunde inte visas. Försök igen — händelserna finns kvar.
+            </p>
+            {/* One action. "Försök igen" and "Ladda om sidan" sat side by side
+                and were the same thing to anyone reading them. */}
             <div className="empty-actions">
               <button onClick={this.handleRetry} className="btn">
                 Försök igen
-              </button>
-              <button onClick={() => window.location.reload()} className="btn-quiet">
-                Ladda om sidan
               </button>
             </div>
           </div>
