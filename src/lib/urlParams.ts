@@ -29,17 +29,20 @@ const LEGACY_QUERY: Record<QueryKey, string> = {
   event: 'event',
 };
 
-export type ViewId = 'list' | 'map' | 'stats';
+export type ViewId = 'list' | 'map' | 'vma' | 'stats';
 
 const VIEW_SLUG: Record<ViewId, string> = {
   list: 'lista',
   map: 'karta',
+  // Already an initialism in Swedish; there is nothing to translate.
+  vma: 'vma',
   stats: 'statistik',
 };
 
 const VIEW_BY_SLUG: Record<string, ViewId> = {
   lista: 'list',
   karta: 'map',
+  vma: 'vma',
   statistik: 'stats',
   // The English slugs stay readable, for links shared before the rename.
   list: 'list',

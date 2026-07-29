@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 
 /**
- * The three top-level views, shared by the desktop header nav and the mobile
+ * The four top-level views, shared by the desktop header nav and the mobile
  * bottom nav so the two can never drift apart. Views are client state driven by
- * the `view` query param, not routes, so these are buttons rather than links.
+ * the `vy` query param, not routes, so these are buttons rather than links.
  */
 
 function ListIcon({ size }: { size: number }) {
@@ -32,8 +32,20 @@ function StatsIcon({ size }: { size: number }) {
   );
 }
 
+function VmaIcon({ size }: { size: number }) {
+  // A warning triangle, which is what a VMA is, and the only icon here that
+  // needs to read as an alarm rather than as a place to browse.
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M10.3 3.2 1.8 17.5a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
 export const VIEWS: { id: string; label: string; icon: (size: number) => ReactNode }[] = [
   { id: 'list', label: 'Lista', icon: (s) => <ListIcon size={s} /> },
   { id: 'map', label: 'Karta', icon: (s) => <MapIcon size={s} /> },
+  { id: 'vma', label: 'VMA', icon: (s) => <VmaIcon size={s} /> },
   { id: 'stats', label: 'Statistik', icon: (s) => <StatsIcon size={s} /> },
 ];

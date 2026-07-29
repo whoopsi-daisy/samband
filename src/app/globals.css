@@ -133,6 +133,14 @@
   --ok: #18713b;
   --warn: #935110;
   --alert: #b33528;
+
+  /* The VMA ribbon's fill. Deliberately NOT --alert and deliberately not
+     overridden in the dark block: --alert is tuned to be readable *as text* on
+     each theme's page, and the dark variant is a light red that only carries
+     3.1:1 behind white. This is a fixed fill that holds 6.1:1 with white in
+     both themes, which is also the right instinct for a warning: it should not
+     dim when the lights go out. */
+  --vma-ribbon-bg: #b33528;
 }
 
 [data-theme="dark"] {
@@ -1060,6 +1068,240 @@ main {
 }
 
 .clear-all:hover { color: var(--fg); }
+
+/* ── VMA ──────────────────────────────────────────────────────
+   Viktigt meddelande till allmänheten: the warning broadcast when there is
+   immediate danger to life or health. The one thing on this site allowed to
+   interrupt, so it is the loudest surface here, and nothing else borrows its
+   colour.
+*/
+
+.vma-ribbon {
+  position: relative;
+  z-index: 120; /* over the sticky header, which it sits above */
+  background: var(--vma-ribbon-bg);
+  color: #ffffff;
+  /* Not --alert: that token is tuned to be readable *as text* on each theme's
+     page, so its dark variant is a light red that carries only 3.1:1 behind
+     white. --vma-ribbon-bg is a fixed fill at 6.1:1 with white, identical in
+     both themes, because a warning that dims with the lights is the wrong
+     instinct. */
+}
+
+.vma-ribbon-inner {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: var(--space-2) var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.vma-ribbon-tag {
+  flex-shrink: 0;
+  padding: var(--space-px) var(--space-2);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+}
+
+.vma-ribbon-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: #ffffff;
+}
+
+.vma-ribbon-where {
+  display: block;
+  font-size: var(--text-2xs);
+  opacity: 0.85;
+}
+
+.vma-ribbon-open {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: #ffffff;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.vma-ribbon-open:hover { background: rgba(255, 255, 255, 0.16); }
+
+.vma-ribbon-open:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.vma-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.vma-card {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* A live warning is ringed and railed in the alert colour. An expired or
+   cancelled one is a plain card, because it is a record rather than a warning. */
+.vma-card--live {
+  border-color: color-mix(in srgb, var(--alert) 40%, transparent);
+  background: color-mix(in srgb, var(--alert) 6%, var(--surface));
+  box-shadow: var(--shadow-sm), inset var(--rail) 0 0 var(--alert);
+}
+
+/* The severity badge on the one live warning is solid, not a tint.
+   A tinted badge on an already-tinted card is emphasis that cancels itself out,
+   and it measured 4.37:1 in dark mode: under AA at this size, because the card's
+   own wash lifts the backdrop the badge was calculated against. Solid puts it at
+   6.1:1 in both themes and makes it the strongest badge on the page, which is
+   what a live VMA should be. */
+.vma-card--live .badge--alert {
+  background: var(--vma-ribbon-bg);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.vma-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.vma-card-time {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.vma-card-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+}
+
+.vma-card-areas {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--fg-secondary);
+}
+
+.vma-card-text {
+  margin-top: var(--space-3);
+  max-width: 72ch;
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+/* What to do. CAP keeps this separate from the description because it is the
+   part that matters first, and so does this. */
+.vma-card-instruction {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.vma-card-instruction p:last-child {
+  margin-top: var(--space-1);
+  max-width: 72ch;
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg);
+  text-wrap: pretty;
+}
+
+.vma-card-source {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.vma-card-source a { color: var(--accent); }
+
+/* No warning is the normal state, and the page has to look like an answer
+   rather than like something that failed to load. */
+.vma-clear {
+  padding: var(--space-6) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  /* Left-aligned, like every other block of prose here. Centring a paragraph
+     this long rags both edges and strands the last two words on their own
+     line. */
+}
+
+.vma-clear-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+}
+
+.vma-clear-text {
+  margin: var(--space-2) 0 0;
+  max-width: 60ch;
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Not the alert red: this is "we do not know", which is a different thing from
+   "there is a warning" and must not be mistaken for one at a glance. */
+.vma-clear--failed {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+}
+
+.vma-clear-actions { margin-top: var(--space-4); }
+
+.vma-past { margin-top: var(--space-8); }
+.vma-past .section-label { display: block; margin-bottom: var(--space-2); }
+
+.vma-footnote {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.vma-footnote a { color: var(--muted); }
+
+@media (max-width: 600px) {
+  .vma-ribbon-inner {
+    align-items: flex-start;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .vma-ribbon-open { width: 100%; text-align: center; }
+}
 
 /* ── Feed ─────────────────────────────────────────────────── */
 

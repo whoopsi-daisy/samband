@@ -452,6 +452,47 @@ export function getTypeStyle(type: string): TypeStyle {
   return TYPE_STYLES['default'];
 }
 
+/**
+ * A VMA: viktigt meddelande till allmänheten, from Sveriges Radio's API.
+ *
+ * Field names follow CAP, the Common Alerting Protocol the API speaks, so they
+ * can be checked against the specification rather than against our guesses.
+ */
+export type VmaSeverity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+
+export interface VmaAlert {
+  /** The CAP identifier of this message (SRCAP-...). Unique per message. */
+  id: string;
+  /**
+   * The announcement identifiers this message belongs to (SRVMA-...). Every
+   * message about one announcement shares these, which is how an Alert is tied
+   * to the Cancel that ends it.
+   */
+  incidents: string[];
+  /** When the message was issued. */
+  sent: string;
+  /** 'Actual' for a real one. SR sends 'Test' and 'Exercise' over the same feed. */
+  status: string;
+  /** 'Alert', 'Update' or 'Cancel'. Every announcement gets at least the two. */
+  msgType: string;
+  /** 'Public', 'Restricted' or 'Private'. Only Public is shown. */
+  scope: string;
+  /** The kind of emergency, in a word or two. */
+  event: string;
+  headline: string;
+  description: string;
+  /** What the public is being told to do. Often the most important field. */
+  instruction: string;
+  severity: VmaSeverity;
+  urgency: string;
+  certainty: string;
+  senderName: string;
+  /** The places it covers, as the sender described them. */
+  areas: string[];
+  web: string;
+  expires: string | null;
+}
+
 // Operational monitoring types
 export interface OperationalStats {
   totalFetches: number;
