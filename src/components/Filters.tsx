@@ -136,38 +136,39 @@ export default function Filters({ locations, types, currentView, filters }: Filt
       {/* Two selects and nothing else. There used to be an "Annan plats…"
           option that swapped this select for a second free-text box, sitting
           directly under a search field that already matches place names — two
-          unlabelled text inputs for one job. */}
-      <div className="filter-row">
-        <select
-          className="field"
-          name="location"
-          value={location}
-          onChange={(e) => handleLocationChange(e.target.value)}
-          aria-label="Välj plats"
-        >
-          <option value="">Alla platser</option>
-          {locationOptions.map((loc) => (
-            <option key={loc} value={loc}>
-              {loc}
-            </option>
-          ))}
-        </select>
+          unlabelled text inputs for one job.
+          They are direct children of .filters rather than sitting in a row of
+          their own: the three controls share one grid, which puts them beside
+          the search box on a wide screen instead of on a second line. */}
+      <select
+        className="field"
+        name="location"
+        value={location}
+        onChange={(e) => handleLocationChange(e.target.value)}
+        aria-label="Välj plats"
+      >
+        <option value="">Alla platser</option>
+        {locationOptions.map((loc) => (
+          <option key={loc} value={loc}>
+            {loc}
+          </option>
+        ))}
+      </select>
 
-        <select
-          className="field"
-          name="type"
-          value={type}
-          onChange={(e) => handleTypeChange(e.target.value)}
-          aria-label="Välj händelsetyp"
-        >
-          <option value="">Alla händelsetyper</option>
-          {types.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </div>
+      <select
+        className="field"
+        name="type"
+        value={type}
+        onChange={(e) => handleTypeChange(e.target.value)}
+        aria-label="Välj händelsetyp"
+      >
+        <option value="">Alla händelsetyper</option>
+        {types.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
 
       {hasActiveFilters && (
         <div className="active-filters" role="status" aria-live="polite">

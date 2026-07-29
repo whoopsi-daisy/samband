@@ -245,7 +245,9 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
               for imported events, from their stored body. Rendered as one <p>,
               those breaks would collapse. */}
           {detail.paragraphs.map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
+            <p className="event-detail-text" key={i}>
+              {paragraph}
+            </p>
           ))}
 
           <div className="event-actions">
