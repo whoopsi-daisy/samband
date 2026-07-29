@@ -119,6 +119,45 @@ export interface Statistics {
   archiveCutoff: string | null;
 }
 
+/**
+ * The kind of thing an incident is, one level up from its type.
+ *
+ * Colour used to be assigned per type, which produced two dozen shades for
+ * sixty-odd types: several of them a few percent apart and none of them
+ * separable on a map at country zoom. It is assigned per family now. That is
+ * also what makes the map legend truthful, since a legend keyed on colour can
+ * only name what colour actually distinguishes.
+ */
+export interface TypeFamily {
+  /** What the legend calls it. */
+  label: string;
+  /** Marker colour on the map, and the legend's key. */
+  color: string;
+}
+
+export const TYPE_FAMILIES = {
+  death: { label: 'Dödsfall och grovt våld', color: '#991b1b' },
+  sexual: { label: 'Sexualbrott och frihetsbrott', color: '#9f1239' },
+  weapons: { label: 'Vapen och sprängning', color: '#b91c1c' },
+  violence: { label: 'Våld och hot', color: '#f43f5e' },
+  harassment: { label: 'Ofredande och intrång', color: '#ec4899' },
+  fire: { label: 'Brand', color: '#ef4444' },
+  robbery: { label: 'Rån', color: '#f59e0b' },
+  theft: { label: 'Stöld och inbrott', color: '#c2410c' },
+  damage: { label: 'Skadegörelse', color: '#a16207' },
+  traffic: { label: 'Trafik', color: '#3b82f6' },
+  intoxication: { label: 'Rattfylleri och fylleri', color: '#0891b2' },
+  drugs: { label: 'Narkotika', color: '#10b981' },
+  fraud: { label: 'Bedrägeri och ekobrott', color: '#8b5cf6' },
+  environment: { label: 'Miljö och djur', color: '#65a30d' },
+  rescue: { label: 'Räddning och hälsa', color: '#14b8a6' },
+  police: { label: 'Polisinsats', color: '#6366f1' },
+  other: { label: 'Övrigt och sammanfattningar', color: '#64748b' },
+  unknown: { label: 'Okänd typ', color: '#94a3b8' },
+} as const satisfies Record<string, TypeFamily>;
+
+export type TypeFamilyKey = keyof typeof TYPE_FAMILIES;
+
 // Type style mapping
 export interface TypeStyle {
   /**
@@ -128,7 +167,9 @@ export interface TypeStyle {
    * its own word asks nothing.
    */
   emoji: string;
-  /** Marker colour on the map, and the map legend's key. */
+  /** Which family it belongs to, and so which colour it takes. */
+  family: TypeFamilyKey;
+  /** The family's colour. Derived, never written by hand. */
   color: string;
 }
 
@@ -156,117 +197,128 @@ export interface TypeStyle {
 // all. Sixty visually separable hues do not exist, and the map legend prints the
 // emoji and the type's name beside every dot, so the hue answers "what kind of
 // thing is this" and the pair beside it answers "which one".
-export const TYPE_STYLES: Record<string, TypeStyle> = {
+const TYPE_FAMILY_BY_NAME: Record<string, { emoji: string; family: TypeFamilyKey }> = {
   // ── Death and grave violence ──────────────────────────────
-  'Mord/dråp': { emoji: '⚰️', color: '#991b1b' },
-  'Mord/dråp, försök': { emoji: '⚰️', color: '#991b1b' },
-  'Anträffad död': { emoji: '🕯️', color: '#991b1b' },
-  'Våldtäkt': { emoji: '🚷', color: '#9f1239' },
-  'Våldtäkt, försök': { emoji: '🚷', color: '#9f1239' },
-  'Sedlighetsbrott': { emoji: '🚷', color: '#9f1239' },
-  'Olaga frihetsberövande': { emoji: '⛓️', color: '#9f1239' },
-  'Människorov': { emoji: '⛓️', color: '#9f1239' },
-  'Människohandel': { emoji: '⛓️', color: '#9f1239' },
-  'Misshandel, grov': { emoji: '👊', color: '#be123c' },
-  'Misshandel': { emoji: '👊', color: '#f43f5e' },
-  'Bråk': { emoji: '🗣️', color: '#f43f5e' },
+  'Mord/dråp': { emoji: '⚰️', family: 'death' },
+  'Mord/dråp, försök': { emoji: '⚰️', family: 'death' },
+  'Anträffad död': { emoji: '🕯️', family: 'death' },
+  'Våldtäkt': { emoji: '🚷', family: 'sexual' },
+  'Våldtäkt, försök': { emoji: '🚷', family: 'sexual' },
+  'Sedlighetsbrott': { emoji: '🚷', family: 'sexual' },
+  'Olaga frihetsberövande': { emoji: '⛓️', family: 'sexual' },
+  'Människorov': { emoji: '⛓️', family: 'sexual' },
+  'Människohandel': { emoji: '⛓️', family: 'sexual' },
+  'Misshandel, grov': { emoji: '👊', family: 'violence' },
+  'Misshandel': { emoji: '👊', family: 'violence' },
+  'Bråk': { emoji: '🗣️', family: 'violence' },
 
   // ── Weapons, explosives, alarms ───────────────────────────
-  'Skottlossning': { emoji: '🔫', color: '#b91c1c' },
-  'Skottlossning, misstänkt': { emoji: '🔫', color: '#b91c1c' },
-  'Vapenlagen': { emoji: '🗡️', color: '#b91c1c' },
-  'Knivlagen': { emoji: '🔪', color: '#b91c1c' },
-  'Bombhot': { emoji: '💣', color: '#b91c1c' },
-  'Detonation': { emoji: '💥', color: '#b91c1c' },
-  'Explosion': { emoji: '💥', color: '#b91c1c' },
-  'Farligt föremål, misstänkt': { emoji: '🧨', color: '#b91c1c' },
-  'Larm Överfall': { emoji: '🆘', color: '#e11d48' },
-  'Larm Inbrott': { emoji: '🔔', color: '#f97316' },
+  'Skottlossning': { emoji: '🔫', family: 'weapons' },
+  'Skottlossning, misstänkt': { emoji: '🔫', family: 'weapons' },
+  'Vapenlagen': { emoji: '🗡️', family: 'weapons' },
+  'Knivlagen': { emoji: '🔪', family: 'weapons' },
+  'Bombhot': { emoji: '💣', family: 'weapons' },
+  'Detonation': { emoji: '💥', family: 'weapons' },
+  'Explosion': { emoji: '💥', family: 'weapons' },
+  'Farligt föremål, misstänkt': { emoji: '🧨', family: 'weapons' },
+  'Larm Överfall': { emoji: '🆘', family: 'violence' },
+  'Larm Inbrott': { emoji: '🔔', family: 'theft' },
 
   // ── Threats and harassment ────────────────────────────────
-  'Olaga hot': { emoji: '❗', color: '#e11d48' },
-  'Våld/hot mot tjänsteman': { emoji: '👮', color: '#e11d48' },
-  'Ofredande/förargelse': { emoji: '💬', color: '#ec4899' },
-  'Ofredande': { emoji: '💬', color: '#ec4899' },
-  'Ofog barn/ungdom': { emoji: '🎒', color: '#ec4899' },
-  'Olaga intrång/hemfridsbrott': { emoji: '🏠', color: '#db2777' },
-  'Olaga diskriminering': { emoji: '⛔', color: '#db2777' },
-  'Åldringsbrott': { emoji: '🧓', color: '#db2777' },
+  'Olaga hot': { emoji: '❗', family: 'violence' },
+  'Våld/hot mot tjänsteman': { emoji: '👮', family: 'violence' },
+  'Ofredande/förargelse': { emoji: '💬', family: 'harassment' },
+  'Ofredande': { emoji: '💬', family: 'harassment' },
+  'Ofog barn/ungdom': { emoji: '🎒', family: 'harassment' },
+  'Olaga intrång/hemfridsbrott': { emoji: '🏠', family: 'harassment' },
+  'Olaga diskriminering': { emoji: '⛔', family: 'harassment' },
+  'Åldringsbrott': { emoji: '🧓', family: 'harassment' },
 
   // ── Fire ──────────────────────────────────────────────────
   // Arson is not a fire, it is a violent crime, and it takes the weapons red
   // rather than sitting next to a chimney fire in the same orange.
-  'Mordbrand': { emoji: '🔥', color: '#b91c1c' },
-  'Brand': { emoji: '🔥', color: '#ef4444' },
-  'Brand automatlarm': { emoji: '🚨', color: '#ef4444' },
+  'Mordbrand': { emoji: '🔥', family: 'weapons' },
+  'Brand': { emoji: '🔥', family: 'fire' },
+  'Brand automatlarm': { emoji: '🚨', family: 'fire' },
 
   // ── Theft, robbery, damage ────────────────────────────────
-  'Rån': { emoji: '💰', color: '#f59e0b' },
-  'Rån väpnat': { emoji: '💰', color: '#f59e0b' },
-  'Rån, försök': { emoji: '💰', color: '#f59e0b' },
-  'Rån övrigt': { emoji: '💰', color: '#f59e0b' },
-  'Inbrott': { emoji: '🪟', color: '#f97316' },
-  'Inbrott, försök': { emoji: '🪟', color: '#f97316' },
-  'Stöld/inbrott': { emoji: '🚪', color: '#c2410c' },
-  'Stöld': { emoji: '👜', color: '#fbbf24' },
-  'Stöld, försök': { emoji: '👜', color: '#fbbf24' },
-  'Stöld, ringa': { emoji: '🏷️', color: '#fcd34d' },
-  'Snatteri': { emoji: '🏷️', color: '#fcd34d' },
-  'Motorfordon, stöld': { emoji: '🔑', color: '#d97706' },
-  'Motorfordon, anträffat stulet': { emoji: '🔑', color: '#d97706' },
-  'Häleri': { emoji: '📦', color: '#92400e' },
-  'Anträffat gods': { emoji: '📦', color: '#92400e' },
-  'Skadegörelse': { emoji: '🔨', color: '#a16207' },
+  'Rån': { emoji: '💰', family: 'robbery' },
+  'Rån väpnat': { emoji: '💰', family: 'robbery' },
+  'Rån, försök': { emoji: '💰', family: 'robbery' },
+  'Rån övrigt': { emoji: '💰', family: 'robbery' },
+  'Inbrott': { emoji: '🪟', family: 'theft' },
+  'Inbrott, försök': { emoji: '🪟', family: 'theft' },
+  'Stöld/inbrott': { emoji: '🚪', family: 'theft' },
+  'Stöld': { emoji: '👜', family: 'theft' },
+  'Stöld, försök': { emoji: '👜', family: 'theft' },
+  'Stöld, ringa': { emoji: '🏷️', family: 'theft' },
+  'Snatteri': { emoji: '🏷️', family: 'theft' },
+  'Motorfordon, stöld': { emoji: '🔑', family: 'theft' },
+  'Motorfordon, anträffat stulet': { emoji: '🔑', family: 'theft' },
+  'Häleri': { emoji: '📦', family: 'theft' },
+  'Anträffat gods': { emoji: '📦', family: 'theft' },
+  'Skadegörelse': { emoji: '🔨', family: 'damage' },
 
   // ── Traffic ───────────────────────────────────────────────
-  'Trafikolycka': { emoji: '🚗', color: '#3b82f6' },
-  'Trafikolycka, personskada': { emoji: '🚗', color: '#3b82f6' },
-  'Trafikolycka, singel': { emoji: '🚗', color: '#3b82f6' },
-  'Trafikolycka, smitning från': { emoji: '🚗', color: '#3b82f6' },
-  'Trafikolycka, vilt': { emoji: '🦌', color: '#3b82f6' },
-  'Trafikbrott': { emoji: '🚦', color: '#2563eb' },
-  'Olovlig körning': { emoji: '🚫', color: '#2563eb' },
-  'Trafikhinder': { emoji: '🚧', color: '#1d4ed8' },
-  'Varningslarm/haveri': { emoji: '⚠️', color: '#1d4ed8' },
-  'Trafikkontroll': { emoji: '🛑', color: '#60a5fa' },
-  'Kontroll person/fordon': { emoji: '🔍', color: '#60a5fa' },
-  'Gränskontroll': { emoji: '🛂', color: '#60a5fa' },
+  'Trafikolycka': { emoji: '🚗', family: 'traffic' },
+  'Trafikolycka, personskada': { emoji: '🚗', family: 'traffic' },
+  'Trafikolycka, singel': { emoji: '🚗', family: 'traffic' },
+  'Trafikolycka, smitning från': { emoji: '🚗', family: 'traffic' },
+  'Trafikolycka, vilt': { emoji: '🦌', family: 'traffic' },
+  'Trafikbrott': { emoji: '🚦', family: 'traffic' },
+  'Olovlig körning': { emoji: '🚫', family: 'traffic' },
+  'Trafikhinder': { emoji: '🚧', family: 'traffic' },
+  'Varningslarm/haveri': { emoji: '⚠️', family: 'traffic' },
+  'Trafikkontroll': { emoji: '🛑', family: 'traffic' },
+  'Kontroll person/fordon': { emoji: '🔍', family: 'traffic' },
+  'Gränskontroll': { emoji: '🛂', family: 'traffic' },
 
   // ── Intoxication and drugs ────────────────────────────────
-  'Rattfylleri': { emoji: '🍺', color: '#0891b2' },
-  'Fylleri/LOB': { emoji: '🍺', color: '#0891b2' },
-  'Alkohollagen': { emoji: '🍷', color: '#0891b2' },
-  'Narkotikabrott': { emoji: '💊', color: '#10b981' },
+  'Rattfylleri': { emoji: '🍺', family: 'intoxication' },
+  'Fylleri/LOB': { emoji: '🍺', family: 'intoxication' },
+  'Alkohollagen': { emoji: '🍷', family: 'intoxication' },
+  'Narkotikabrott': { emoji: '💊', family: 'drugs' },
 
   // ── Money, documents, environment ─────────────────────────
-  'Bedrägeri': { emoji: '💳', color: '#8b5cf6' },
-  'Ekobrott': { emoji: '📊', color: '#7c3aed' },
-  'Förfalskningsbrott': { emoji: '📝', color: '#7c3aed' },
-  'Missbruk av urkund': { emoji: '📝', color: '#7c3aed' },
-  'Penningtvätt': { emoji: '🏦', color: '#7c3aed' },
-  'Bidragsbrott': { emoji: '🏦', color: '#7c3aed' },
-  'Miljöbrott': { emoji: '🌿', color: '#65a30d' },
-  'Djur': { emoji: '🐾', color: '#65a30d' },
-  'Djur skadat/omhändertaget': { emoji: '🐾', color: '#65a30d' },
+  'Bedrägeri': { emoji: '💳', family: 'fraud' },
+  'Ekobrott': { emoji: '📊', family: 'fraud' },
+  'Förfalskningsbrott': { emoji: '📝', family: 'fraud' },
+  'Missbruk av urkund': { emoji: '📝', family: 'fraud' },
+  'Penningtvätt': { emoji: '🏦', family: 'fraud' },
+  'Bidragsbrott': { emoji: '🏦', family: 'fraud' },
+  'Miljöbrott': { emoji: '🌿', family: 'environment' },
+  'Djur': { emoji: '🐾', family: 'environment' },
+  'Djur skadat/omhändertaget': { emoji: '🐾', family: 'environment' },
 
   // ── Rescue, health, missing people ────────────────────────
-  'Sjukdom/olycksfall': { emoji: '🚑', color: '#14b8a6' },
-  'Arbetsplatsolycka': { emoji: '🦺', color: '#14b8a6' },
-  'Räddningsinsats': { emoji: '🚒', color: '#14b8a6' },
-  'Fjällräddning': { emoji: '🏔️', color: '#14b8a6' },
-  'Sjölagen': { emoji: '⚓️', color: '#14b8a6' },
-  'Naturkatastrof': { emoji: '🌪️', color: '#14b8a6' },
-  'Försvunnen person': { emoji: '🔦', color: '#14b8a6' },
+  'Sjukdom/olycksfall': { emoji: '🚑', family: 'rescue' },
+  'Arbetsplatsolycka': { emoji: '🦺', family: 'rescue' },
+  'Räddningsinsats': { emoji: '🚒', family: 'rescue' },
+  'Fjällräddning': { emoji: '🏔️', family: 'rescue' },
+  'Sjölagen': { emoji: '⚓️', family: 'rescue' },
+  'Naturkatastrof': { emoji: '🌪️', family: 'rescue' },
+  'Försvunnen person': { emoji: '🔦', family: 'rescue' },
 
   // ── Police operations and housekeeping ────────────────────
-  'Polisinsats/kommendering': { emoji: '🚓', color: '#6366f1' },
-  'Ordningslagen': { emoji: '📢', color: '#6366f1' },
-  'Sammanfattning': { emoji: '📋', color: '#64748b' },
-  'Uppdatering': { emoji: '🔄', color: '#64748b' },
-  'Övrigt': { emoji: '📄', color: '#64748b' },
+  'Polisinsats/kommendering': { emoji: '🚓', family: 'police' },
+  'Ordningslagen': { emoji: '📢', family: 'police' },
+  'Sammanfattning': { emoji: '📋', family: 'other' },
+  'Uppdatering': { emoji: '🔄', family: 'other' },
+  'Övrigt': { emoji: '📄', family: 'other' },
 
-  'default': { emoji: '📍', color: '#94a3b8' },
+  'default': { emoji: '📍', family: 'unknown' },
 };
+
+/**
+ * The table above with each family's colour filled in, which is the shape the
+ * feed, the map and the statistics all read.
+ */
+export const TYPE_STYLES: Record<string, TypeStyle> = Object.fromEntries(
+  Object.entries(TYPE_FAMILY_BY_NAME).map(([name, { emoji, family }]) => [
+    name,
+    { emoji, family, color: TYPE_FAMILIES[family].color },
+  ])
+);
 
 /** Lowercased, single-spaced: the shape both lookups below compare on. */
 function normaliseTypeName(type: string): string {

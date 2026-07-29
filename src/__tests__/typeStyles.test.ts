@@ -1,4 +1,4 @@
-import { TYPE_STYLES, getTypeStyle } from '@/types';
+import { TYPE_STYLES, TYPE_FAMILIES, getTypeStyle } from '@/types';
 
 // polisen.se's own vocabulary, as it comes out of the events API. The table in
 // types/index.ts exists to keep these off the fallback pin: a feed where most
@@ -94,7 +94,34 @@ describe('getTypeStyle', () => {
   });
 
   it('matches a named type exactly', () => {
-    expect(getTypeStyle('Trafikolycka')).toEqual({ emoji: '🚗', color: '#3b82f6' });
+    expect(getTypeStyle('Trafikolycka')).toEqual({
+      emoji: '🚗',
+      family: 'traffic',
+      color: '#3b82f6',
+    });
+  });
+
+  // Colour was assigned per type, which produced two dozen shades for sixty-odd
+  // types, several of them a few percent apart. A map legend keyed on colour
+  // can only name what colour distinguishes, so colour is a family now.
+  it('gives every type in a family the same colour', () => {
+    const styles = Object.values(TYPE_STYLES);
+    const colourByFamily = new Map<string, string>();
+
+    for (const style of styles) {
+      const seen = colourByFamily.get(style.family);
+      if (seen) expect(style.color).toBe(seen);
+      else colourByFamily.set(style.family, style.color);
+    }
+
+    // And no two families share one, or the legend would be ambiguous again.
+    expect(new Set(colourByFamily.values()).size).toBe(colourByFamily.size);
+  });
+
+  it('takes each colour from the family table rather than by hand', () => {
+    for (const style of Object.values(TYPE_STYLES)) {
+      expect(style.color).toBe(TYPE_FAMILIES[style.family].color);
+    }
   });
 
   it('ignores case and stray whitespace', () => {
