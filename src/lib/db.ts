@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthlyStats, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
 import { escapeLikeWildcards } from './utils';
 import { memoizeWithTtl } from './cache';
 
@@ -100,7 +100,7 @@ function setSchemaVersion(database: Database.Database, version: number): void {
 // `toISOString()` ("2026-07-27T12:30:00.000Z") and the API's local offset form
 // ("2026-07-27T14:30:00+02:00"). Both are valid ISO 8601, but the columns are
 // ordered and range-filtered as TEXT, and those two shapes do not sort against
-// each other chronologically — so `ORDER BY event_time DESC` interleaved rows
+// each other chronologically, so `ORDER BY event_time DESC` interleaved rows
 // and the "last 24h" filters cut at the wrong instant. Rewrite every non-UTC
 // value so the whole column is comparable as a string again.
 function migrateTimestampsToUtc(database: Database.Database): void {
@@ -125,7 +125,7 @@ function migrateTimestampsToUtc(database: Database.Database): void {
 //
 // Deliberately a SEPARATE table rather than rows in `events`. Both sources
 // number their events from 1, and `events.id` is the primary key holding
-// polisen.se's ids — importing brottsplatskartan into it would silently
+// polisen.se's ids: importing brottsplatskartan into it would silently
 // overwrite unrelated polisen events wherever the two id spaces collide.
 function migrateBrottsplatskartanTables(database: Database.Database): void {
   database.exec(`
@@ -185,7 +185,7 @@ function migrateBrottsplatskartanTables(database: Database.Database): void {
 function migrateBrottsplatskartanForApp(database: Database.Database): void {
   // Composite (label, pubdate) indexes: the statistics group by label over
   // everything older than a cutoff, which these answer without touching the
-  // table — the difference between a scan of the whole archive and an
+  // table: the difference between a scan of the whole archive and an
   // index-only scan, several times per statistics rebuild.
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_bpk_type_pubdate ON bpk_events(title_type, pubdate);
@@ -226,13 +226,13 @@ function migrateBrottsplatskartanForApp(database: Database.Database): void {
 
 // Migration 4: a full-text index over the imported archive.
 //
-// Search was a LIKE scan of every imported row — 160-225 ms at 333k events,
+// Search was a LIKE scan of every imported row: 160-225 ms at 333k events,
 // on the request path, and it could only afford to look at the headline, the
 // summary and the location. FTS5 answers in single-digit milliseconds and
 // makes the event body searchable, which is where the detail actually is.
 //
 // The tokenizer is the whole design decision. The default one indexes words,
-// so "guldsmed" does not match "guldsmedsaffär" — Swedish compounds would
+// so "guldsmed" does not match "guldsmedsaffär": Swedish compounds would
 // silently stop being found, which is precisely what people search for. The
 // trigram tokenizer matches substrings the way LIKE does, at the cost of a
 // much larger index: ~350 MB against ~55 MB for a 333k-event archive. Disk is
@@ -327,7 +327,7 @@ function runMigrations(database: Database.Database): void {
  *
  * Nearly every report of that error is the same thing: the mounted data
  * directory is not writable by the uid the container runs as. better-sqlite3
- * cannot say that — it only knows the open failed — so the log filled with a
+ * cannot say that (it only knows the open failed) so the log filled with a
  * stack trace through minified chunks and no mention of ownership, on a
  * container that then kept serving with no database behind it.
  */
@@ -352,7 +352,7 @@ function assertDataDirWritable(): void {
         `The SQLite database and its -wal/-shm sidecars live here, so the app\n` +
         `cannot start without write access. On the host holding the bind mount:\n` +
         `  sudo chown -R 1001:1001 <your data directory>\n` +
-        `Note that "mkdir -p data" does not fix this on a cloned repository —\n` +
+        `Note that "mkdir -p data" does not fix this on a cloned repository -\n` +
         `data/ already exists from the clone, owned by whoever cloned it.`,
       { cause }
     );
@@ -614,13 +614,13 @@ export function pruneFetchLog(retentionDays = 30): number {
 //
 // Imported brottsplatskartan events live in bpk_events (see the migration note
 // above for why they are not rows in `events`). Everything below lets the app's
-// own queries — feed, map, filters, statistics — read both tables as one
+// own queries (feed, map, filters, statistics) read both tables as one
 // dataset, so an import is usable the moment it finishes rather than being a
 // pile of rows nothing looks at.
 //
 // The two sources overlap: brottsplatskartan republishes polisen.se, so any
 // period the live feed already covers exists in both. The rule is a single
-// cutoff — the oldest event the live feed holds. Live data wins from there
+// cutoff: the oldest event the live feed holds. Live data wins from there
 // forward; the archive supplies everything before it. That deduplicates
 // without guessing which archived row is "the same incident" as which live
 // one, and it is one comparison per row rather than a lookup per row.
@@ -636,8 +636,8 @@ const ARCHIVE_CUTOFF_NONE = '9999-12-31T23:59:59.999Z';
 const AGGREGATE_CACHE_TTL_MS = 60_000;
 
 // The statistics scan the whole dataset, which is seconds of work once the
-// archive is hundreds of thousands of rows. They are exact rather than stale:
-// both paths that change the data — the polisen.se refresh and an import —
+// archive is hundreds of thousands of rows. They are exact rather than stale.
+// Both paths that change the data, the polisen.se refresh and an import,
 // invalidate them explicitly, so the TTL is only a backstop and can be long.
 const STATS_CACHE_TTL_MS = 10 * 60_000;
 
@@ -661,7 +661,7 @@ const ARCHIVE_COLUMNS = `NULL AS raw_data, -b.id AS id, b.pubdate AS event_time,
 
 // The location the app groups and filters archive rows by. title_location is
 // filled in at import (falling back to location_string), and backfilled for
-// rows imported before that — so this is a plain indexed column rather than an
+// rows imported before that, so this is a plain indexed column rather than an
 // expression, which is what makes the grouping below an index-only scan.
 const ARCHIVE_LOCATION = 'b.title_location';
 
@@ -702,7 +702,7 @@ export function hasArchiveEvents(): boolean {
   return getArchiveRowCount() > 0;
 }
 
-/** Imported events older than the live feed's reach — the ones the app shows. */
+/** Imported events older than the live feed's reach: the ones the app shows. */
 export function getArchiveCoverage(): { events: number; cutoff: string | null } {
   if (!hasArchiveEvents()) return { events: 0, cutoff: null };
   const pdo = getDatabase();
@@ -742,7 +742,7 @@ function liveFilterSql(filters: EventFilters): SqlFragment {
 
 // The shortest string the trigram tokenizer can look up. Anything shorter has
 // no trigram to match, and FTS5 answers such a query with nothing at all
-// rather than an error — so those have to take the scan instead.
+// rather than an error, so those have to take the scan instead.
 const MIN_SEARCH_LENGTH = 3;
 
 /**
@@ -778,14 +778,14 @@ function archiveFilterSql(filters: EventFilters): SqlFragment {
   if (filters.search) {
     const match = toSearchMatch(filters.search);
     if (match) {
-      // The full-text index, which also covers the event body — a LIKE scan of
+      // The full-text index, which also covers the event body: a LIKE scan of
       // 333k rows could not have afforded to look there.
       sql += ' AND b.id IN (SELECT rowid FROM bpk_search WHERE bpk_search MATCH ?)';
       params.push(match);
     } else {
       // Too short for the index to answer: the trigram tokenizer indexes three
       // characters at a time, so a one- or two-character search has nothing to
-      // look up. Falls back to the scan this used to do — over the same three
+      // look up. Falls back to the scan this used to do: over the same three
       // columns, deliberately not the body, which would triple the cost of the
       // one query shape that still cannot use the index.
       sql +=
@@ -833,7 +833,7 @@ function rowToEvent(row: UnionRow): EventWithMetadata {
 // One event by the id the UI shares in a link (?event=123).
 //
 // Shared links have to resolve to an event that is no longer near the top of
-// the feed — which is most of them, since the first page covers well under a
+// the feed, which is most of them, since the first page covers well under a
 // day. The sign of the id says which table to look in: ARCHIVE_COLUMNS
 // projects imported rows as `-b.id` so the two id spaces cannot collide.
 export function getEventById(id: number): EventWithMetadata | null {
@@ -898,7 +898,7 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
  * The map's slice of the feed, cached per filter set.
  *
  * The map asks for 500 rows and gets them from the same union-and-sort as the
- * list, and it asked again on every open and every filter change — per visitor,
+ * list, and it asked again on every open and every filter change: per visitor,
  * with no reuse between them, even though the underlying rows only change when
  * a fetch lands every ten minutes. Two people looking at the unfiltered map ran
  * the query twice; one person switching list → map → list ran it twice.
@@ -999,7 +999,7 @@ interface StatsSource {
   /** Table with its alias, as it appears after FROM. */
   from: string;
   time: string;
-  /** Type as a predicate reads it — never NULL, so NOT LIKE behaves. */
+  /** Type as a predicate reads it, never NULL, so NOT LIKE behaves. */
   type: string;
   /** Type as the breakdown groups it: the bare column, so an index answers it. */
   typeLabel: string;
@@ -1051,6 +1051,12 @@ interface SourceStats {
   /** Sunday-first, as SQLite's %w numbers them. */
   weekdays: number[];
   daily: Map<string, number>;
+  /**
+   * Every calendar day the source covers, not just the last week. One scan
+   * answers the year chart, the month chart and the busiest day between them,
+   * and at roughly 3,600 buckets for a decade of history it is a small map.
+   */
+  allDays: Map<string, number>;
   withGps: number;
   updated: number;
 }
@@ -1066,7 +1072,7 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
   const baseParams = [excludePattern, ...whereParams];
 
   // One pass for every scalar. Each of these was its own query once, and each
-  // one is a scan of the whole source — six scans of a 300k-row archive is
+  // one is a scan of the whole source, six scans of a 300k-row archive is
   // seconds of work to answer six numbers.
   const scalars = pdo
     .prepare(
@@ -1114,7 +1120,7 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     .prepare(
       // Timestamps are stored in UTC, but "events by hour of day" is only
       // meaningful on the local (Swedish) wall clock, so bucket with the
-      // 'localtime' modifier — it applies the correct DST offset per row.
+      // 'localtime' modifier: it applies the correct DST offset per row.
       `SELECT strftime('%H', ${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY bucket`
     )
     .all(...baseParams, windows.since24h) as Array<{ bucket: string; total: number }>;
@@ -1135,6 +1141,14 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     )
     .all(...baseParams, windows.since7d) as Array<{ bucket: string; total: number }>;
 
+  // The same grouping with no window on it. A scan of the source rather than a
+  // range on the index, which is the one expensive query here, so everything
+  // that needs a long view is derived from this single result: per year, per
+  // month, and the busiest day on record.
+  const allDayRows = pdo
+    .prepare(`SELECT date(${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} GROUP BY bucket`)
+    .all(...baseParams) as Array<{ bucket: string; total: number }>;
+
   return {
     // The totals count every row: they answer "how much is stored". The rest
     // exclude summary posts, as the live feed's statistics always have.
@@ -1149,6 +1163,7 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     hourly,
     weekdays,
     daily: new Map(dailyRows.map(row => [row.bucket, row.total])),
+    allDays: new Map(allDayRows.map(row => [row.bucket, row.total])),
     withGps: scalars.withGps ?? 0,
     updated: scalars.updated ?? 0,
   };
@@ -1165,6 +1180,63 @@ function countLabels(counts: Map<string, number>): number {
   let total = 0;
   for (const label of counts.keys()) if (label !== '') total++;
   return total;
+}
+
+const MONTH_ABBR = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+/**
+ * Every year the data covers, oldest first, with the gaps filled in.
+ *
+ * A year with no events still gets a bar rather than being left out, so a hole
+ * in the archive reads as a hole instead of as two adjacent years.
+ */
+function yearlyFromDays(days: Map<string, number>): YearlyStats[] {
+  const totals = new Map<string, number>();
+  for (const [day, count] of days) {
+    const year = day.slice(0, 4);
+    totals.set(year, (totals.get(year) ?? 0) + count);
+  }
+  if (totals.size === 0) return [];
+
+  const years = [...totals.keys()].sort();
+  const first = parseInt(years[0], 10);
+  const last = parseInt(years[years.length - 1], 10);
+  const out: YearlyStats[] = [];
+  for (let year = first; year <= last; year++) {
+    const key = String(year);
+    out.push({ year: key, count: totals.get(key) ?? 0 });
+  }
+  return out;
+}
+
+/** The last `months` calendar months up to and including the current one. */
+function monthlyFromDays(days: Map<string, number>, now: Date, months: number): MonthlyStats[] {
+  const totals = new Map<string, number>();
+  for (const [day, count] of days) {
+    const month = day.slice(0, 7);
+    totals.set(month, (totals.get(month) ?? 0) + count);
+  }
+
+  const out: MonthlyStats[] = [];
+  for (let back = months - 1; back >= 0; back--) {
+    const at = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+    out.push({
+      month: key,
+      label: MONTH_ABBR[at.getMonth()],
+      year: at.getFullYear(),
+      count: totals.get(key) ?? 0,
+    });
+  }
+  return out;
+}
+
+function busiestFromDays(days: Map<string, number>): DailyPeak | null {
+  let best: DailyPeak | null = null;
+  for (const [date, count] of days) {
+    if (!best || count > best.count) best = { date, count };
+  }
+  return best;
 }
 
 function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
@@ -1202,9 +1274,10 @@ function computeStatsSummary(): Statistics {
   const oldest = oldestCandidates.length > 0 ? oldestCandidates.sort()[0] : null;
 
   let avgPerDay = 0;
+  let coverageDays = 0;
   if (oldest) {
-    const daysDiff = Math.max(1, Math.floor((now.getTime() - new Date(oldest).getTime()) / (24 * 60 * 60 * 1000)));
-    avgPerDay = Math.round((total / daysDiff) * 10) / 10;
+    coverageDays = Math.max(1, Math.floor((now.getTime() - new Date(oldest).getTime()) / (24 * 60 * 60 * 1000)));
+    avgPerDay = Math.round((total / coverageDays) * 10) / 10;
   }
 
   const typeCounts = new Map(live.types);
@@ -1212,6 +1285,7 @@ function computeStatsSummary(): Statistics {
   const hourly = [...live.hourly];
   const weekdayData = [...live.weekdays];
   const dailyMap = new Map(live.daily);
+  const allDays = new Map(live.allDays);
 
   if (archive) {
     mergeCounts(typeCounts, archive.types);
@@ -1219,6 +1293,7 @@ function computeStatsSummary(): Statistics {
     for (let i = 0; i < 24; i++) hourly[i] += archive.hourly[i];
     for (let i = 0; i < 7; i++) weekdayData[i] += archive.weekdays[i];
     for (const [day, count] of archive.daily) dailyMap.set(day, (dailyMap.get(day) ?? 0) + count);
+    mergeCounts(allDays, archive.allDays);
   }
 
   // Convert to Monday-Sunday order (Swedish)
@@ -1265,6 +1340,10 @@ function computeStatsSummary(): Statistics {
     hourly,
     weekdays,
     daily,
+    yearly: yearlyFromDays(allDays),
+    monthly: monthlyFromDays(allDays, now, 24),
+    busiestDay: busiestFromDays(allDays),
+    coverageDays,
     gpsPercent,
     updatedPercent,
     // Distinct across both sources: a location present in each counts once.
@@ -1287,7 +1366,7 @@ export const getStatsSummary = memoizeWithTtl(computeStatsSummary, STATS_CACHE_T
 /**
  * Recompute the statistics off the request path.
  *
- * Called after the data changes — a refresh, or a finished import — so the
+ * Called after the data changes (a refresh, or a finished import) so the
  * next page view is served from a warm cache instead of waiting out a scan of
  * the whole archive.
  */
@@ -1308,10 +1387,10 @@ export function invalidateAggregateCaches(): void {
   getFilterOptions.invalidate();
   getStatsSummary.invalidate();
   // The map reads the same rows the list does, so a fetch that changes them
-  // has to drop this too — otherwise the map lags the feed by up to a minute.
+  // has to drop this too: otherwise the map lags the feed by up to a minute.
   getMapEventRows.invalidate();
-  // An import changes both of these: how much archive there is, and — once the
-  // live feed reaches further back — how much of it the app counts.
+  // An import changes both of these: how much archive there is, and: once the
+  // live feed reaches further back: how much of it the app counts.
   getArchiveRowCount.invalidate();
   getArchiveCutoff.invalidate();
 }

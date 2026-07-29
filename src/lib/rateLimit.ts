@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Simple in-memory rate limiter.
 // NOTE: state is per-process. This is correct for the supported single-instance
 // (single container) deployment. Running multiple replicas would give each its
-// own counters — move this to a shared store (e.g. Redis) before scaling out.
+// own counters: move this to a shared store (e.g. Redis) before scaling out.
 interface RateLimitEntry {
   count: number;
   resetTime: number;
@@ -18,7 +18,7 @@ const CLEANUP_INTERVAL = 5 * 60 * 1000; // Clean up every 5 minutes
 
 // Number of trusted reverse-proxy hops in front of the app (e.g. 1 for a single
 // Traefik/nginx). The client IP is read this many positions from the RIGHT of
-// X-Forwarded-For — the entries our own proxies append, which a client cannot
+// X-Forwarded-For: the entries our own proxies append, which a client cannot
 // forge. Reading the leftmost value instead would let anyone bypass the limit
 // by sending a unique X-Forwarded-For per request.
 const TRUSTED_PROXY_HOPS = Math.max(
@@ -42,7 +42,7 @@ function scheduleCleanup(): void {
     }
   }, CLEANUP_INTERVAL);
 
-  // Housekeeping only — it must not be the reason the process stays alive,
+  // Housekeeping only: it must not be the reason the process stays alive,
   // otherwise the server ignores SIGTERM and the container takes the full
   // 10s stop timeout to shut down on every deploy.
   if (typeof timer.unref === 'function') timer.unref();

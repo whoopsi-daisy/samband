@@ -135,7 +135,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
 
       {/* Two selects and nothing else. There used to be an "Annan plats…"
           option that swapped this select for a second free-text box, sitting
-          directly under a search field that already matches place names — two
+          directly under a search field that already matches place names, two
           unlabelled text inputs for one job.
           They are direct children of .filters rather than sitting in a row of
           their own: the three controls share one grid, which puts them beside
@@ -182,7 +182,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
           ).map(([name, key, label]) =>
             label ? (
               <span className="badge badge--accent filter-chip" key={name}>
-                {/* Which control the chip came from — a bare "Borås" said
+                {/* Which control the chip came from: a bare "Borås" said
                     nothing about whether it was a place, a type or free text. */}
                 <span className="filter-chip-key">{key}:</span>
                 <span className="filter-chip-text">{label}</span>
@@ -190,7 +190,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
                   type="button"
                   className="filter-chip-remove"
                   onClick={() => removeFilter(name)}
-                  aria-label={`Ta bort filter — ${key}: ${label}`}
+                  aria-label={`Ta bort filtret ${key}: ${label}`}
                 >
                   ×
                 </button>

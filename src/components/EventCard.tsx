@@ -88,19 +88,23 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     }
   }, [gpsCoords, event.location, onShowMap]);
 
+  // The row shows the municipality when the source only filed a county, and a
+  // shared link should say the same thing the row said.
+  const place = event.place ? `${event.place}, ${event.location}` : event.location;
+
   const handleShare = useCallback(async () => {
     if (event.id === null) return;
     const url = `${window.location.origin}/?event=${event.id}`;
 
-    // On a phone this is what "dela" means to the reader — the OS share sheet,
+    // On a phone this is what "dela" means to the reader: the OS share sheet,
     // with the messaging apps they actually use in it. Copying a URL to the
     // clipboard is the desktop fallback, not the primary behaviour.
     if (typeof navigator.share === 'function') {
       try {
-        await navigator.share({ title: `${event.type} — ${event.location}`, url });
+        await navigator.share({ title: `${event.type}, ${place}`, url });
         return;
       } catch {
-        // Dismissed, or unavailable in this context — fall through to copying.
+        // Dismissed, or unavailable in this context: fall through to copying.
       }
     }
 
@@ -119,9 +123,9 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [event.id, event.type, event.location]);
+  }, [event.id, event.type, place]);
 
-  // Keep the relative time fresh without breaking hydration: until the shared
+  // Keep the relative time fresh without breaking hydration, until the shared
   // clock reports in, reuse the string the server already computed, so the
   // first client render matches the server markup exactly.
   const now = useNow();
@@ -130,7 +134,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
   }, [now, event.date.iso, event.date.relative, event.datetime]);
 
-  // "28 jul, 14:32" — the clock time behind "2 timmar sedan". Shown outright
+  // "28 jul, 14:32": the clock time behind "2 timmar sedan". Shown outright
   // once the row is open; a title attribute alone is unreachable on a phone.
   const absoluteTime = `${event.date.day} ${event.date.month.toLowerCase()}, ${event.date.time}`;
 
@@ -147,7 +151,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
   // polisen.se's summary is the opening of the notice itself, so the text
   // fetched when a row is expanded almost always restates the teaser directly
-  // above it — the same sentence twice, a few pixels apart. Imported events do
+  // above it: the same sentence twice, a few pixels apart. Imported events do
   // the same, since their description is the first line of their body.
   //
   // Compared with whitespace and case normalised: the two copies travel
@@ -162,7 +166,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
       .map((paragraph) => paragraph.trim())
       .filter((paragraph) => paragraph !== '' && normaliseText(paragraph) !== summary);
 
-    // What is left may still open with the teaser and carry on past it — the
+    // What is left may still open with the teaser and carry on past it: the
     // longer text stands on its own, so the teaser goes instead.
     const supersedesSummary =
       summary !== '' && paragraphs.length > 0 && normaliseText(paragraphs[0]).startsWith(summary);
@@ -183,16 +187,16 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
   return (
     <article className={rowClasses} data-event-id={event.id ?? undefined}>
       <button type="button" className="event-summary-btn" onClick={toggle} aria-expanded={expanded}>
-        {/* Where, then what, then the summary — each on its own line, so the
+        {/* Where, then what, then the summary: each on its own line, so the
             same information sits in the same place in every row. */}
         <span className="event-main">
-          {/* What happened leads the row. The county is where it happened —
+          {/* What happened leads the row. The county is where it happened:
               useful, but not what anyone scans a feed for, and it was set in
               the largest, heaviest type on the card while the kind of incident
               sat in an 11px badge underneath. */}
           <span className="event-head">
             <span className="event-type">
-              {/* Decoration beside the word it decorates — a screen reader
+              {/* Decoration beside the word it decorates: a screen reader
                   reads the type, not "speaking head". */}
               <span className="event-type-emoji" aria-hidden="true">
                 {event.emoji}
@@ -204,7 +208,20 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
             </span>
           </span>
           <span className="event-meta">
-            <span className="event-location">{event.location}</span>
+            {/* Where it happened, most specific first. When the source files a
+                notice under a county but names the municipality in its title,
+                showing only the county leaves the reader unable to tell a local
+                incident from one at the other end of the län. */}
+            <span className="event-location">
+              {event.place ? (
+                <>
+                  {event.place}
+                  <span className="event-location-area">{event.location}</span>
+                </>
+              ) : (
+                event.location
+              )}
+            </span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
@@ -238,10 +255,10 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
               failed detail fetch is a footnote rather than an error banner. */}
           {error && (
             <span className="event-detail-status">
-              Hela texten kunde inte hämtas just nu — läs den på polisen.se nedan.
+              Hela texten kunde inte hämtas. Läs den på polisen.se nedan.
             </span>
           )}
-          {/* Paragraphs separated by blank lines — from the scraped page or,
+          {/* Paragraphs separated by blank lines: from the scraped page or,
               for imported events, from their stored body. Rendered as one <p>,
               those breaks would collapse. */}
           {detail.paragraphs.map((paragraph, i) => (

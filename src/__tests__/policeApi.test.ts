@@ -1,4 +1,4 @@
-// Tests for policeApi module — focusing on pure functions and fetchDetailsText URL validation.
+// Tests for policeApi module: focusing on pure functions and fetchDetailsText URL validation.
 // We mock better-sqlite3 and the db module to avoid native module issues.
 
 jest.mock('better-sqlite3', () => {
@@ -59,7 +59,7 @@ describe('decodeHtmlEntities (additional edge cases)', () => {
   });
 
   it('decodes astral-plane code points above U+FFFF (emoji)', () => {
-    // U+1F698 ONCOMING AUTOMOBILE — requires fromCodePoint, not fromCharCode.
+    // U+1F698 ONCOMING AUTOMOBILE: requires fromCodePoint, not fromCharCode.
     expect(decodeHtmlEntities('&#128664;')).toBe('🚘');
     expect(decodeHtmlEntities('&#x1F698;')).toBe('🚘');
   });
@@ -176,7 +176,9 @@ describe('fetchDetailsText URL validation', () => {
     expect(result).toBe('Polisen i Göteborg');
   });
 
-  it('limits output to first 4 paragraphs', async () => {
+  // This used to stop at four, which cut every longer notice off mid-account
+  // with nothing on the card to say the rest existed.
+  it('keeps every paragraph of a long notice', async () => {
     const html = '<article>' +
       '<p>One</p><p>Two</p><p>Three</p><p>Four</p><p>Five</p><p>Six</p>' +
       '</article>';
@@ -186,9 +188,20 @@ describe('fetchDetailsText URL validation', () => {
     });
 
     const result = await fetchDetailsText('https://polisen.se/event');
-    const paragraphs = result!.split('\n\n');
-    expect(paragraphs).toHaveLength(4);
-    expect(paragraphs).toEqual(['One', 'Two', 'Three', 'Four']);
+    expect(result!.split('\n\n')).toEqual(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+  });
+
+  // The remaining cap is a guard against a page whose layout we misread handing
+  // back a document, not a display limit.
+  it('stops well past the length of any real notice', async () => {
+    const html = `<article>${'<p>Stycke</p>'.repeat(200)}</article>`;
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      text: async () => html,
+    });
+
+    const result = await fetchDetailsText('https://polisen.se/event');
+    expect(result!.split('\n\n')).toHaveLength(60);
   });
 
   it('returns null when fetch throws an error', async () => {

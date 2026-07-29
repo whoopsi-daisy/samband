@@ -2,8 +2,8 @@
 //
 // This lives in its own module because Next.js compiles instrumentation.ts for
 // the Edge runtime as well, and everything reachable from it gets traced into
-// that bundle. Anything touching better-sqlite3, fs or process.cwd — which is
-// all of the below — fails that build. Keeping it behind a single dynamic
+// that bundle. Anything touching better-sqlite3, fs or process.cwd, which is
+// all of the below: fails that build. Keeping it behind a single dynamic
 // import means the Edge bundle never reaches it.
 
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
@@ -11,7 +11,7 @@ import { pruneFetchLog, warmAggregateCaches } from '@/lib/db';
 import { getBpkImportState } from '@/lib/brottsplatskartanDb';
 import { reconcileImportState, startImport } from '@/lib/brottsplatskartanRunner';
 
-const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min — matches the API cache window
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min: matches the API cache window
 const FETCH_LOG_RETENTION_DAYS = 30;
 
 export function start(): void {

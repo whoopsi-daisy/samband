@@ -16,14 +16,14 @@ import {
 // A note on completeness. The API paginates a live, newest-first feed, and new
 // events are inserted at the head while a multi-hour import is running. Because
 // this walks pages in ASCENDING order, that insertion pushes existing events
-// toward LATER pages — away from the cursor — so an event can never slip behind
+// toward LATER pages (away from the cursor) so an event can never slip behind
 // it. Head growth therefore re-serves events (absorbed by INSERT OR IGNORE)
 // rather than skipping them.
 //
 // What head growth does change is `last_page`: the oldest events get pushed
 // onto page numbers past whatever the last page was when the run began. Fixing
 // the bound at the start would silently drop them, and an incremental sync
-// could never recover them — it stops at its watermark, and these are the
+// could never recover them: it stops at its watermark, and these are the
 // oldest events in the archive. So the bound is re-read from every response
 // and extended as the archive grows.
 
@@ -53,7 +53,7 @@ const DELAY_BETWEEN_BATCHES_MS = 250;
 
 // The default page size is 10, which would mean ~33k requests for a full
 // import of the ~333k events. `limit=500` is confirmed working against the
-// live API, bringing that down to ~670. Still probed rather than assumed —
+// live API, bringing that down to ~670. Still probed rather than assumed:
 // the code believes whatever the server actually returns.
 const PREFERRED_PER_PAGE = 500;
 
@@ -140,7 +140,7 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   });
 
 // AbortError arrives as a DOMException, which is NOT an instance of Error in
-// Node or the browser — an `instanceof Error` guard silently misses every
+// Node or the browser: an `instanceof Error` guard silently misses every
 // cancellation and reports it as a failure instead.
 function isAbortError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { name?: string }).name === 'AbortError';
@@ -225,7 +225,7 @@ async function fetchPage(page: number, perPage: number, signal?: AbortSignal): P
   url.searchParams.set('page', String(page));
   // The page-size parameter is `limit`. The response echoes it back as
   // `links.per_page`, which is what made `per_page` look like the request
-  // parameter — sending that name is silently ignored and always yields 10.
+  // parameter: sending that name is silently ignored and always yields 10.
   if (perPage > 0) url.searchParams.set('limit', String(perPage));
 
   let lastError: Error | null = null;
@@ -302,7 +302,7 @@ export async function probeApi(signal?: AbortSignal): Promise<ApiMetadata> {
   const reportedPerPage = toNumber(links.per_page);
   const actualPerPage = page.data?.length ?? 0;
 
-  // Trust what arrived over what was advertised — they disagree if per_page
+  // Trust what arrived over what was advertised: they disagree if per_page
   // is silently clamped.
   const perPage = actualPerPage > 0 ? actualPerPage : reportedPerPage && reportedPerPage > 0 ? reportedPerPage : 10;
 
@@ -374,7 +374,7 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
   const hardLimit = options.maxPages ?? Number.POSITIVE_INFINITY;
 
   // Following a growing bound terminates only while the archive grows slower
-  // than we consume it — true by a wide margin in practice (a few hundred new
+  // than we consume it: true by a wide margin in practice (a few hundred new
   // events a day against thousands of pages an hour). This caps the chase
   // anyway, so a pathological feed ends the run instead of looping forever.
   // Hitting it marks the run incomplete, so re-running resumes.
@@ -466,7 +466,7 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
       // would step over pages that were never requested.
       start = end + 1;
 
-      // Exhausted the known range — ask the API whether more has appeared
+      // Exhausted the known range: ask the API whether more has appeared
       // behind us before declaring the archive fully walked.
       if (start > lastPage && mode === 'full' && !stoppedEarly && lastPage < pageCeiling) {
         const recheck = await probeApi(signal);

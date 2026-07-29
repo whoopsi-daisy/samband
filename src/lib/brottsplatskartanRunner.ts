@@ -143,8 +143,8 @@ function record(text: string, options: { console?: boolean } = {}): void {
 const PUBLISH_INTERVAL_MS = 500;
 let lastPublishAt = 0;
 // Whether this run has pushed a progress snapshot yet. The first one always
-// goes out: without it, a run that finishes inside one interval — a small
-// dump, or any run whose start line used up the interval — would be seen
+// goes out, without it, a run that finishes inside one interval: a small
+// dump, or any run whose start line used up the interval: would be seen
 // starting and finishing with nothing in between.
 let publishedProgress = false;
 
@@ -171,7 +171,7 @@ function formatCount(n: number): string {
 function updateProgress(next: LiveImportProgress): void {
   progress = next;
 
-  // Keep the log readable: one line every CONSOLE_INTERVAL_MS, plus whatever
+  // Keep the log readable, one line every CONSOLE_INTERVAL_MS, plus whatever
   // start/finish lines the run records itself.
   const now = Date.now();
   if (now - lastConsoleAt >= CONSOLE_INTERVAL_MS) {
@@ -247,8 +247,8 @@ function startApiWalk(request: { mode: 'full' | 'incremental'; concurrency?: num
 
   record(
     mode === 'full'
-      ? 'full import started — walking the archive from the oldest page'
-      : 'incremental import started — pulling everything newer than the archive'
+      ? 'full import started: walking the archive from the oldest page'
+      : 'incremental import started: pulling everything newer than the archive'
   );
 
   return { started: true, mode, source: null };
@@ -342,7 +342,7 @@ function begin(handle: RunHandle): void {
     .finally(() => {
       // The feed, the filters and the statistics read the imported events, and
       // all three are served from cached aggregates. Drop those now so the app
-      // reflects the import immediately rather than up to a minute later —
+      // reflects the import immediately rather than up to a minute later:
       // including a run that was cancelled or failed partway, which still
       // stored everything it got through. Rebuilding them here means the first
       // page view after an import is not the one that pays for it.

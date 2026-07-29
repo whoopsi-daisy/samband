@@ -22,6 +22,29 @@ describe('formatRelativeTime', () => {
     const date = new Date(baseDate.getTime() - 2 * 24 * 60 * 60 * 1000);
     expect(formatRelativeTime(date, baseDate)).toBe('2 dagar sedan');
   });
+
+  // The archive reaches back to 2016. Counted in days that reads "3 214 dagar
+  // sedan", which nobody can turn into a date in their head.
+  it('changes unit as the distance grows', () => {
+    const ago = (days: number) =>
+      formatRelativeTime(new Date(baseDate.getTime() - days * 24 * 60 * 60 * 1000), baseDate);
+
+    expect(ago(13)).toBe('13 dagar sedan');
+    expect(ago(21)).toBe('3 veckor sedan');
+    expect(ago(90)).toBe('2 månader sedan');
+    expect(ago(400)).toBe('13 månader sedan');
+    expect(ago(365 * 3)).toBe('2 år sedan');
+    expect(ago(3214)).toBe('8 år sedan');
+  });
+
+  it('keeps the singular for one of each unit', () => {
+    const ago = (days: number) =>
+      formatRelativeTime(new Date(baseDate.getTime() - days * 24 * 60 * 60 * 1000), baseDate);
+
+    expect(ago(1)).toBe('1 dag sedan');
+    expect(ago(14)).toBe('2 veckor sedan');
+    expect(ago(61)).toBe('2 månader sedan');
+  });
 });
 
 describe('sanitizeInput', () => {
@@ -84,14 +107,14 @@ describe('sanitizeSearch', () => {
 
 describe('swedishDayKey', () => {
   // The feed groups incidents by day on the server and again in the browser.
-  // If those two disagree, React discards the server-rendered feed — so this
+  // If those two disagree, React discards the server-rendered feed, so this
   // has to answer for Stockholm regardless of the runtime's own timezone.
   it('returns the Swedish calendar day', () => {
     expect(swedishDayKey(new Date('2026-07-28T10:00:00.000Z'))).toBe('2026-07-28');
   });
 
   it('puts a Swedish late evening on the Swedish day, not the UTC one', () => {
-    // 23:30 in Stockholm during CEST is 21:30 UTC — same day either way.
+    // 23:30 in Stockholm during CEST is 21:30 UTC: same day either way.
     expect(swedishDayKey(new Date('2026-07-28T21:30:00.000Z'))).toBe('2026-07-28');
     // 00:30 Stockholm is 22:30 UTC the day before. UTC would say the 28th.
     expect(swedishDayKey(new Date('2026-07-28T22:30:00.000Z'))).toBe('2026-07-29');

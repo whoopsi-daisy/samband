@@ -1,7 +1,7 @@
 // Next.js instrumentation hook. Runs once when the server process starts.
 //
 // Next compiles this file for the Edge runtime as well as Node, and everything
-// reachable from it is traced into that Edge bundle — including through dynamic
+// reachable from it is traced into that Edge bundle: including through dynamic
 // imports. The startup work needs better-sqlite3, fs and process.cwd, none of
 // which exist there, so it all lives in instrumentation.node.ts behind the
 // single guarded import below.

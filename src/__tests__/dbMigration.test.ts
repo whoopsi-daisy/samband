@@ -71,7 +71,7 @@ describe('UTC timestamp migration', () => {
         datetime: '2026-07-27T10:00:00.000Z',
         event_time: '2026-07-27T10:00:00.000Z',
       });
-      // Already canonical — must be untouched.
+      // Already canonical: must be untouched.
       expect(rows[1]).toEqual({
         id: 2,
         datetime: '2026-07-27T09:30:00.000Z',
@@ -109,7 +109,7 @@ describe('UTC timestamp migration', () => {
       const second = await import('@/lib/db');
       const db = second.getDatabase();
 
-      // Assert a version was recorded and is stable, not a specific number —
+      // Assert a version was recorded and is stable, not a specific number:
       // pinning the literal breaks every time a migration is added.
       const version = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       expect(Number(version.value)).toBeGreaterThanOrEqual(1);

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const id = Number(searchParams.get('id'));
 
   // Imported events carry their own text, and the polisen.se page they came
-  // from is usually long gone — the archive reaches back to 2016. Answer from
+  // from is usually long gone: the archive reaches back to 2016. Answer from
   // the database and never touch the network.
   if (Number.isInteger(id) && id < 0) {
     const stored = getBpkEventText(id);

@@ -24,7 +24,7 @@ Paginated police events from the database.
 
 The body text of one event. Live events are fetched from polisen.se on demand;
 imported ones are served from the text the import stored, without touching the
-network — see [import.md](import.md#how-the-app-reads-it).
+network: see [import.md](import.md#how-the-app-reads-it).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -95,7 +95,7 @@ CREATE TABLE meta (
 
 `bpk_events` and `bpk_import_state` are described in
 [import.md](import.md#what-is-kept). The app's own queries read that table
-alongside `events` — see [how the app reads it](import.md#how-the-app-reads-it)
+alongside `events`: see [how the app reads it](import.md#how-the-app-reads-it)
 for the rule that keeps the overlapping period from being counted twice.
 
 All timestamp columns hold canonical UTC ISO 8601
@@ -135,7 +135,7 @@ the database's last-fetch timestamp to avoid duplicate fetches, and prunes
 | Rate limit | 60 requests/minute/IP, `429` with `Retry-After` |
 
 Rate-limit state is per-process, which suits the single-container deployment.
-Multiple replicas would each get their own counters — use a shared store before
+Multiple replicas would each get their own counters: use a shared store before
 scaling horizontally.
 
 ### Next.js config
@@ -146,18 +146,18 @@ transpilation and CSS handling, and client-side fallbacks for `fs`, `path` and
 
 ## Views
 
-**List** (default) — cards with a colour-coded type badge, location, timestamp,
+**List** (default): cards with a colour-coded type badge, location, timestamp,
 summary, lazy-loaded details, and a map link when the event has coordinates.
 
-**Map** — Leaflet map of the last 24 hours, markers coloured by type, popups
+**Map**: Leaflet map of the last 24 hours, markers coloured by type, popups
 with details and links.
 
-**Statistics** — totals (24h/7d/30d), a 7-day trend, events by weekday, hourly
+**Statistics**: totals (24h/7d/30d), a 7-day trend, events by weekday, hourly
 distribution, top types and top locations, over the whole dataset: the live
 feed plus every imported event older than the feed reaches. A line under the
 headline numbers names that boundary. See [import.md](import.md#how-the-app-reads-it).
 
-**Operational dashboard** (`/stats`) — system health (uptime, success rate, data
+**Operational dashboard** (`/stats`): system health (uptime, success rate, data
 freshness), fetch statistics and hourly chart, live import panel, database
 health, data coverage, recent errors and the fetch log.
 

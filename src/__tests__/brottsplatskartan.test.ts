@@ -224,7 +224,7 @@ describe('importBrottsplatskartan', () => {
     expect(new Set(ids).size).toBe(250);
   });
 
-  it('is idempotent — a second full import stores nothing new', async () => {
+  it('is idempotent: a second full import stores nothing new', async () => {
     installFakeApi({ totalEvents: 120, maxPerPage: 50 });
 
     await bpk.importBrottsplatskartan({ mode: 'full' });
@@ -385,7 +385,7 @@ describe('completeness while the archive is live', () => {
     const ids = new Set(stored.map((r) => r.id));
 
     // Every event that existed when the run began must be present. Those are
-    // ids 1..1000 — ids above that were published during the run.
+    // ids 1..1000: ids above that were published during the run.
     const missing: number[] = [];
     for (let id = 1; id <= 1000; id++) if (!ids.has(id)) missing.push(id);
 
@@ -506,10 +506,10 @@ describe('request shape', () => {
     await bpk.probeApi();
 
     const url = new URL(lastRequestedUrl);
-    // The form confirmed working against the live API is /api/events?... —
+    // The form confirmed working against the live API is /api/events?...:
     // appending a slash before the query string is an unnecessary gamble.
     expect(url.pathname.endsWith('/')).toBe(false);
-    // Not pinned to a literal — the point is that a page size larger than the
+    // Not pinned to a literal: the point is that a page size larger than the
     // API's default of 10 is requested, whatever that size currently is.
     expect(Number(url.searchParams.get('limit'))).toBeGreaterThan(10);
     expect(url.searchParams.get('per_page')).toBeNull();

@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect fill="#0a1628" rx="96" width="512" height="512"/>
-  <text x="256" y="390" font-size="380" text-anchor="middle">🚨</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sambandscentralen">
+  <rect width="512" height="512" rx="115" fill="#165a9b"/>
+  <g fill="none" stroke="#ffffff" stroke-width="26">
+    <circle cx="256" cy="256" r="166" opacity="0.4"/>
+    <circle cx="256" cy="256" r="102" opacity="0.95"/>
+  </g>
+  <circle cx="256" cy="256" r="46" fill="#ffffff"/>
 </svg>

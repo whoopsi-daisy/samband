@@ -70,7 +70,7 @@ describe('getEventsFromDb', () => {
     expect(db.getEventsFromDb({ type: 'Brand' }, 10, 0).map((e) => e.id).sort()).toEqual([1, 3]);
     expect(db.getEventsFromDb({ location: 'Malmö', type: 'Brand' }, 10, 0).map((e) => e.id)).toEqual([1]);
 
-    // "Malm" must not match "Malmö" — this is an equality filter.
+    // "Malm" must not match "Malmö": this is an equality filter.
     expect(db.getEventsFromDb({ location: 'Malm' }, 10, 0)).toHaveLength(0);
   });
 

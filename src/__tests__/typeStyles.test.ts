@@ -1,7 +1,7 @@
 import { TYPE_STYLES, getTypeStyle } from '@/types';
 
 // polisen.se's own vocabulary, as it comes out of the events API. The table in
-// types/index.ts exists to keep these off the fallback pin — a feed where most
+// types/index.ts exists to keep these off the fallback pin: a feed where most
 // rows show 📍 has an emoji column that carries no information.
 const POLISEN_TYPES = [
   'Alkohollagen',
@@ -31,6 +31,7 @@ const POLISEN_TYPES = [
   'Larm Överfall',
   'Miljöbrott',
   'Missbruk av urkund',
+  'Mordbrand',
   'Misshandel',
   'Misshandel, grov',
   'Mord/dråp',
@@ -124,6 +125,39 @@ describe('getTypeStyle', () => {
     expect(getTypeStyle('Sammanfattning helg')).toEqual(TYPE_STYLES['Sammanfattning']);
     expect(getTypeStyle('Grov misshandel')).toEqual(TYPE_STYLES['Misshandel']);
     expect(getTypeStyle('Misstänkt narkotikabrott')).toEqual(TYPE_STYLES['Narkotikabrott']);
+  });
+
+  // Swedish writes compounds as one word, so there is no boundary to anchor a
+  // pattern on. "Mordbrand" reached the fallback pin for exactly this reason.
+  it('reads a compound by its last element', () => {
+    expect(getTypeStyle('Villainbrott')).toEqual(TYPE_STYLES['Inbrott']);
+    expect(getTypeStyle('Bostadsinbrott')).toEqual(TYPE_STYLES['Inbrott']);
+    expect(getTypeStyle('Cykelstöld')).toEqual(TYPE_STYLES['Stöld']);
+    expect(getTypeStyle('Personrån')).toEqual(TYPE_STYLES['Rån']);
+  });
+
+  // A mordbrand is a fire, not a homicide, and the table names it outright so
+  // it keeps the arson colour instead of the plain fire orange.
+  it('does not read a compound as its first element', () => {
+    expect(getTypeStyle('Mordbrand')).toEqual(TYPE_STYLES['Mordbrand']);
+    expect(getTypeStyle('Mordbrand')).not.toEqual(TYPE_STYLES['Mord/dråp']);
+    expect(getTypeStyle('Mordbrand').color).not.toBe(TYPE_STYLES['Brand'].color);
+  });
+
+  it('reads a phrase by its head, right to left', () => {
+    expect(getTypeStyle('Brott mot knivlagen')).toEqual(TYPE_STYLES['Knivlagen']);
+    expect(getTypeStyle('Försök till mord')).toEqual(TYPE_STYLES['Mord/dråp']);
+    expect(getTypeStyle('Stöld ur bil')).toEqual(TYPE_STYLES['Stöld']);
+  });
+
+  // Faces reading as a reaction to someone else's assault or bereavement.
+  it('keeps cartoon faces off crimes against people', () => {
+    const faces = ['🤕', '😠', '😡', '😢', '😱', '🥴', '🤬', '😨', '👵', '🧒'];
+    const offending = Object.entries(TYPE_STYLES).filter(([, style]) =>
+      faces.includes(style.emoji)
+    );
+
+    expect(offending).toEqual([]);
   });
 
   it('returns the fallback for an empty or unrecognisable type', () => {

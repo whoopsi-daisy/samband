@@ -120,7 +120,7 @@ describe('captured pagination metadata', () => {
   });
 
   it("uses 'limit' as the page-size parameter, per the API's own URLs", () => {
-    // The response advertises per_page but the URLs it builds use limit —
+    // The response advertises per_page but the URLs it builds use limit:
     // sending per_page is ignored and silently yields 10 events per request.
     const firstPageUrl = String(page1.links.first_page_url);
     expect(firstPageUrl).toContain('limit=');

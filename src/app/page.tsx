@@ -45,7 +45,7 @@ async function HomeContent({ searchParams }: PageProps) {
   const totalEvents = countEventsInDb(filters);
   const hasMore = EVENTS_PER_PAGE < totalEvents;
 
-  // Map events are deliberately NOT fetched here — the map loads them from
+  // Map events are deliberately NOT fetched here: the map loads them from
   // /api/map when it is opened. Embedding them added ~500 events to every
   // page payload, including for visitors who never leave the list view.
 
@@ -58,7 +58,7 @@ async function HomeContent({ searchParams }: PageProps) {
   const stats = getStatsSummary();
 
   // A shared link (?event=123). The first page covers well under a day, so the
-  // linked event is usually not in it — look it up directly and hand it to the
+  // linked event is usually not in it: look it up directly and hand it to the
   // list, which pins it above the feed. Resolving it here also means the page
   // can say the event no longer exists instead of quietly rendering the feed.
   const parsedEventId = params.event ? parseInt(params.event, 10) : NaN;

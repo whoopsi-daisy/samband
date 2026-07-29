@@ -11,7 +11,7 @@ If you want to publish images from your own fork, see
 
 ```bash
 docker --version          # 20.10+
-docker compose version    # v2 — "docker compose", not "docker-compose"
+docker compose version    # v2: "docker compose", not "docker-compose"
 ```
 
 ## 1. Deployment directory
@@ -33,7 +33,7 @@ mkdir -p data
 The server runs as uid 1001 and the database lives in this directory, so uid
 1001 has to be able to write to it. It usually cannot to begin with: Docker
 creates a missing bind-mount source as root, and on a cloned repository
-`./data` already exists owned by whoever cloned — `mkdir -p` changes nothing
+`./data` already exists owned by whoever cloned: `mkdir -p` changes nothing
 there. The container's entrypoint therefore takes ownership at boot, before
 dropping to uid 1001 to run the server, so no host-side `chown` is needed.
 
@@ -47,7 +47,7 @@ sudo chown -R 1001:1001 data
 
 ## 3. Configure
 
-Edit `.env`. Every value has a working default, so an empty file starts fine —
+Edit `.env`. Every value has a working default, so an empty file starts fine:
 except `/stats`, which answers `503` until you give it credentials:
 
 ```bash
@@ -58,12 +58,12 @@ chmod 600 .env
 
 `/stats` shows fetch logs, error history and database internals, and the
 import API behind it can start or cancel a run lasting hours. It used to be
-reachable without a login whenever these were unset — which is what an
-untouched `.env` gives you — so the default is now closed. If you genuinely
+reachable without a login whenever these were unset, which is what an
+untouched `.env` gives you, so the default is now closed. If you genuinely
 want it open (a private network, say), ask for that explicitly with
 `STATS_PUBLIC=true` rather than by leaving the fields blank.
 
-Full list: [`.env.example`](../.env.example). Do not change `TZ` — the app
+Full list: [`.env.example`](../.env.example). Do not change `TZ`: the app
 parses Swedish wall-clock times out of event text and renders them back, so
 anything but `Europe/Stockholm` shifts every event by 1–2 hours.
 
@@ -79,7 +79,7 @@ NAME       IMAGE                                    STATUS
 samband    ghcr.io/whoopsi-daisy/samband:latest     Up 2 minutes (healthy)
 ```
 
-`(healthy)` is the bit that matters — it means `/api/health` is answering. It
+`(healthy)` is the bit that matters: it means `/api/health` is answering. It
 takes up to 40 seconds to appear (the healthcheck's start period).
 
 ```bash
@@ -98,7 +98,7 @@ if anything looks wrong.
 | Tag | Points at | Use when |
 |-----|-----------|----------|
 | `latest` | Newest stable release | You want releases without thinking about it |
-| `1.2.3` | That exact release | Production — reproducible, no surprise upgrades |
+| `1.2.3` | That exact release | Production: reproducible, no surprise upgrades |
 | `1.2` | Newest patch of 1.2 | You want bug fixes but not new features |
 | `1` | Newest minor of 1.x | You accept features, not breaking changes |
 | `edge` | Newest commit on `main` | You want unreleased changes and accept breakage |
@@ -110,7 +110,7 @@ publishes only `1.3.0-rc.1` and never touches `latest`, `1.3` or `1`.
 ## Behind a reverse proxy
 
 Rate limiting reads the client IP from `X-Forwarded-For`, counting
-`RATE_LIMIT_PROXY_HOPS` entries **from the right** — the entries your own
+`RATE_LIMIT_PROXY_HOPS` entries **from the right**: the entries your own
 proxies appended, which a client cannot forge. Set it to the number of proxies
 in front of the app: `1` for a single nginx/Traefik/Caddy, `2` if Cloudflare
 sits in front of that as well.
@@ -145,7 +145,7 @@ stream is passed through, but if a proxy in front of it strips that header the
 dashboard falls back to polling on its own.
 
 With either proxy, bind the container to localhost so it is not reachable
-directly — in `.env`:
+directly. In `.env`:
 
 ```bash
 SAMBAND_PORT=127.0.0.1:3000
@@ -169,7 +169,7 @@ row and normalises event types, and migration 4 builds the full-text search
 index, about 20 seconds per 333k events. Each logs a line when it is done, and
 each runs once.
 
-**Starting empty and importing afterwards costs nothing at startup** — the
+**Starting empty and importing afterwards costs nothing at startup**: the
 usual case for a new deployment. The first open of an empty database is a few
 tens of milliseconds, and the importer indexes each event as it stores it, so
 there is no pause and no rebuild to wait for. A 333k-event dump takes about
@@ -177,7 +177,7 @@ there is no pause and no rebuild to wait for. A 333k-event dump takes about
 network-bound for hours, does not notice.
 
 Budget disk for the search index either way: roughly 350 MB alongside a full
-archive, or ~55 MB with `BPK_SEARCH_TOKENIZER=unicode61` — see
+archive, or ~55 MB with `BPK_SEARCH_TOKENIZER=unicode61`: see
 [import.md](import.md#searching-it).
 
 Take a snapshot first if the release notes mention a migration:
@@ -204,7 +204,7 @@ Rolling back across a schema change means restoring the database snapshot too.
 ./scripts/export-db.sh ./data/events.db ./backup-$(date +%F).db
 ```
 
-Do not just `cp` the file — the database runs in WAL mode, so recent writes live
+Do not just `cp` the file: the database runs in WAL mode, so recent writes live
 in `events.db-wal` and a plain copy of the main file alone loses them.
 
 ## Verifying provenance (optional)
@@ -290,7 +290,7 @@ ownership to uid 1001.
 
 ### What happens on first start
 
-Older databases stored `event_time` in two different shapes — UTC
+Older databases stored `event_time` in two different shapes: UTC
 (`2026-07-27T12:30:00.000Z`) and the API's local offset form
 (`2026-07-27T14:30:00+02:00`). SQLite compares these columns as text, and those
 two shapes do not sort against each other chronologically, so the feed order and
@@ -304,7 +304,7 @@ The app migrates these to UTC automatically on first start and logs what it did:
 
 This runs once, tracked by `schema_version` in the `meta` table. Because it
 rewrites rows in place, **take the export in step 1 before starting the
-container** — that file is your rollback.
+container**: that file is your rollback.
 
 ## Troubleshooting
 
@@ -317,5 +317,5 @@ container** — that file is your rollback.
 | Feed is empty on a fresh install | Backfill has not finished; wait a minute and check `/stats` |
 | Every visitor shares one rate limit | `RATE_LIMIT_PROXY_HOPS` is wrong for your proxy chain |
 | Pull fails: `denied` / `manifest unknown` | The package is private. See [publishing.md](publishing.md) |
-| `exec format error` on start | Wrong architecture — the image was built amd64-only for an arm64 host |
+| `exec format error` on start | Wrong architecture: the image was built amd64-only for an arm64 host |
 | Import panel on `/stats` shows no progress | The dump path must be inside `./data`; check the log tail in the panel and `docker compose logs` |

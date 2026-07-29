@@ -7,7 +7,7 @@ import { getDataDir } from './db';
 // The import can be started over HTTP (POST /api/import/brottsplatskartan), so
 // the path in that request is attacker-controlled if the dashboard credentials
 // ever leak. A request may therefore only name files inside the data directory
-// — the one place the operator already mounts data into. The CLI and the
+//: the one place the operator already mounts data into. The CLI and the
 // startup environment variable are operator-controlled and may point anywhere.
 
 export class ImportSourceError extends Error {

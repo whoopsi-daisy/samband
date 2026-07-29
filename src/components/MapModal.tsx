@@ -77,7 +77,7 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
   }, [isOpen, lat, lng]);
 
   // Escape closes; Tab stays inside. `aria-modal` claimed a modality the
-  // dialog did not implement — focus never entered it, so a keyboard or
+  // dialog did not implement: focus never entered it, so a keyboard or
   // screen-reader user was left tabbing the page behind the overlay.
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -153,7 +153,7 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
         </div>
         <div className="modal-body">
           {/* Sits behind the Leaflet panes, so it shows while tiles are on
-              their way and stays put if they never arrive — the body was an
+              their way and stays put if they never arrive: the body was an
               unexplained grey rectangle in both cases. */}
           <p className="modal-map-placeholder">Kartan laddas…</p>
           <div className="modal-map" ref={mapContainerRef} />

@@ -2,7 +2,7 @@
 
 One-time setup so your repository can push images to the GitHub Container
 Registry. Skip this entirely if someone else publishes the image and you only
-want to run it — that is [deploy.md](deploy.md).
+want to run it: that is [deploy.md](deploy.md).
 
 ## The two workflows
 
@@ -29,7 +29,7 @@ permissions:
   attestations: write   # record it against the repo
 ```
 
-No secret needs creating — the workflow logs in with the `GITHUB_TOKEN` Actions
+No secret needs creating: the workflow logs in with the `GITHUB_TOKEN` Actions
 injects automatically.
 
 What breaks this is an **organisation** policy that caps workflow permissions
@@ -78,8 +78,8 @@ docker pull ghcr.io/whoopsi-daisy/samband:latest
 ## Skipping arm64
 
 If everything you run is x86, halve the build time. Either run the workflow
-manually — **Actions** → *Publish container image* → **Run workflow** → set
-**Platforms** to `linux/amd64` — or make it permanent in
+manually: **Actions** → *Publish container image* → **Run workflow** → set
+**Platforms** to `linux/amd64`, or make it permanent in
 `.github/workflows/publish.yml`:
 
 ```yaml
@@ -104,7 +104,7 @@ from then on.
 | Symptom | Cause and fix |
 |---------|---------------|
 | Push fails: `denied: installation not allowed` | The workflow lacks `packages: write`, almost always an org-level cap. See step 1 |
-| Pull fails: `denied` or `manifest unknown` | The package is still private. See step 3 — a public *repo* does not make the *package* public |
+| Pull fails: `denied` or `manifest unknown` | The package is still private. See step 3: a public *repo* does not make the *package* public |
 | Pull fails: `unauthorized: authentication required` | Private package and you are not logged in. See "keeping the image private" |
-| `exec format error` on start | Wrong architecture — built amd64-only, running on arm64. Rebuild with both platforms |
+| `exec format error` on start | Wrong architecture: built amd64-only, running on arm64. Rebuild with both platforms |
 | Workflow did not run at all | `publish.yml` only triggers on `main` and `v*.*.*` tags. A feature branch runs `ci.yml` only, by design |

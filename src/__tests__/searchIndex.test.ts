@@ -94,7 +94,7 @@ describe('searching the archive', () => {
     bpkDb.insertBpkEvents([archiveEvent({ id: 1 })]);
     expect(search('cykelstöld')).toHaveLength(0);
 
-    // A later import — the incremental sync that follows a dump, say.
+    // A later import: the incremental sync that follows a dump, say.
     bpkDb.insertBpkEvents([
       archiveEvent({ id: 2, headline: 'Cykelstöld i Lund.', content: '<p>En cykel har stulits.</p>' }),
     ]);

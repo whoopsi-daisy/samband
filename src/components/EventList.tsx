@@ -13,10 +13,24 @@ const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000;
 // whether "there is more" is worth a sentence or is just the next tap.
 const PAGE_SIZE = 40;
 
+// How many pages will load on scroll before the reader has to ask again.
+//
+// Not unlimited, deliberately. The archive runs past 300,000 rows, so an
+// endless feed would keep growing the DOM until the tab crawls, and it would
+// put the footer permanently out of reach: every scroll toward it adds another
+// screen of rows before it arrives. Five pages is two hundred incidents, which
+// is well past what anyone reads in one sitting, and after that the button
+// comes back and the page has an end again.
+const AUTO_LOAD_PAGES = 5;
+
+// Start fetching this far before the end of the list, so the next rows are
+// usually there by the time the reader reaches the ones above them.
+const AUTO_LOAD_MARGIN = '800px';
+
 /**
  * Why a request the reader asked for did not happen. Every one of these paths
  * used to `return` silently, so tapping "visa fler" with no connection did
- * nothing at all — no message, no change, no way to tell it had failed.
+ * nothing at all: no message, no change, no way to tell it had failed.
  */
 type FetchFailure = 'offline' | 'rate-limited' | 'failed';
 
@@ -48,7 +62,7 @@ interface EventListProps {
   currentView: string;
   onShowMap?: (lat: number, lng: number, location: string) => void;
   highlightedEventId: number | null;
-  /** A ?event= link whose event is not in the first page — pinned above the feed. */
+  /** A ?event= link whose event is not in the first page: pinned above the feed. */
   linkedEvent: FormattedEvent | null;
   /** A ?event= link whose event no longer exists. */
   linkedEventMissing: boolean;
@@ -77,7 +91,10 @@ export default function EventList({
   const [failure, setFailure] = useState<FetchFailure | null>(null);
   const [newEventsCount, setNewEventsCount] = useState(0);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
+  /** Pages fetched by scrolling since the reader last asked for more. */
+  const [autoLoads, setAutoLoads] = useState(0);
   const lastRefreshRef = useRef<number>(Date.now());
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const eventsRef = useRef<FormattedEvent[]>(events);
   eventsRef.current = events;
 
@@ -97,6 +114,7 @@ export default function EventList({
     setHasMore(initialHasMore);
     setPage(1);
     setNewEventsCount(0);
+    setAutoLoads(0);
     lastRefreshRef.current = Date.now();
   }, [filterKey, initialEvents, initialTotal, initialHasMore]);
 
@@ -129,7 +147,7 @@ export default function EventList({
           if (fresh.length > 0) setNewEventsCount(fresh.length);
         }
       } catch {
-        // Silently fail — don't interrupt the user
+        // Silently fail: don't interrupt the user
       }
     };
 
@@ -198,30 +216,70 @@ export default function EventList({
     }
   }, [fetchPage]);
 
-  const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
+  const loadMore = useCallback(
+    async (viaScroll = false) => {
+      if (loading || !hasMore) return;
 
-    setLoading(true);
-    setFailure(null);
-    const nextPage = page + 1;
+      setLoading(true);
+      setFailure(null);
+      const nextPage = page + 1;
 
-    try {
-      const data = await fetchPage(nextPage);
-      // Deduplicate: pages can overlap if data shifted between requests
-      setEvents((prev) => {
-        const existingIds = new Set(prev.map((e) => e.id));
-        const newUnique = data.events.filter((e) => !existingIds.has(e.id));
-        return [...prev, ...newUnique];
-      });
-      if (typeof data.total === 'number') setTotal(data.total);
-      setHasMore(data.hasMore);
-      setPage(nextPage);
-    } catch (err) {
-      setFailure((err as { failure?: FetchFailure }).failure ?? 'failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [loading, hasMore, page, fetchPage]);
+      try {
+        const data = await fetchPage(nextPage);
+        // Deduplicate: pages can overlap if data shifted between requests
+        setEvents((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const newUnique = data.events.filter((e) => !existingIds.has(e.id));
+          return [...prev, ...newUnique];
+        });
+        if (typeof data.total === 'number') setTotal(data.total);
+        setHasMore(data.hasMore);
+        setPage(nextPage);
+        // Asking for more explicitly resets the budget, so someone who wants
+        // to keep going is not made to click every page.
+        setAutoLoads((count) => (viaScroll ? count + 1 : 0));
+      } catch (err) {
+        setFailure((err as { failure?: FetchFailure }).failure ?? 'failed');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loading, hasMore, page, fetchPage]
+  );
+
+  const autoLoadExhausted = autoLoads >= AUTO_LOAD_PAGES;
+  // Assumed present, which is what the server renders against, so the button
+  // does not appear for a frame and vanish. A browser without the observer
+  // corrects this on mount and keeps the button for good.
+  const [autoLoadSupported, setAutoLoadSupported] = useState(true);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') setAutoLoadSupported(false);
+  }, []);
+
+  const scrollLoads = autoLoadSupported && !autoLoadExhausted && !failure;
+
+  // Load the next page as the end of the list comes into view. The button below
+  // stays: it is the keyboard and screen-reader path to the same thing, it is
+  // the way back after a failed request, and it is what appears again once the
+  // scroll budget above is spent.
+  //
+  // A failure switches scrolling off until the reader retries, so a dead
+  // network cannot turn into a request every time the sentinel drifts back into
+  // view.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loading || !scrollLoads) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore(true);
+      },
+      { rootMargin: AUTO_LOAD_MARGIN }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loading, scrollLoads, loadMore]);
 
   // Coming back online is the answer to the message above, so clear it.
   useEffect(() => {
@@ -235,7 +293,7 @@ export default function EventList({
     const weekdays = ['Söndag', 'Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag'];
     const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
-    // Grouped on the Swedish calendar day, not the reader's — see
+    // Grouped on the Swedish calendar day, not the reader's: see
     // swedishDayKey for why that distinction is load-bearing here.
     const dayKey = swedishDayKey;
 
@@ -271,7 +329,7 @@ export default function EventList({
     return groups;
   }, [events]);
 
-  // A link to an event that is not in the first page — the usual case for a
+  // A link to an event that is not in the first page: the usual case for a
   // shared link, since the first page covers well under a day.
   const linkedBanner = linkedEvent ? (
     <section className="linked-event" aria-label="Delad händelse">
@@ -359,19 +417,18 @@ export default function EventList({
       </div>
 
       <section>
-        {dayGroups.map((group, groupIndex) => (
+        {dayGroups.map((group) => (
           <div key={group.key}>
-            {/* The count used to sit alone at the right edge of this line — a
+            {/* The count used to sit alone at the right edge of this line: a
                 bare "2" floating above the cards with nothing saying what it
                 counted. It reads as part of the heading instead. */}
-            <div className="day-heading">
+            <h2 className="day-heading">
               <span className="section-label">{group.label}</span>
               <span className="day-heading-count">
                 {group.events.length} {group.events.length === 1 ? 'händelse' : 'händelser'}
               </span>
-            </div>
-            {/* Only the newest day's first row carries the accent rail. */}
-            <div className={`panel event-list${groupIndex === 0 ? ' event-list--newest' : ''}`}>
+            </h2>
+            <div className="panel event-list">
               {group.events.map((event, index) => (
                 <EventCard
                   key={event.id ?? `${group.key}-${index}`}
@@ -387,6 +444,10 @@ export default function EventList({
         ))}
       </section>
 
+      {/* Where scrolling picks up the next page. Sits above the controls so the
+          fetch starts while the reader is still on the rows above it. */}
+      {hasMore && <div ref={sentinelRef} aria-hidden="true" />}
+
       <div className="load-more">
         {/* Whatever went wrong, say so here rather than leaving the button to
             spin and settle back with nothing changed. */}
@@ -397,18 +458,31 @@ export default function EventList({
         )}
         {hasMore && (
           <>
-            <button className="btn-quiet" type="button" onClick={loadMore} disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="spinner-sm" />
-                  Laddar…
-                </>
-              ) : failure ? (
-                'Försök igen'
-              ) : (
-                'Visa fler'
-              )}
-            </button>
+            {/* Hidden while scrolling is still doing the work, with pages
+                arriving on their own, a button reading "visa fler" beneath them
+                is a control for something that already happened. It comes back
+                once the scroll budget is spent, when a request fails, and in a
+                browser with no IntersectionObserver, which are the three cases
+                where it has a job to do. */}
+            {(loading || !scrollLoads) && (
+              <button
+                className="btn-quiet"
+                type="button"
+                onClick={() => loadMore()}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner-sm" />
+                    Laddar…
+                  </>
+                ) : failure ? (
+                  'Försök igen'
+                ) : (
+                  'Visa fler'
+                )}
+              </button>
+            )}
             {/* The remaining count used to sit in the button's own label, which
                 read as an invitation to reach the end of the archive forty rows
                 at a time. With an import loaded that is thousands of taps. Say
@@ -416,15 +490,15 @@ export default function EventList({
                 it. */}
             {total > events.length + PAGE_SIZE && (
               <p className="load-more-hint">
-                {total.toLocaleString('sv-SE')} händelser matchar. Sök eller filtrera för att nå längre
-                bak i arkivet.
+                {total.toLocaleString('sv-SE')} händelser matchar. Sök eller filtrera för att nå
+                längre bak i arkivet.
               </p>
             )}
           </>
         )}
         {!hasMore && (
           <p className="all-loaded-message" role="status">
-            Du har nått slutet — alla {events.length.toLocaleString('sv-SE')} händelser visas.
+            Slut på listan. Alla {events.length.toLocaleString('sv-SE')} händelser visas.
           </p>
         )}
       </div>

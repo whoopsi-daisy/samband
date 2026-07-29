@@ -1,4 +1,4 @@
-import { formatEventForUi } from '@/lib/utils';
+import { formatEventForUi, placeFromTitle } from '@/lib/utils';
 import { EventWithMetadata } from '@/types';
 
 // Mock better-sqlite3 to avoid native module issues in tests
@@ -38,7 +38,7 @@ function createEvent(overrides: Partial<TestEvent> = {}): EventWithMetadata {
     was_updated: false,
     ...overrides,
   };
-  // Cast to EventWithMetadata — the runtime code handles null gracefully.
+  // Cast to EventWithMetadata: the runtime code handles null gracefully.
   return base as unknown as EventWithMetadata;
 }
 
@@ -177,5 +177,28 @@ describe('formatEventForUi', () => {
 
     expect(result.name).toBe('');
     expect(result.summary).toBe('');
+  });
+});
+
+describe('placeFromTitle', () => {
+  it('takes the municipality out of a polisen.se title', () => {
+    expect(placeFromTitle('16 juli 08:53, Trafikolycka, Ljungby', 'Kronobergs län')).toBe('Ljungby');
+  });
+
+  it('says nothing when the location already names the same place', () => {
+    expect(placeFromTitle('15 juni 14:30, Trafikolycka, Stockholm', 'Stockholm')).toBe('');
+    expect(placeFromTitle('15 juni 14:30, Trafikolycka, stockholm', 'Stockholm')).toBe('');
+  });
+
+  // Promoting the county over the municipality beside it would make the row
+  // less precise, which on "where did this happen" is worse than saying less.
+  it('never replaces a municipality with a county', () => {
+    expect(placeFromTitle('15 juni 14:30, Rån, Stockholms län', 'Solna')).toBe('');
+  });
+
+  it('ignores titles that are not in the notice format', () => {
+    expect(placeFromTitle('Rån i Ljungby', 'Kronobergs län')).toBe('');
+    expect(placeFromTitle('', 'Kronobergs län')).toBe('');
+    expect(placeFromTitle('16 juli 08:53, Trafikolycka', 'Kronobergs län')).toBe('');
   });
 });

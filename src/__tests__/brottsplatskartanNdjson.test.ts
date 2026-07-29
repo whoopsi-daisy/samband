@@ -220,7 +220,7 @@ describe('importNdjson', () => {
     expect(result.source).toBe('archive.ndjson');
   });
 
-  it('is idempotent — re-importing the same dump stores nothing new', async () => {
+  it('is idempotent: re-importing the same dump stores nothing new', async () => {
     const file = writeDump(realEventLines(100));
 
     await ndjson.importNdjson({ source: file });
