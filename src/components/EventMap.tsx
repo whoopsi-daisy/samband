@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { FormattedEvent } from '@/types';
+import { FormattedEvent, TYPE_FAMILIES, TypeFamilyKey, getTypeStyle } from '@/types';
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
@@ -16,12 +16,23 @@ interface EventMapProps {
   onRetry?: () => void;
 }
 
-type TimeRange = '24h' | '48h' | '72h';
+type TimeRange = '24h' | '48h' | '72h' | 'all';
 
+/**
+ * The windows the map can show.
+ *
+ * "Hela urvalet" is not a nicety. The map is fed the newest 500 rows matching
+ * the reader's filters, and the archive reaches back to 2016, so filtering to a
+ * place whose incidents are all archived produced five hundred rows and a
+ * window that reached none of them: a blank map, with the count in 12px below
+ * the fold as the only clue. Every fixed window has that failure mode, so one
+ * of them has to have no bound at all.
+ */
 const TIME_RANGES: { key: TimeRange; label: string; ms: number }[] = [
-  { key: '24h', label: '24 tim', ms: 24 * 60 * 60 * 1000 },
-  { key: '48h', label: '48 tim', ms: 48 * 60 * 60 * 1000 },
-  { key: '72h', label: '72 tim', ms: 72 * 60 * 60 * 1000 },
+  { key: '24h', label: 'Senaste 24 tim', ms: 24 * 60 * 60 * 1000 },
+  { key: '48h', label: 'Senaste 48 tim', ms: 48 * 60 * 60 * 1000 },
+  { key: '72h', label: 'Senaste 72 tim', ms: 72 * 60 * 60 * 1000 },
+  { key: 'all', label: 'Hela urvalet', ms: Number.POSITIVE_INFINITY },
 ];
 
 // CartoDB ships the same basemap in two styles. Picking the one that matches
@@ -152,8 +163,28 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
 
   eventsRef.current = events;
 
+  /**
+   * How long the selected window is, in milliseconds.
+   *
+   * "Hela urvalet" has no length, and marker size, marker fade and the replay
+   * step are all fractions of one. Resolved against the span of the rows on
+   * hand instead: the oldest of them becomes the far end of the scale, so a
+   * decade of archive fades over a decade rather than every dot rendering
+   * identically fresh.
+   */
   const getRangeMs = useCallback(
-    (range?: TimeRange) => TIME_RANGES.find(r => r.key === (range ?? timeRange))?.ms ?? 24 * 60 * 60 * 1000,
+    (range?: TimeRange) => {
+      const declared = TIME_RANGES.find(r => r.key === (range ?? timeRange))?.ms ?? 24 * 60 * 60 * 1000;
+      if (Number.isFinite(declared)) return declared;
+
+      let oldest = Infinity;
+      for (const e of eventsRef.current) {
+        const ts = new Date(e.date?.iso || e.datetime).getTime();
+        if (!isNaN(ts) && ts < oldest) oldest = ts;
+      }
+      // One hour, so nothing downstream divides by zero on an empty selection.
+      return Number.isFinite(oldest) ? Math.max(Date.now() - oldest, 60 * 60 * 1000) : 24 * 60 * 60 * 1000;
+    },
     [timeRange]
   );
 
@@ -500,6 +531,45 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
     }
   }, [getRangeMs, renderMarkers]);
 
+  /** The narrowest window that actually contains something. */
+  const firstRangeWithEvents = useCallback((): TimeRange | null => {
+    const now = Date.now();
+    for (const range of TIME_RANGES) {
+      const start = Number.isFinite(range.ms) ? now - range.ms : -Infinity;
+      const hit = eventsRef.current.some((e) => {
+        const ts = new Date(e.date?.iso || e.datetime).getTime();
+        return !isNaN(ts) && ts >= start && ts <= now && e.gps;
+      });
+      if (hit) return range.key;
+    }
+    return null;
+  }, []);
+
+  // Open on a window that has something in it.
+  //
+  // The default is the last 24 hours, which is right for the live feed and
+  // wrong for everything else: filter to a place whose incidents are all in the
+  // archive and the reader gets an empty map while the list shows hundreds of
+  // rows for the same filter. Widening on their behalf is only done on arrival
+  // and after a filter change, never over a window they picked themselves.
+  const autoWidenedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isActive || loading || events.length === 0) return;
+    // Keyed on the selection, so a new filter gets one adjustment and no more.
+    const key = events.map((e) => e.id).join(',');
+    if (autoWidenedForRef.current === key) return;
+    autoWidenedForRef.current = key;
+
+    const widest = firstRangeWithEvents();
+    if (widest && widest !== timeRange) {
+      setTimeRange(widest);
+      hasFittedBoundsRef.current = false;
+    }
+    // `timeRange` is deliberately not a dependency: this must not re-run when
+    // the reader changes the window themselves. The guard above makes that
+    // safe, since the effect acts once per selection either way.
+  }, [isActive, loading, events, firstRangeWithEvents, timeRange]);
+
   const handleRangeChange = useCallback((r: TimeRange) => {
     setTimeRange(r);
     setIsPlaying(false);
@@ -515,27 +585,39 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
     });
   }, []);
 
-  const rangeLabel = TIME_RANGES.find((r) => r.key === timeRange)?.label ?? '24 tim';
+  const rangeLabel = TIME_RANGES.find((r) => r.key === timeRange)?.label ?? 'Senaste 24 tim';
+
+  // Rows that could be drawn at all, ignoring the window. Separates "your
+  // window is empty" from "this filter has nothing with a position on it",
+  // which are different problems with different ways out.
+  const mappableCount = useMemo(() => events.filter((e) => e.gps).length, [events]);
   const sliderLabel = replayTimestamp
     ? new Date(replayTimestamp).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })
     : 'Live';
 
-  // Key for the marker colours, built from the types actually on the map so it
-  // never lists a category the reader cannot see. The map has been
-  // colour-coded by type since it was built, with nothing anywhere saying so.
+  // Key for the marker colours.
+  //
+  // Keyed on the family, because the family is what the colour encodes. It
+  // used to list the eight commonest types, which with sixty-odd types meant
+  // most markers on screen had no entry at all, and two entries could carry the
+  // same dot. There are eighteen families and a legend can name all of them, so
+  // every colour on the map is now in the key and every key entry is a
+  // different colour. Which type a particular marker is, is what the popup is
+  // for.
   const legend = useMemo(() => {
-    const seen = new Map<string, { type: string; color: string; emoji: string; count: number }>();
-    const cutoff = (replayTimestamp ?? Date.now()) - getRangeMs();
+    const seen = new Map<TypeFamilyKey, number>();
+    const rangeMs = getRangeMs();
     const until = replayTimestamp ?? Date.now();
+    const cutoff = Number.isFinite(rangeMs) ? until - rangeMs : -Infinity;
     for (const e of events) {
       const ts = new Date(e.date?.iso || e.datetime).getTime();
       if (isNaN(ts) || ts < cutoff || ts > until || !e.gps) continue;
-      const key = e.type || 'Okänd';
-      const entry = seen.get(key);
-      if (entry) entry.count++;
-      else seen.set(key, { type: key, color: e.color, emoji: e.emoji, count: 1 });
+      const family = getTypeStyle(e.type).family;
+      seen.set(family, (seen.get(family) ?? 0) + 1);
     }
-    return [...seen.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+    return [...seen.entries()]
+      .map(([key, count]) => ({ key, count, ...TYPE_FAMILIES[key] }))
+      .sort((a, b) => b.count - a.count);
   }, [events, replayTimestamp, getRangeMs]);
 
   return (
@@ -560,6 +642,37 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
               <button type="button" className="btn-quiet" onClick={onRetry}>
                 Försök igen
               </button>
+            </div>
+          )}
+
+          {/* Nothing to draw. There was no state for this at all: the map went
+              blank and left the reader to work out from a 12px line below the
+              fold that the window was empty rather than the filter. The two
+              cases are different and say so, and the recoverable one offers the
+              way out instead of describing it. */}
+          {!loading && !error && visibleCount === 0 && (
+            <div className="map-overlay" role="status">
+              {mappableCount > 0 ? (
+                <>
+                  <span>
+                    Inget inträffade {rangeLabel.toLowerCase()}, men {mappableCount.toLocaleString('sv-SE')}{' '}
+                    {mappableCount === 1 ? 'händelse' : 'händelser'} finns längre bak.
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-quiet"
+                    onClick={() => handleRangeChange('all')}
+                  >
+                    Visa hela urvalet
+                  </button>
+                </>
+              ) : (
+                <span>
+                  {events.length > 0
+                    ? 'Ingen av händelserna i urvalet har en position att sätta ut.'
+                    : 'Ingen händelse matchar det du filtrerat på.'}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -604,16 +717,20 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
               onClick={() => handleRangeChange(r.key)}
               aria-pressed={timeRange === r.key}
             >
-              Senaste {r.label}
+              {r.label}
             </button>
           ))}
         </div>
 
         {/* Spelled out rather than left as a bare number beside the scrubber. */}
         <p className="map-status" role="status">
-          <strong>{visibleCount.toLocaleString('sv-SE')}</strong>
-          <span>{visibleCount === 1 ? 'händelse' : 'händelser'} de senaste {rangeLabel}</span>
-          <span aria-hidden="true">·</span>
+          {/* The spaces are explicit. JSX drops whitespace that contains a
+              newline between elements, which rendered this as "0händelser". */}
+          <strong>{visibleCount.toLocaleString('sv-SE')}</strong>{' '}
+          <span>
+            {visibleCount === 1 ? 'händelse' : 'händelser'}, {rangeLabel.toLowerCase()}
+          </span>{' '}
+          <span aria-hidden="true">·</span>{' '}
           {replayTimestamp ? (
             <span>visar läget kl {sliderLabel}</span>
           ) : (
@@ -626,24 +743,21 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
         {legend.length > 0 && (
           <div className="map-legend" aria-label="Färgförklaring">
             {legend.map((item) => (
-              <span className="map-legend-item" key={item.type}>
+              <span className="map-legend-item" key={item.key}>
                 <span
                   className="map-legend-dot"
                   style={{ background: item.color }}
                   aria-hidden="true"
                 />
-                <span className="badge-emoji" aria-hidden="true">
-                  {item.emoji}
-                </span>
-                {item.type} <span className="map-legend-count">({item.count})</span>
+                {item.label} <span className="map-legend-count">({item.count})</span>
               </span>
             ))}
           </div>
         )}
 
         <p className="map-hint">
-          Färgen visar händelsetyp, storleken hur färsk notisen är. Dra i reglaget för att spola
-          tillbaka i tiden.
+          Färgen visar vilken sorts händelse det är, storleken hur färsk notisen är. Dra i
+          reglaget för att spola tillbaka i tiden.
         </p>
       </div>
     </div>
