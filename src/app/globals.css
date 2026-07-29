@@ -521,6 +521,11 @@ select.field {
 }
 
 .card { padding: var(--space-4); }
+
+/* Consecutive cards inside a statistics block. .card-grid brings its own gap. */
+.stats-block > .card + .card,
+.stats-block > .card-grid + .card,
+.stats-block > .stats-grid + .card { margin-top: var(--space-3); }
 .panel { overflow: hidden; }
 
 .card-title {
@@ -1365,6 +1370,43 @@ main {
   background: color-mix(in srgb, var(--ok) 10%, var(--subtle));
 }
 
+/* Rows on their way. Shaped like the rows they will become, so the list keeps
+   its rhythm while a page is in flight instead of jumping when it lands. */
+.event-list--loading { margin-top: var(--space-1); }
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.skeleton {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--subtle) 0%,
+    var(--surface-hover) 50%,
+    var(--subtle) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s linear infinite;
+}
+
+.skeleton--title { width: 38%; height: 13px; }
+.skeleton--meta { width: 22%; height: 9px; }
+.skeleton--text { width: 84%; }
+
+@keyframes skeleton-sweep { to { background-position: -200% 0; } }
+
+/* The sweep is the only thing saying "working"; with motion off, a steady fill
+   still marks the space the rows will occupy. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { background: var(--surface-hover); }
+}
+
 /* New-incidents banner, sticky under the header so it stays reachable. */
 .new-events {
   position: sticky;
@@ -1801,13 +1843,48 @@ main {
 
 /* ── Stats ────────────────────────────────────────────────── */
 
+/* One question the statistics page answers, with the charts that answer it.
+   The page was a wall of tiles and charts in the order they were written, with
+   nothing saying what any block was for or what period it covered. */
+.stats-block { margin-bottom: var(--space-8); }
+
+.stats-block-head {
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sentence case at heading size, so it is plainly a level above the uppercase
+   micro-labels on the cards beneath it. Those had been carrying the section
+   headings too, which left the page with three weights of the same label and
+   no hierarchy between them. */
+.stats-block-head h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+.stats-block-head p {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: balance;
+}
+
 /* One metric-tile grid, shared by the stats view and the ops dashboard. */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-2);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-3);
 }
+
+/* Fixed tracks where the count is known, so three tiles read as three equal
+   parts of one row rather than as an auto-fill that leaves a gap. */
+.stats-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stats-grid--four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .stat {
   display: flex;
@@ -1854,15 +1931,15 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
-/* What the tiles above are computed over: live feed, imported archive, or
-   both. Without it, a database holding years of history reads the same as one
-   holding a week. Sits with the meta text, not the numbers. */
+/* Where the numbers come from: live feed, imported archive, or both. Without
+   it, a database holding years of history reads the same as one holding a
+   week. Sits with the meta text, not the numbers. */
 .stats-coverage {
-  margin: calc(var(--space-6) * -1) 0 var(--space-6);
-  padding-top: var(--space-2);
+  margin-top: var(--space-3);
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
   color: var(--muted);
+  text-wrap: pretty;
 }
 
 /* One plain-language line per chart, stating the thing the bars are there to
@@ -1932,6 +2009,16 @@ main {
 
 .chart-col:hover .chart-bar { background: var(--accent); }
 .chart-bar--strong { background: var(--accent); }
+
+/* A period still running. Hatched rather than solid, so a short bar reads as
+   incomplete instead of as a fall. */
+.chart-bar--partial {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--accent) 45%, transparent) 0 4px,
+    color-mix(in srgb, var(--accent) 18%, transparent) 4px 8px
+  );
+}
 
 .chart-value {
   font-size: var(--text-2xs);
@@ -2393,7 +2480,13 @@ main {
   /* Actions go full width rather than wrapping into a ragged two-and-one. */
   .event-actions .btn-ghost { flex: 1 1 auto; justify-content: center; height: var(--control-lg); }
 
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Two per row at every count: at 320px a third track leaves no room for the
+     numbers themselves. */
+  .stats-grid,
+  .stats-grid--three,
+  .stats-grid--four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .stats-block { margin-bottom: var(--space-6); }
 
   .map-canvas { height: min(60vh, 460px); }
 
