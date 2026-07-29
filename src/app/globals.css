@@ -92,10 +92,20 @@
   --border: #e0e0e0;
   --border-strong: #c0c0c0;
 
+  /* The outline of anything you can click or type into. --border is 1.26:1 on
+     a card and --border-strong 1.82:1, both well under the 3:1 that WCAG 1.4.11
+     asks of a control's boundary: on a white page the ghost buttons and the
+     filter selects had no visible edge at all. 3.4:1 on --bg, --surface and
+     --subtle alike. Structural hairlines — dividers, card edges, table rules —
+     keep --border, which carries no information and is exempt. */
+  --border-control: #8a8a8a;
+
   /* Resting fill for cards so bordered surfaces read as solid objects rather
      than hairline wireframe outlines. */
   --surface: #fafafa;
   --surface-hover: #f2f2f2;
+  /* One step above --surface, for the single row that is currently open. */
+  --surface-raised: #ffffff;
 
   --shadow-sm: 0 1px 2px rgba(17, 17, 17, 0.04), 0 2px 6px rgba(17, 17, 17, 0.05);
   --shadow-md: 0 2px 6px rgba(17, 17, 17, 0.06), 0 10px 28px rgba(17, 17, 17, 0.10);
@@ -132,9 +142,15 @@
   --subtle: #1a1a1a;
   --border: #2e2e2e;
   --border-strong: #444444;
+  /* 3.9:1 on --surface, 4.6:1 on --bg — the same headroom as the light theme.
+     Measured against --surface-raised, the lightest thing a control ever sits
+     on here, it still clears 3:1. */
+  --border-control: #7d7d7d;
 
   --surface: #222222;
   --surface-hover: #2b2b2b;
+  /* Dark raises by lightening too, so "open" reads the same way in both themes. */
+  --surface-raised: #2c2c2c;
 
   /* On dark, elevation reads mostly from the lighter surface; keep shadows
      present but subtle so edges still gain depth. */
@@ -374,7 +390,7 @@ main:focus { outline: none; }
   font-size: var(--text-ui);
   font-weight: var(--weight-medium);
   line-height: 1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--fg);
@@ -398,20 +414,28 @@ main:focus { outline: none; }
   border-color: var(--alert);
 }
 
-/* Compact ghost action — the row actions and anything that must not compete
-   with content. */
+/* Compact secondary action — the row actions and anything that must not compete
+   with content.
+   Quiet is not the same as faint. This was --muted text on a --bg fill inside a
+   --surface row, ringed by a --border hairline: the fill was invisible against
+   what it sat on, the outline came in at 1.26:1, and the label was set in the
+   lightest ink in the system. Three near-misses stacked on top of each other,
+   which is why the buttons read as smudges. Now it is a real recessed fill, a
+   3.4:1 outline and body-strength ink — restrained by being small and grey
+   rather than by being hard to see. */
 .btn-ghost {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
-  height: var(--control-sm);
+  height: var(--control-md);
   padding: 0 var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--muted);
+  background: var(--subtle);
+  color: var(--fg-secondary);
   font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semi);
   line-height: 1;
   text-decoration: none;
   cursor: pointer;
@@ -420,11 +444,13 @@ main:focus { outline: none; }
 }
 
 .btn-ghost:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-wash);
   text-decoration: none;
 }
+
+.btn-ghost:active { background: var(--accent-wash-strong); }
 
 /* Square ghost button for a bare icon — theme toggle, modal close, play. */
 .icon-btn {
@@ -464,14 +490,14 @@ main:focus { outline: none; }
   line-height: var(--leading-snug);
   color: var(--fg);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   -webkit-appearance: none;
   appearance: none;
 }
 
-.field:hover { border-color: var(--border-strong); }
+.field:hover { border-color: var(--fg-secondary); }
 
 select.field {
   cursor: pointer;
@@ -780,12 +806,36 @@ main {
 
 /* ── Filters ──────────────────────────────────────────────── */
 
-.filters { margin-bottom: var(--space-5); }
+/* Search and the two selects are one control group, so they share one grid.
+   Stacked, they cost two 44px rows plus a gap — 96px of chrome above the feed
+   before the first incident, on a page whose whole job is the feed. On a wide
+   screen the three sit side by side in a single row and give 52px of that back;
+   the search keeps the larger share of the width because it is the control
+   people actually type into.
+   A phone has no room for three side by side, so the search spans the full
+   width and the two selects split the row underneath — same two rows as before,
+   but no third one and no wrapper element to hold them. */
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
 
-/* The search box and the two selects are one control group, so they share one
-   frame: same height, radius, border weight and resting fill. They used to
-   differ on all four, which read as three unrelated widgets once they stack on
-   a phone. */
+.filters > .search-form,
+.filters > .active-filters { grid-column: 1 / -1; }
+
+@media (min-width: 601px) {
+  /* The search takes twice a select's width: it is the only one of the three
+     holding a full sentence of placeholder, and at an even split that sentence
+     came out clipped mid-word. */
+  .filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .filters > .search-form { grid-column: auto; }
+}
+
+/* Same frame as the selects beside it: height, radius, border weight and
+   resting fill. They used to differ on all four, which read as three unrelated
+   widgets. */
 .search-form {
   display: flex;
   align-items: center;
@@ -793,7 +843,7 @@ main {
   height: var(--control-xl);
   padding-left: var(--space-3);
   background: var(--bg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
@@ -884,34 +934,25 @@ main {
   }
 }
 
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
 /* Matched to .search-form above — same frame, same touch target. Only the
    background *colour*: `background` shorthand here would drop the chevron that
    select.field draws as a background-image. */
-.filter-row .field {
-  flex: 1 1 150px;
+.filters > .field {
   min-width: 0;
   height: var(--control-xl);
   font-size: var(--text-body);
   background-color: var(--bg);
-  border-color: var(--border-strong);
   border-radius: var(--radius-md);
 }
 
-.filter-row .field:hover { background-color: var(--surface-hover); }
+.filters > .field:hover { background-color: var(--surface-hover); }
 
 .active-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-1);
 }
 
 .active-filters-label {
@@ -963,7 +1004,8 @@ main {
   font-size: var(--text-ui);
   line-height: 1;
   cursor: pointer;
-  opacity: 0.7;
+  /* Was 0.7, which blended the × down to 3.4:1 against the chip's own tint. */
+  opacity: 0.9;
   transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
@@ -1011,11 +1053,14 @@ main {
   flex-shrink: 0;
 }
 
+/* One line, read left to right: "IDAG · 12 HÄNDELSER". The count used to be
+   pushed to the far right by space-between, where it sat as an unlabelled
+   numeral floating over the first card. */
 .day-heading {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   margin: var(--space-6) 0 var(--space-2);
 }
 
@@ -1023,8 +1068,17 @@ main {
 
 .day-heading-count {
   font-size: var(--text-2xs);
-  font-weight: var(--weight-semi);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
   color: var(--muted);
+}
+
+.day-heading-count::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--border-strong);
 }
 
 /* A ?event= link whose event is older than the first page: shown on its own
@@ -1059,13 +1113,32 @@ main {
 /* The newest incident carries the accent rail. */
 .event-list--newest .event-row:first-child { box-shadow: inset var(--rail) 0 0 var(--accent); }
 
-/* Deep-linked incident (?event=123) */
-.event-row--highlighted {
-  background: var(--accent-wash);
-  box-shadow: inset var(--rail) 0 0 var(--accent);
+/* The open row. One row in the list is showing several paragraphs and a set of
+   actions, and nothing but a rotated chevron said where it began and ended —
+   the detail text ran on into the next incident's title. It gets lifted a step
+   above the resting surface and ringed in a 1px accent tint, so the whole
+   block reads as one object.
+   The selector list is not redundant: :hover and the newest row's rail rule are
+   both more specific than a lone class, so each has to be named to keep the
+   ring from being overwritten. */
+.event-row--expanded,
+.event-row--expanded:hover,
+.event-list--newest .event-row--expanded:first-child {
+  background: var(--surface-raised);
+  /* The ring draws the bottom edge; the row's own hairline would double it. */
+  border-bottom-color: transparent;
+  box-shadow: inset var(--rail) 0 0 var(--accent), inset 0 0 0 1px var(--accent-edge);
 }
 
-.event-row--highlighted:hover { background: var(--accent-wash-strong); }
+/* Deep-linked incident (?event=123). Opens expanded, so it carries the same
+   ring — over the accent wash rather than the raised surface, which is what
+   marks it as the one that was linked to. */
+.event-row--highlighted,
+.event-row--highlighted:hover,
+.event-list--newest .event-row--highlighted:first-child {
+  background: var(--accent-wash);
+  box-shadow: inset var(--rail) 0 0 var(--accent), inset 0 0 0 1px var(--accent-edge);
+}
 
 .event-summary-btn {
   display: flex;
@@ -1170,8 +1243,13 @@ main {
   gap: var(--space-1) var(--space-2);
 }
 
+/* 72ch, not the full 700px column: at 14px that column ran to a hundred
+   characters a line, which is past the width where the eye reliably finds the
+   start of the next one. It also keeps the collapsed and expanded states
+   breaking at the same place, so opening a row rewraps nothing above the fold. */
 .event-text {
   margin: 0;
+  max-width: 72ch;
   font-size: var(--text-ui);
   line-height: var(--leading-normal);
   color: var(--fg-secondary);
@@ -1194,6 +1272,32 @@ main {
   line-height: var(--leading-normal);
   color: var(--fg-secondary);
 }
+
+/* The prose of a notice, set to be read rather than to fill the column.
+   Everything here fixes one visible fault:
+
+   - The paragraphs had no separation at all. The reset zeroes every margin, and
+     nothing put it back, so a three-paragraph notice arrived as one wall with
+     the breaks showing up only as ragged half-lines mid-block.
+   - `text-wrap: pretty` keeps a paragraph from ending on a single orphaned
+     word. `p` carries it globally; it is restated here because this is the one
+     place in the app where it is load-bearing rather than incidental.
+   - A measure. Police notices are short paragraphs of long sentences, and at
+     the full 730px column they came out at 95 characters a line — well past the
+     point where the eye loses the return sweep.
+   - Swedish hyphenation. Compounds like "personskadeutredning" do not break, so
+     one of them at the end of a line pushes the whole word down and leaves a
+     hole in the line above. `lang="sv"` on <html> is what makes this work. */
+.event-detail-text,
+.event-row--expanded .event-text {
+  max-width: 72ch;
+  text-wrap: pretty;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+.event-detail-text { margin-top: var(--space-3); }
 
 /* The clock time behind the relative one. A title attribute carried it before,
    which no touch device can reach. */
@@ -1218,15 +1322,13 @@ main {
   margin-top: var(--space-3);
 }
 
-.btn-ghost--done {
-  color: var(--ok);
-  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
-}
-
+/* Confirmation after "Dela". The border was a 45% mix that landed under 2:1;
+   the status hue itself clears both the 3:1 boundary and the 4.5:1 text bar. */
+.btn-ghost--done,
 .btn-ghost--done:hover {
   color: var(--ok);
-  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
-  background: color-mix(in srgb, var(--ok) 8%, transparent);
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, var(--subtle));
 }
 
 /* New-incidents banner, sticky under the header so it stays reachable. */
@@ -1341,7 +1443,7 @@ main {
   height: var(--space-1);
   padding: 0;
   border-radius: var(--radius-pill);
-  background: var(--border);
+  background: var(--border-strong);
   cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
@@ -1441,7 +1543,7 @@ main {
 .timeline-range {
   flex: 1;
   height: var(--control-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--muted);
@@ -1962,7 +2064,7 @@ main {
   justify-content: center;
   width: var(--control-lg);
   height: var(--control-lg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-full);
   background: var(--bg);
   color: var(--muted);

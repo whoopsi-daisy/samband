@@ -361,9 +361,14 @@ export default function EventList({
       <section>
         {dayGroups.map((group, groupIndex) => (
           <div key={group.key}>
+            {/* The count used to sit alone at the right edge of this line — a
+                bare "2" floating above the cards with nothing saying what it
+                counted. It reads as part of the heading instead. */}
             <div className="day-heading">
               <span className="section-label">{group.label}</span>
-              <span className="day-heading-count">{group.events.length}</span>
+              <span className="day-heading-count">
+                {group.events.length} {group.events.length === 1 ? 'händelse' : 'händelser'}
+              </span>
             </div>
             {/* Only the newest day's first row carries the accent rail. */}
             <div className={`panel event-list${groupIndex === 0 ? ' event-list--newest' : ''}`}>
