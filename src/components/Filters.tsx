@@ -165,7 +165,10 @@ export default function Filters({ locations, types, currentView, filters }: Filt
         onChange={(e) => handleTypeChange(e.target.value)}
         aria-label="Välj händelsetyp"
       >
-        <option value="">Alla händelsetyper</option>
+        {/* "Alla händelsetyper" did not fit the box beside the place select on a
+            phone, and a select clips rather than ellipsising, so it read as
+            "Alla händelsetype". The aria-label carries the full wording. */}
+        <option value="">Alla typer</option>
         {types.map((t) => (
           <option key={t} value={t}>
             {t}

@@ -183,6 +183,39 @@ describe('EventList', () => {
     expect(onClearFilters).toHaveBeenCalled();
   });
 
+  // The unfiltered feed scroll-loads, so "Visar 40 av 1 000" was already stale
+  // as it was read, and it cost a row of chrome above the first card on a phone
+  // to say what the end of the feed says again where it can be acted on.
+  it('does not count the feed at the reader until they filter it', () => {
+    renderList();
+
+    expect(document.querySelector('.feed-lede')).toBeNull();
+    expect(screen.queryByText(/^Live$/)).not.toBeInTheDocument();
+  });
+
+  // Filtered, the number is the one thing worth saying: it answers whether the
+  // filter found anything before you scroll looking.
+  it('counts the matches once a filter is applied', () => {
+    renderList({
+      filters: { location: 'Borås', type: '', search: '' },
+      initialEvents: page(1, 12),
+      initialTotal: 12,
+      initialHasMore: false,
+    });
+
+    const lede = document.querySelector('.feed-lede');
+    expect(lede).toHaveTextContent('12');
+    expect(lede).toHaveTextContent(/händelser matchar/i);
+  });
+
+  it('offers a way back out from the match count', () => {
+    const onClearFilters = jest.fn();
+    renderList({ filters: { location: '', type: '', search: 'brand' }, onClearFilters });
+
+    fireEvent.click(screen.getByRole('button', { name: /^rensa$/i }));
+    expect(onClearFilters).toHaveBeenCalled();
+  });
+
   it('pins a linked incident that is older than the first page', async () => {
     // The pinned card opens expanded, which fetches its text on mount.
     global.fetch = jest.fn().mockResolvedValue({

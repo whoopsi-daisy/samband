@@ -325,7 +325,7 @@ function EventMapInner({
           <button
             key={w.days}
             type="button"
-            className={`timeline-range${w.days === windowDays ? ' active' : ''}`}
+            className={`map-window${w.days === windowDays ? ' active' : ''}`}
             onClick={() => onWindowChange(w.days)}
             aria-pressed={w.days === windowDays}
           >

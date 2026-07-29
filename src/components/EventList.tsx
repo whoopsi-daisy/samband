@@ -361,8 +361,9 @@ export default function EventList({
     </div>
   ) : null;
 
+  const isFiltered = Boolean(filters.location || filters.type || filters.search);
+
   if (events.length === 0) {
-    const hasFilters = Boolean(filters.location || filters.type || filters.search);
     return (
       <>
         {linkedBanner}
@@ -375,12 +376,12 @@ export default function EventList({
           </span>
           <p className="empty-title">Inga träffar</p>
           <p className="empty-text">
-            {hasFilters
+            {isFiltered
               ? 'Ingen händelse matchar det du sökt eller filtrerat på. Prova ett bredare sökord, eller ta bort ett filter.'
               : 'Det finns inga händelser att visa just nu. Listan fylls på när polisen publicerar nästa notis.'}
           </p>
           {/* An empty result used to describe the way out without offering it. */}
-          {hasFilters && onClearFilters && (
+          {isFiltered && onClearFilters && (
             <div className="empty-actions">
               <button type="button" className="btn" onClick={onClearFilters}>
                 Rensa alla filter
@@ -414,19 +415,26 @@ export default function EventList({
         </div>
       )}
 
-      {/* "40 händelser visas" left the reader with no idea whether that was all
-          of them or the first page of nine hundred. */}
-      <div className="feed-lede" role="status">
-        <span>
-          Visar <strong>{events.length.toLocaleString('sv-SE')}</strong> av{' '}
-          <strong>{Math.max(total, events.length).toLocaleString('sv-SE')}</strong>{' '}
-          {total === 1 ? 'händelse' : 'händelser'}
-        </span>
-        <span className="feed-live">
-          <span className="dot dot--sm dot--ok" aria-hidden="true" />
-          Live
-        </span>
-      </div>
+      {/* A count only when the reader asked a question it answers.
+          On the unfiltered feed "Visar 40 av 300 händelser" is a fact nobody
+          came for: the list scroll-loads, so the first number is already stale
+          by the time it is read, and the second is just how much archive
+          exists. Filtered, it is the one thing worth saying, because it tells
+          you whether the filter found anything before you scroll. The "Live"
+          pill went with it; the footer already carries "Uppdaterad HH:MM". */}
+      {isFiltered && (
+        <div className="feed-lede" role="status">
+          <span>
+            <strong>{Math.max(total, events.length).toLocaleString('sv-SE')}</strong>{' '}
+            {total === 1 ? 'händelse matchar' : 'händelser matchar'}
+          </span>
+          {onClearFilters && (
+            <button type="button" className="clear-all" onClick={onClearFilters}>
+              Rensa
+            </button>
+          )}
+        </div>
+      )}
 
       <section>
         {dayGroups.map((group) => (
