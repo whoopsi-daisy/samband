@@ -8,12 +8,15 @@ import Filters from './Filters';
 import EventList from './EventList';
 import EventMap from './EventMap';
 import StatsView from './StatsView';
+import VmaView from './VmaView';
+import VmaRibbon from './VmaRibbon';
 import Footer from './Footer';
 import ScrollToTop from './ScrollToTop';
 import MapModal from './MapModal';
 import ErrorBoundary from './ErrorBoundary';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
+import { useVma } from '@/hooks/useVma';
 import { FormattedEvent, Statistics } from '@/types';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
 
@@ -51,6 +54,10 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   map: {
     title: 'Händelser på karta',
     lede: 'Var polisen skrev sina anmälningar den senaste tiden. Tryck på en punkt för att se vad som hänt där.',
+  },
+  vma: {
+    title: 'Viktigt meddelande till allmänheten',
+    lede: 'Varningar från Sveriges Radio när det finns omedelbar fara för liv, hälsa eller egendom.',
   },
   stats: {
     title: 'Statistik',
@@ -170,11 +177,19 @@ function ClientAppContent({
   const map = useMapEvents(filters, currentView === 'map', mapWindowDays);
 
   const showList = useCallback(() => handleViewChange('list'), [handleViewChange]);
+  const showVma = useCallback(() => handleViewChange('vma'), [handleViewChange]);
+
+  // Warnings load on every view, not just the VMA one: the ribbon has to be
+  // able to appear over the feed and the map too.
+  const vma = useVma();
 
   const intro = VIEW_INTRO[currentView] ?? VIEW_INTRO.list;
 
   return (
     <>
+      {/* Above the header, so it is the first thing on the page whatever view
+          the reader is on and wherever they navigate next. */}
+      <VmaRibbon alerts={vma.live} onOpen={showVma} />
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
@@ -218,6 +233,17 @@ function ClientAppContent({
           onRetry={map.retry}
           onShowList={showList}
         />
+
+        {currentView === 'vma' && (
+          <VmaView
+            alerts={vma.alerts}
+            live={vma.live}
+            failed={vma.failed}
+            loading={vma.loading}
+            checkedAt={vma.checkedAt}
+            onRetry={vma.refresh}
+          />
+        )}
 
         {currentView === 'stats' && (
           <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />
