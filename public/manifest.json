@@ -42,13 +42,13 @@
       "name": "Visa på karta",
       "short_name": "Karta",
       "description": "Öppna kartvyn",
-      "url": "/?view=map"
+      "url": "/?vy=karta"
     },
     {
       "name": "Visa statistik",
       "short_name": "Statistik",
       "description": "Öppna statistikvyn",
-      "url": "/?view=stats"
+      "url": "/?vy=statistik"
     }
   ],
   "prefer_related_applications": false

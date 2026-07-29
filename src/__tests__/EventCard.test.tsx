@@ -151,3 +151,17 @@ describe('EventCard', () => {
     expect(screen.queryByText(/\d{3,} dagar sedan/)).not.toBeInTheDocument();
   });
 });
+
+// A referrer would tell polisen.se which incident a reader came from and what
+// they had filtered on, which is nobody's business but the reader's.
+describe('external links', () => {
+  it('sends no referrer to polisen.se', () => {
+    render(<EventCard event={createEvent()} isHighlighted />);
+
+    const link = screen.getByRole('link', { name: /läs hos polisen/i });
+    expect(link).toHaveAttribute('href', expect.stringContaining('https://polisen.se'));
+    expect(link.getAttribute('rel')).toContain('noreferrer');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+});

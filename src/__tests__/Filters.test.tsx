@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import Filters from '@/components/Filters';
+import { QUERY } from '@/lib/urlParams';
 
 const replace = jest.fn();
 let searchParams = new URLSearchParams();
@@ -45,7 +46,7 @@ describe('Filters', () => {
 
     fireEvent.change(screen.getByLabelText('Välj plats'), { target: { value: 'Borås' } });
 
-    expect(lastUrl().searchParams.get('location')).toBe('Borås');
+    expect(lastUrl().searchParams.get(QUERY.location)).toBe('Borås');
   });
 
   // Narrowing what is on screen is not navigation. `push` gave every pause in
@@ -62,7 +63,7 @@ describe('Filters', () => {
 
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace.mock.calls[0][1]).toEqual({ scroll: false });
-    expect(lastUrl().searchParams.get('search')).toBe('Ljungby');
+    expect(lastUrl().searchParams.get(QUERY.search)).toBe('Ljungby');
   });
 
   // A ?location= from a shared link can name a place the dropdown does not
@@ -86,26 +87,45 @@ describe('Filters', () => {
   });
 
   it('removes one filter without touching the others', () => {
-    searchParams = new URLSearchParams({ location: 'Borås', type: 'Rån' });
+    searchParams = new URLSearchParams({ [QUERY.location]: 'Borås', [QUERY.type]: 'Rån' });
     renderFilters({ location: 'Borås', type: 'Rån', search: '' });
 
     fireEvent.click(screen.getByRole('button', { name: /ta bort filtret plats/i }));
 
     const params = lastUrl().searchParams;
-    expect(params.get('location')).toBeNull();
-    expect(params.get('type')).toBe('Rån');
+    expect(params.get(QUERY.location)).toBeNull();
+    expect(params.get(QUERY.type)).toBe('Rån');
   });
 
   it('clears everything at once', () => {
-    searchParams = new URLSearchParams({ location: 'Borås', type: 'Rån', search: 'fönster' });
+    searchParams = new URLSearchParams({
+      [QUERY.location]: 'Borås',
+      [QUERY.type]: 'Rån',
+      [QUERY.search]: 'fönster',
+    });
     renderFilters({ location: 'Borås', type: 'Rån', search: 'fönster' });
 
     fireEvent.click(screen.getByRole('button', { name: /rensa alla/i }));
 
     const params = lastUrl().searchParams;
-    expect(params.get('location')).toBeNull();
-    expect(params.get('type')).toBeNull();
-    expect(params.get('search')).toBeNull();
+    expect(params.get(QUERY.location)).toBeNull();
+    expect(params.get(QUERY.type)).toBeNull();
+    expect(params.get(QUERY.search)).toBeNull();
+  });
+
+  // A link shared before the query string was translated has to keep working,
+  // and should not leave the app writing a URL in two languages.
+  it('rewrites an old English query when anything changes', () => {
+    searchParams = new URLSearchParams({ view: 'map', location: 'Borås' });
+    renderFilters({ location: 'Borås', type: '', search: '' });
+
+    fireEvent.change(screen.getByLabelText('Välj händelsetyp'), { target: { value: 'Rån' } });
+
+    const url = lastUrl().searchParams;
+    expect(url.get('location')).toBeNull();
+    expect(url.get('view')).toBeNull();
+    expect(url.get(QUERY.location)).toBe('Borås');
+    expect(url.get(QUERY.type)).toBe('Rån');
   });
 
   it('keeps the current view when a filter changes', () => {
@@ -113,6 +133,6 @@ describe('Filters', () => {
 
     fireEvent.change(screen.getByLabelText('Välj händelsetyp'), { target: { value: 'Rån' } });
 
-    expect(lastUrl().searchParams.get('view')).toBe('list');
+    expect(lastUrl().searchParams.get(QUERY.view)).toBe('lista');
   });
 });

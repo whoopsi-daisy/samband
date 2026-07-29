@@ -3,21 +3,17 @@ import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getSt
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
+import { parseView, readParam } from '@/lib/urlParams';
 
 const EVENTS_PER_PAGE = 40;
-const ALLOWED_VIEWS = ['list', 'map', 'stats'];
 
 // Revalidate every 10 minutes to match the polisen.se API fetch interval
 export const revalidate = 600;
 
 interface PageProps {
-  searchParams: Promise<{
-    view?: string;
-    location?: string;
-    type?: string;
-    search?: string;
-    event?: string;
-  }>;
+  // Loosely typed on purpose: the same value can arrive under a Swedish name
+  // or the English one a shared link still carries, and urlParams owns which.
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 async function HomeContent({ searchParams }: PageProps) {
@@ -28,16 +24,18 @@ async function HomeContent({ searchParams }: PageProps) {
   await refreshEventsIfNeeded();
 
   // Sanitize and validate inputs
-  const filters = {
-    location: params.location ? sanitizeLocation(params.location) : '',
-    type: params.type ? sanitizeType(params.type) : '',
-    search: params.search ? sanitizeSearch(params.search) : '',
+  const get = (name: string) => {
+    const value = params[name];
+    return Array.isArray(value) ? value[0] : value;
   };
 
-  let currentView = params.view || 'list';
-  if (!ALLOWED_VIEWS.includes(currentView)) {
-    currentView = 'list';
-  }
+  const filters = {
+    location: sanitizeLocation(readParam(get, 'location')),
+    type: sanitizeType(readParam(get, 'type')),
+    search: sanitizeSearch(readParam(get, 'search')),
+  };
+
+  const currentView = parseView(readParam(get, 'view'));
 
   // Paging past the first page is the list's own job, over /api/events. A
   // `?page=` here only ever produced a feed with an unreachable beginning.
@@ -57,11 +55,11 @@ async function HomeContent({ searchParams }: PageProps) {
   const types = getFilterOptions('type');
   const stats = getStatsSummary();
 
-  // A shared link (?event=123). The first page covers well under a day, so the
+  // A shared link (?handelse=123). The first page covers well under a day, so the
   // linked event is usually not in it: look it up directly and hand it to the
   // list, which pins it above the feed. Resolving it here also means the page
   // can say the event no longer exists instead of quietly rendering the feed.
-  const parsedEventId = params.event ? parseInt(params.event, 10) : NaN;
+  const parsedEventId = parseInt(readParam(get, 'event'), 10);
   const highlightedEventId = Number.isNaN(parsedEventId) ? null : parsedEventId;
   const inFirstPage = formattedEvents.some((event) => event.id === highlightedEventId);
   const linkedRow = highlightedEventId !== null && !inFirstPage ? getEventById(highlightedEventId) : null;

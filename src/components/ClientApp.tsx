@@ -15,6 +15,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { FormattedEvent, Statistics } from '@/types';
+import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
@@ -31,9 +32,9 @@ interface ClientAppProps {
   };
   initialView: string;
   highlightedEventId: number | null;
-  /** A ?event= link whose event is not in the first page. */
+  /** A ?handelse= link whose event is not in the first page. */
   linkedEvent: FormattedEvent | null;
-  /** A ?event= link whose event no longer exists. */
+  /** A ?handelse= link whose event no longer exists. */
   linkedEventMissing: boolean;
 }
 
@@ -49,7 +50,7 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   map: {
     title: 'Händelser på karta',
-    lede: 'Var händelserna inträffade. Varje punkt är en notis, tryck på den för att läsa.',
+    lede: 'Var polisen skrev sina anmälningar den senaste tiden. Tryck på en punkt för att se vad som hänt där.',
   },
   stats: {
     title: 'Statistik',
@@ -84,8 +85,10 @@ function ClientAppContent({
   const handleViewChange = useCallback(
     (view: string) => {
       setCurrentView(view);
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('view', view);
+      // toSwedishParams on every write, so a link shared under the old English
+      // names is rewritten the first time the reader touches anything.
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      params.set(QUERY.view, viewSlug(view as ViewId));
       router.push(`/?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
@@ -102,9 +105,9 @@ function ClientAppContent({
   const handleFacetClick = useCallback(
     (key: 'type' | 'location', value: string) => {
       setCurrentView('list');
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('view', 'list');
-      params.set(key, value);
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      params.set(QUERY.view, viewSlug('list'));
+      params.set(QUERY[key], value);
       router.push(`/?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
@@ -155,12 +158,18 @@ function ClientAppContent({
 
   const clearFilters = useCallback(() => {
     const params = new URLSearchParams();
-    params.set('view', currentView);
+    params.set(QUERY.view, viewSlug(currentView as ViewId));
     router.push(`/?${params.toString()}`, { scroll: false });
   }, [currentView, router]);
 
+  // How far back the map is looking. Not in the URL: it is a way of looking at
+  // the current filters rather than part of what is being looked at.
+  const [mapWindowDays, setMapWindowDays] = useState(1);
+
   // Map data loads on demand the first time the map view is opened.
-  const map = useMapEvents(filters, currentView === 'map');
+  const map = useMapEvents(filters, currentView === 'map', mapWindowDays);
+
+  const showList = useCallback(() => handleViewChange('list'), [handleViewChange]);
 
   const intro = VIEW_INTRO[currentView] ?? VIEW_INTRO.list;
 
@@ -202,9 +211,12 @@ function ClientAppContent({
         <EventMap
           events={map.events}
           isActive={currentView === 'map'}
+          windowDays={mapWindowDays}
+          onWindowChange={setMapWindowDays}
           loading={map.loading}
           error={map.error}
           onRetry={map.retry}
+          onShowList={showList}
         />
 
         {currentView === 'stats' && (

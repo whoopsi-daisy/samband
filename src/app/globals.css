@@ -710,38 +710,6 @@ select.field {
   letter-spacing: var(--tracking-tight);
 }
 
-/* A slow radar breath on the mark. Deliberately small: a few percent of
-   opacity and 6% of scale, over six seconds, with most of the cycle at rest.
-   It should register as the page being alive, not ask to be looked at, and it
-   must never read as a spinner, so the dot at the centre never moves.
-   The two rings carry different resting opacities (0.35 and 1) set as SVG
-   attributes, so each gets its own keyframes rather than one shared set
-   flattening them to the same value. The outer ring lags, which sends the
-   movement outward. */
-.logo-ring {
-  transform-origin: 20px 20px;
-  animation: logo-ring-inner 6s var(--ease) infinite;
-}
-
-.logo-ring--outer {
-  animation-name: logo-ring-outer;
-  animation-delay: 0.7s;
-}
-
-@keyframes logo-ring-inner {
-  0%, 60%, 100% { opacity: 1; transform: scale(1); }
-  30% { opacity: 0.72; transform: scale(1.06); }
-}
-
-@keyframes logo-ring-outer {
-  0%, 60%, 100% { opacity: 0.35; transform: scale(1); }
-  30% { opacity: 0.6; transform: scale(1.06); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .logo-ring { animation: none; }
-}
-
 .header-nav {
   display: flex;
   align-items: center;
@@ -1551,59 +1519,26 @@ main {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
+  padding: var(--gutter);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   font-size: var(--text-ui);
   color: var(--muted);
+  text-align: center;
 }
 
-.map-timeline {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border);
-  background: var(--bg);
+.map-overlay-text {
+  max-width: 40ch;
+  line-height: var(--leading-normal);
+  text-wrap: balance;
 }
 
-.timeline-play { flex-shrink: 0; }
-
-.timeline-slider {
-  flex: 1;
-  min-width: 0;
-  height: var(--space-1);
-  padding: 0;
-  border-radius: var(--radius-pill);
-  background: var(--border-strong);
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.timeline-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: var(--space-3);
-  height: var(--space-3);
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  cursor: pointer;
-}
-
-.timeline-slider::-moz-range-thumb {
-  width: var(--space-3);
-  height: var(--space-3);
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  cursor: pointer;
-}
-
-.timeline-ranges {
+/* The periods the map offers, above the map because they decide what it shows.
+   They sat under it, below a scrubber and a play button, which put the control
+   that mattered last. */
+.map-windows {
   display: flex;
   gap: var(--space-1);
-  padding: 0 var(--space-4) var(--space-3);
-  background: var(--bg);
+  margin-bottom: var(--space-2);
 }
 
 /* What the map is currently showing, spelled out. This used to be a bare "89"
@@ -1614,7 +1549,8 @@ main {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
-  padding: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
   background: var(--bg);
   font-size: var(--text-xs);
   color: var(--muted);
@@ -1776,7 +1712,39 @@ main {
   background: var(--alert);
 }
 
-.popup-place { font-weight: var(--weight-semi); color: var(--fg); }
+.popup-place {
+  font-weight: var(--weight-semi);
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
+
+/* One position can hold several incidents, so the popup is a list. */
+.popup-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.popup-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.popup-row-main { flex: 1; min-width: 0; }
+.popup-row-time { flex-shrink: 0; color: var(--muted); font-size: var(--text-2xs); }
+
+.popup-more {
+  margin-top: var(--space-1) !important;
+  font-size: var(--text-2xs) !important;
+  color: var(--muted) !important;
+}
+
+.map-legend-item--rest { color: var(--muted); }
 
 .popup-links {
   display: flex;

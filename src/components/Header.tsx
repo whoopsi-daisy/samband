@@ -31,13 +31,9 @@ export default function Header({ currentView, onViewChange, onLogoClick }: Heade
           }}
           aria-label="Sambandscentralen, till startsidan"
         >
-          {/* The mark is a radar sweep, so the rings breathe: slowly, in the
-              accent colour, and out from the centre. Only the two rings move.
-              The dot at the middle stays put, which is what keeps it reading as
-              a mark rather than as something loading. */}
           <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" aria-hidden="true">
-            <circle className="logo-ring logo-ring--outer" cx="20" cy="20" r="13" strokeWidth="2.5" opacity="0.35" />
-            <circle className="logo-ring" cx="20" cy="20" r="8" strokeWidth="2.5" />
+            <circle cx="20" cy="20" r="13" strokeWidth="2.5" opacity="0.35" />
+            <circle cx="20" cy="20" r="8" strokeWidth="2.5" />
             <circle cx="20" cy="20" r="3.4" fill="currentColor" stroke="none" />
           </svg>
           <span>Sambandscentralen</span>
