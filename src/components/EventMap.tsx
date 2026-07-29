@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { FormattedEvent } from '@/types';
+import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
   events: FormattedEvent[];
@@ -22,6 +23,12 @@ const TIME_RANGES: { key: TimeRange; label: string; ms: number }[] = [
   { key: '48h', label: '48 tim', ms: 48 * 60 * 60 * 1000 },
   { key: '72h', label: '72 tim', ms: 72 * 60 * 60 * 1000 },
 ];
+
+// CartoDB ships the same basemap in two styles. Picking the one that matches
+// the theme is what the stylesheet's invert(1) filter was standing in for, and
+// it gets the water and the labels right, which inverting never could.
+const basemapUrl = (dark: boolean) =>
+  `https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`;
 
 const REPLAY_STEP_MS = 5 * 60 * 1000;
 const REPLAY_INTERVAL_MS = 80;
@@ -118,6 +125,7 @@ function escapeHtml(str: string): string {
 
 function EventMapInner({ events, isActive, loading = false, error = false, onRetry }: EventMapProps) {
   const mapRef = useRef<L.Map | null>(null);
+  const baseLayerRef = useRef<L.TileLayer | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersLayerRef = useRef<L.FeatureGroup | null>(null);
   const leafletRef = useRef<typeof import('leaflet') | null>(null);
@@ -135,6 +143,12 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
   const [replayTimestamp, setReplayTimestamp] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [visibleCount, setVisibleCount] = useState(0);
+
+  const isDark = useDarkTheme();
+  // The map is built once, in an effect that must not re-run when the theme
+  // changes, so the initial style is read through a ref.
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
   eventsRef.current = events;
 
@@ -296,10 +310,11 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
         attributionControl: true,
       });
 
-      const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      const tileLayer = L.tileLayer(basemapUrl(isDarkRef.current), {
         attribution: '&copy; OpenStreetMap',
         maxZoom: 18,
       }).addTo(map);
+      baseLayerRef.current = tileLayer;
 
       // Fallback: if primary tiles fail, switch to OSM
       let hasFallback = false;
@@ -307,6 +322,9 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
         if (hasFallback) return;
         hasFallback = true;
         map.removeLayer(tileLayer);
+        // OSM has one style only, so from here the theme swap has nothing to
+        // swap and the layer stays as it is.
+        baseLayerRef.current = null;
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; OpenStreetMap',
           maxZoom: 19,
@@ -337,6 +355,19 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
       setMapReady(false);
     };
   }, [isActive]); // Only depends on isActive: stable
+
+  // Swap the basemap when the theme changes.
+  //
+  // The map used to load CartoDB's dark basemap whatever the theme was, and the
+  // stylesheet then ran invert(1) over the tile pane in dark mode. A dark map
+  // inverted is a bright one, so turning the lights off turned the map on.
+  // Picking the matching style is also better than inverting ever was: an
+  // inverted basemap has the water and the labels in the wrong colours.
+  useEffect(() => {
+    const layer = baseLayerRef.current;
+    if (!layer) return;
+    layer.setUrl(basemapUrl(isDark));
+  }, [isDark]);
 
   // --- Render markers when data/range changes (non-playing) ---
   useEffect(() => {

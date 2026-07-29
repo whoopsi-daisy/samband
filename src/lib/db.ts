@@ -639,7 +639,12 @@ const AGGREGATE_CACHE_TTL_MS = 60_000;
 // archive is hundreds of thousands of rows. They are exact rather than stale.
 // Both paths that change the data, the polisen.se refresh and an import,
 // invalidate them explicitly, so the TTL is only a backstop and can be long.
-const STATS_CACHE_TTL_MS = 10 * 60_000;
+// Long, because it is a backstop and not the mechanism. Both paths that change
+// the data invalidate and re-warm this explicitly, so the TTL only matters when
+// nothing has changed for an hour, and in that case the answer has not changed
+// either. At 300,000 rows a cold rebuild is most of a second, which is not
+// something to hand to a visitor every ten minutes for no reason.
+const STATS_CACHE_TTL_MS = 60 * 60_000;
 
 // Columns shared by both arms of a union, in one fixed order.
 const LIVE_COLUMNS = `e.raw_data AS raw_data, e.id AS id, e.event_time AS event_time,
@@ -719,9 +724,30 @@ interface SqlFragment {
 }
 
 // WHERE conditions for the live table, matching the filters the UI offers.
-function liveFilterSql(filters: EventFilters): SqlFragment {
+/**
+ * Summary posts are not incidents.
+ *
+ * "Sammanfattning natt" and its siblings are a shift handover the police
+ * publish on a schedule: one post covering everything and nothing, filed to
+ * whichever county desk wrote it. The statistics have always left them out.
+ * The map has the same reason to, and a sharper one: a marker for it lands on
+ * a county centroid that no incident actually happened at.
+ */
+const SUMMARY_TYPE_PATTERN = '%Sammanfattning%';
+
+interface QueryOptions {
+  /** Drop the police's scheduled summary posts from the result. */
+  excludeSummaries?: boolean;
+}
+
+function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
   const params: (string | number)[] = [];
   let sql = '';
+
+  if (options.excludeSummaries) {
+    sql += " AND COALESCE(e.type, '') NOT LIKE ?";
+    params.push(SUMMARY_TYPE_PATTERN);
+  }
 
   if (filters.location) {
     sql += ' AND e.location_name = ?';
@@ -763,9 +789,14 @@ function toSearchMatch(search: string): string | null {
 
 // The same filters against the archive's own column names, plus the cutoff
 // that keeps the two sources from overlapping.
-function archiveFilterSql(filters: EventFilters): SqlFragment {
+function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
   const params: (string | number)[] = [getArchiveCutoff()];
   let sql = ' AND b.pubdate < ?';
+
+  if (options.excludeSummaries) {
+    sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
+    params.push(SUMMARY_TYPE_PATTERN);
+  }
 
   if (filters.location) {
     sql += ` AND ${ARCHIVE_LOCATION} = ?`;
@@ -855,9 +886,14 @@ export function getEventById(id: number): EventWithMetadata | null {
 }
 
 // Get events from database with optional filters
-export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset = 0): EventWithMetadata[] {
+export function getEventsFromDb(
+  filters: EventFilters = {},
+  limit = 500,
+  offset = 0,
+  options: QueryOptions = {}
+): EventWithMetadata[] {
   const pdo = getDatabase();
-  const live = liveFilterSql(filters);
+  const live = liveFilterSql(filters, options);
 
   if (!hasArchiveEvents()) {
     const rows = pdo
@@ -869,7 +905,7 @@ export function getEventsFromDb(filters: EventFilters = {}, limit = 500, offset 
     return rows.map(rowToEvent);
   }
 
-  const archive = archiveFilterSql(filters);
+  const archive = archiveFilterSql(filters, options);
 
   // Each arm is limited to what the requested window could possibly need
   // before the union is sorted, so neither side is materialised in full.
@@ -911,7 +947,8 @@ const MAP_EVENT_LIMIT = 500;
 const MAP_CACHE_TTL_MS = 60_000;
 
 const getMapEventRows = memoizeWithTtl(
-  (filters: EventFilters): EventWithMetadata[] => getEventsFromDb(filters, MAP_EVENT_LIMIT, 0),
+  (filters: EventFilters): EventWithMetadata[] =>
+    getEventsFromDb(filters, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
   MAP_CACHE_TTL_MS,
   (filters) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}`
 );
@@ -1142,11 +1179,24 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     .all(...baseParams, windows.since7d) as Array<{ bucket: string; total: number }>;
 
   // The same grouping with no window on it. A scan of the source rather than a
-  // range on the index, which is the one expensive query here, so everything
-  // that needs a long view is derived from this single result: per year, per
-  // month, and the busiest day on record.
+  // range on the index, which makes it the most expensive query here, so
+  // everything needing a long view is derived from this one result: per year,
+  // per month, and the busiest day on record.
+  //
+  // Bucketed by slicing the ISO string rather than with date(..., 'localtime').
+  // Timestamps are stored as UTC ISO, so the first ten characters are the UTC
+  // day, and taking them is a string operation instead of a datetime parse and
+  // a timezone lookup per row. Over 300,000 rows that is the difference between
+  // 170ms and 760ms, and it is the single largest cost on this page.
+  //
+  // The cost of that is the bucket boundary: Sweden runs one or two hours ahead
+  // of UTC, so incidents in the last hours of a day land on the day before. On
+  // a year or a month that moves a handful of rows out of thousands and is
+  // invisible. The seven-day chart above deliberately keeps 'localtime': it is
+  // a cheap range query, and its bars have to line up with the day headings in
+  // the feed, which are Swedish days.
   const allDayRows = pdo
-    .prepare(`SELECT date(${time}, 'localtime') AS bucket, COUNT(*) AS total ${base} GROUP BY bucket`)
+    .prepare(`SELECT substr(${time}, 1, 10) AS bucket, COUNT(*) AS total ${base} GROUP BY bucket`)
     .all(...baseParams) as Array<{ bucket: string; total: number }>;
 
   return {

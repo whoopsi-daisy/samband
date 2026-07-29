@@ -64,6 +64,7 @@
   --badge-h: 20px;   /* not a control: pills and tags */
   --control-sm: 28px; /* compact actions, segmented buttons */
   --control-md: 32px; /* icon buttons */
+  --control-input: 36px; /* the filter strip, where a mouse is doing the aiming */
   --control-lg: 40px; /* selects, secondary buttons */
   --control-xl: 44px; /* primary input: comfortable touch target */
 
@@ -709,6 +710,38 @@ select.field {
   letter-spacing: var(--tracking-tight);
 }
 
+/* A slow radar breath on the mark. Deliberately small: a few percent of
+   opacity and 6% of scale, over six seconds, with most of the cycle at rest.
+   It should register as the page being alive, not ask to be looked at, and it
+   must never read as a spinner, so the dot at the centre never moves.
+   The two rings carry different resting opacities (0.35 and 1) set as SVG
+   attributes, so each gets its own keyframes rather than one shared set
+   flattening them to the same value. The outer ring lags, which sends the
+   movement outward. */
+.logo-ring {
+  transform-origin: 20px 20px;
+  animation: logo-ring-inner 6s var(--ease) infinite;
+}
+
+.logo-ring--outer {
+  animation-name: logo-ring-outer;
+  animation-delay: 0.7s;
+}
+
+@keyframes logo-ring-inner {
+  0%, 60%, 100% { opacity: 1; transform: scale(1); }
+  30% { opacity: 0.72; transform: scale(1.06); }
+}
+
+@keyframes logo-ring-outer {
+  0%, 60%, 100% { opacity: 0.35; transform: scale(1); }
+  30% { opacity: 0.6; transform: scale(1.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-ring { animation: none; }
+}
+
 .header-nav {
   display: flex;
   align-items: center;
@@ -838,24 +871,6 @@ main {
 .filters > .search-form,
 .filters > .active-filters { grid-column: 1 / -1; }
 
-@media (min-width: 601px) {
-  /* The search takes twice a select's width: it is the only one of the three
-     holding a full sentence of placeholder, and at an even split that sentence
-     came out clipped mid-word. */
-  .filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .filters > .search-form { grid-column: auto; }
-
-  /* Chrome, not content. At 15-16px the filter strip was set larger than the
-     incident summaries underneath it and read as the loudest thing on the page,
-     which is backwards: it is a tool for reaching the feed, not the feed. The
-     iOS zoom floor is the only reason for 16px and no phone keyboard opens on a
-     screen this wide, so the strip drops to the interface size. */
-  .filters > .field,
-  .filters .search-input { font-size: var(--text-ui); }
-  .filters > .field,
-  .filters > .search-form { height: var(--control-lg); }
-}
-
 /* Same frame as the selects beside it: height, radius, border weight and
    resting fill. They used to differ on all four, which read as three unrelated
    widgets. */
@@ -970,6 +985,33 @@ main {
 }
 
 .filters > .field:hover { background-color: var(--surface-hover); }
+
+/* The pointer-device sizing for the strip above. It has to come after the base
+   rules it narrows, not before them: these carry the same specificity, so the
+   later declaration is the one that lands. */
+@media (min-width: 601px) {
+  /* The search takes twice a select's width: it is the only one of the three
+     holding a full sentence of placeholder, and at an even split that sentence
+     came out clipped mid-word. */
+  .filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .filters > .search-form { grid-column: auto; }
+
+  /* Chrome, not content. At 15-16px the strip was set larger than the incident
+     summaries underneath it and read as the loudest thing on the page, which is
+     backwards: it is a tool for reaching the feed, not the feed. The iOS zoom
+     floor is the only reason for 16px, and no phone keyboard opens on a screen
+     this wide. */
+  .filters > .field,
+  .filters .search-input { font-size: var(--text-ui); }
+
+  /* 44px is a thumb's target and there is no thumb here. Three controls at that
+     height made the strip taller than the first incident under it. */
+  .filters > .field,
+  .filters > .search-form { height: var(--control-input); }
+
+  /* The clear button has to fit inside the shorter frame. */
+  .filters .search-clear { width: var(--control-md); height: var(--control-md); }
+}
 
 .active-filters {
   display: flex;
@@ -1657,9 +1699,9 @@ main {
   font-family: var(--font-sans) !important;
 }
 
-[data-theme="dark"] .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
-}
+/* No filter on the tile pane. The basemap is requested in the matching style
+   instead (see basemapUrl in EventMap): this inverted a basemap that was
+   already dark, so dark mode produced a glowing white map. */
 
 .leaflet-control-attribution {
   background: color-mix(in srgb, var(--bg) 88%, transparent) !important;

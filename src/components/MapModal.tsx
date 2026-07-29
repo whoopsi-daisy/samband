@@ -27,7 +27,11 @@ export default function MapModal({ isOpen, lat, lng, location, onClose }: MapMod
 
       // Always create a fresh map instance since the DOM container is recreated each time
       mapRef.current = L.map(mapContainerRef.current).setView([lat, lng], 14);
-      const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // Matches the theme, like the main map. This was pinned to the light
+      // style and then inverted by the stylesheet in dark mode.
+      const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const style = dark ? 'dark_all' : 'light_all';
+      const tileLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`, {
         attribution: '&copy; OpenStreetMap',
         maxZoom: 18,
       }).addTo(mapRef.current);
