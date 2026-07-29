@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useId } from 'react';
 import { FormattedEvent } from '@/types';
 import { formatRelativeTime } from '@/lib/utils';
+import { QUERY } from '@/lib/urlParams';
 import { useNow } from '@/hooks/useNow';
 
 interface EventCardProps {
@@ -56,7 +57,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     }
   }, [event.url, event.id, isArchived, hasDetails]);
 
-  // A deep link (?event=123) opens the incident already expanded.
+  // A deep link (?handelse=123) opens the incident already expanded.
   useEffect(() => {
     if (isHighlighted && !details) {
       fetchDetails();
@@ -94,7 +95,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
   const handleShare = useCallback(async () => {
     if (event.id === null) return;
-    const url = `${window.location.origin}/?event=${event.id}`;
+    const url = `${window.location.origin}/?${QUERY.event}=${event.id}`;
 
     // On a phone this is what "dela" means to the reader: the OS share sheet,
     // with the messaging apps they actually use in it. Copying a URL to the

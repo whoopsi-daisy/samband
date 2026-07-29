@@ -69,9 +69,9 @@ interface EventListProps {
   currentView: string;
   onShowMap?: (lat: number, lng: number, location: string) => void;
   highlightedEventId: number | null;
-  /** A ?event= link whose event is not in the first page: pinned above the feed. */
+  /** A ?handelse= link whose event is not in the first page: pinned above the feed. */
   linkedEvent: FormattedEvent | null;
-  /** A ?event= link whose event no longer exists. */
+  /** A ?handelse= link whose event no longer exists. */
   linkedEventMissing: boolean;
   onLastCheckedChange?: (date: Date) => void;
   onClearFilters?: () => void;

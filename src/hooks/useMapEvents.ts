@@ -23,7 +23,7 @@ interface MapEventsState {
 // The server used to embed these in every page render, so a visitor who only
 // ever used the list view still paid for ~500 serialised events. Fetching them
 // on demand keeps that cost with the view that needs it.
-export function useMapEvents(filters: Filters, isActive: boolean): MapEventsState {
+export function useMapEvents(filters: Filters, isActive: boolean, windowDays: number): MapEventsState {
   const [state, setState] = useState<Omit<MapEventsState, 'retry'>>({
     events: [],
     loading: false,
@@ -31,7 +31,7 @@ export function useMapEvents(filters: Filters, isActive: boolean): MapEventsStat
   });
   const [attempt, setAttempt] = useState(0);
 
-  const filterKey = `${filters.location}|${filters.type}|${filters.search}`;
+  const filterKey = `${filters.location}|${filters.type}|${filters.search}|${windowDays}`;
   // Which filter set we have already loaded, so re-opening the map does not
   // refetch data we still hold.
   const loadedKeyRef = useRef<string | null>(null);
@@ -53,6 +53,9 @@ export function useMapEvents(filters: Filters, isActive: boolean): MapEventsStat
       location: filters.location,
       type: filters.type,
       search: filters.search,
+      // The window is part of the query now, not something the client trims
+      // off a fixed 500 rows after they arrive.
+      dagar: String(windowDays),
     });
 
     fetch(`/api/map?${params}`, { signal: controller.signal })
@@ -77,7 +80,7 @@ export function useMapEvents(filters: Filters, isActive: boolean): MapEventsStat
       cancelled = true;
       controller.abort();
     };
-  }, [isActive, filterKey, filters.location, filters.type, filters.search, attempt]);
+  }, [isActive, filterKey, filters.location, filters.type, filters.search, windowDays, attempt]);
 
   return { ...state, retry };
 }

@@ -10,6 +10,10 @@ import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/ra
 // left the list view. The query behind getMapEvents is cached per filter set
 // and dropped whenever a fetch changes the rows.
 
+// The longest window the map offers. Anything further back belongs to the list
+// and the statistics, which are built to hold a decade.
+const MAX_WINDOW_DAYS = 30;
+
 export async function GET(request: NextRequest) {
   const rateLimitResult = checkRateLimit(request);
   if (!rateLimitResult.allowed) {
@@ -17,6 +21,13 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
+
+  // How far back the map is looking. Bounded so a runaway or hand-typed value
+  // cannot ask the database for the whole archive.
+  const days = Number(searchParams.get('dagar'));
+  const windowDays = Number.isFinite(days) ? Math.min(Math.max(Math.round(days), 1), MAX_WINDOW_DAYS) : 1;
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
   const filters = {
     location: searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : undefined,
     type: searchParams.get('type') ? sanitizeType(searchParams.get('type')!) : undefined,
@@ -24,7 +35,7 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    const events = getMapEvents(filters);
+    const events = getMapEvents(filters, since);
     const response = NextResponse.json({ events: events.map(formatEventForUi) });
     // Deliberately uncacheable over HTTP. The payload carries relative times
     // and a "new events" banner depends on this endpoint answering with the

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
 
 interface FiltersProps {
   locations: string[];
@@ -41,8 +42,8 @@ export default function Filters({ locations, types, currentView, filters }: Filt
   // a time instead of leaving it.
   const replaceParams = useCallback(
     (mutate: (params: URLSearchParams) => void) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('view', currentView);
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      params.set(QUERY.view, viewSlug(currentView as ViewId));
       mutate(params);
       router.replace(`/?${params.toString()}`, { scroll: false });
     },
@@ -55,11 +56,13 @@ export default function Filters({ locations, types, currentView, filters }: Filt
       return;
     }
     if (debouncedSearch !== filters.search) {
-      replaceParams((p) => (debouncedSearch ? p.set('search', debouncedSearch) : p.delete('search')));
+      replaceParams((p) =>
+        debouncedSearch ? p.set(QUERY.search, debouncedSearch) : p.delete(QUERY.search)
+      );
     }
   }, [debouncedSearch, filters.search, replaceParams]);
 
-  // A ?location= from a shared link can name a place the dropdown does not
+  // A ?plats= from a shared link can name a place the dropdown does not
   // list. Carry it as an option so the control shows what is actually applied
   // instead of sitting blank next to an active filter chip.
   const locationOptions =
@@ -74,27 +77,27 @@ export default function Filters({ locations, types, currentView, filters }: Filt
     setLocation('');
     setType('');
     replaceParams((p) => {
-      p.delete('location');
-      p.delete('type');
-      p.delete('search');
+      p.delete(QUERY.location);
+      p.delete(QUERY.type);
+      p.delete(QUERY.search);
     });
   }, [replaceParams]);
 
   const handleLocationChange = (value: string) => {
     setLocation(value);
-    replaceParams((p) => (value ? p.set('location', value) : p.delete('location')));
+    replaceParams((p) => (value ? p.set(QUERY.location, value) : p.delete(QUERY.location)));
   };
 
   const handleTypeChange = (value: string) => {
     setType(value);
-    replaceParams((p) => (value ? p.set('type', value) : p.delete('type')));
+    replaceParams((p) => (value ? p.set(QUERY.type, value) : p.delete(QUERY.type)));
   };
 
   const removeFilter = (name: 'location' | 'type' | 'search') => {
     if (name === 'search') setSearch('');
     if (name === 'type') setType('');
     if (name === 'location') setLocation('');
-    replaceParams((p) => p.delete(name));
+    replaceParams((p) => p.delete(QUERY[name]));
   };
 
   return (

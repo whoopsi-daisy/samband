@@ -744,6 +744,11 @@ function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFr
   const params: (string | number)[] = [];
   let sql = '';
 
+  if (filters.since) {
+    sql += ' AND e.event_time >= ?';
+    params.push(filters.since);
+  }
+
   if (options.excludeSummaries) {
     sql += " AND COALESCE(e.type, '') NOT LIKE ?";
     params.push(SUMMARY_TYPE_PATTERN);
@@ -792,6 +797,11 @@ function toSearchMatch(search: string): string | null {
 function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
   const params: (string | number)[] = [getArchiveCutoff()];
   let sql = ' AND b.pubdate < ?';
+
+  if (filters.since) {
+    sql += ' AND b.pubdate >= ?';
+    params.push(filters.since);
+  }
 
   if (options.excludeSummaries) {
     sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
@@ -861,7 +871,7 @@ function rowToEvent(row: UnionRow): EventWithMetadata {
 
 // ---------------------------------------------------------------------------
 
-// One event by the id the UI shares in a link (?event=123).
+// One event by the id the UI shares in a link (?handelse=123).
 //
 // Shared links have to resolve to an event that is no longer near the top of
 // the feed, which is most of them, since the first page covers well under a
@@ -947,14 +957,22 @@ const MAP_EVENT_LIMIT = 500;
 const MAP_CACHE_TTL_MS = 60_000;
 
 const getMapEventRows = memoizeWithTtl(
-  (filters: EventFilters): EventWithMetadata[] =>
-    getEventsFromDb(filters, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
+  (filters: EventFilters, since: string): EventWithMetadata[] =>
+    getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
   MAP_CACHE_TTL_MS,
-  (filters) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}`
+  (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
 );
 
-export function getMapEvents(filters: EventFilters = {}): EventWithMetadata[] {
-  return getMapEventRows(filters);
+/**
+ * The map's slice of the feed, bounded by the period the reader is looking at.
+ *
+ * `since` is not optional. The map used to ask for the newest 500 rows matching
+ * the filter and then throw away everything outside its window on the client,
+ * which meant a filter whose incidents were all in the archive fetched five
+ * hundred rows and drew none of them.
+ */
+export function getMapEvents(filters: EventFilters = {}, since: Date): EventWithMetadata[] {
+  return getMapEventRows(filters, since.toISOString());
 }
 
 // Count events in database with optional filters

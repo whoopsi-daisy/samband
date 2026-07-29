@@ -13,6 +13,9 @@ import type { RawEvent } from '@/types';
 let tempDir: string;
 let db: typeof import('@/lib/db');
 
+/** The map always asks for a window; a day back covers the fixtures. */
+const dayAgo = () => new Date(Date.now() - 24 * 60 * 60 * 1000);
+
 const makeEvent = (id: number, type: string): RawEvent => ({
   id,
   name: `x, ${type}, Ljungby`,
@@ -45,14 +48,14 @@ describe('getMapEvents', () => {
   // The shift handover the police publish on a schedule is not an incident,
   // and its marker lands on a county centroid where nothing happened.
   it('leaves the scheduled summary posts off the map', () => {
-    const types = db.getMapEvents().map((e) => e.type);
+    const types = db.getMapEvents({}, dayAgo()).map((e) => e.type);
 
     expect(types).toEqual(expect.arrayContaining(['Trafikolycka', 'Misshandel']));
     expect(types.filter((t) => t.includes('Sammanfattning'))).toEqual([]);
   });
 
   it("still applies the reader's own filters", () => {
-    expect(db.getMapEvents({ type: 'Misshandel' }).map((e) => e.id)).toEqual([4]);
+    expect(db.getMapEvents({ type: 'Misshandel' }, dayAgo()).map((e) => e.id)).toEqual([4]);
   });
 
   // The feed is the record of what the police published, summary posts and all.
@@ -60,5 +63,16 @@ describe('getMapEvents', () => {
     const types = db.getEventsFromDb().map((e) => e.type);
 
     expect(types.filter((t) => t.includes('Sammanfattning'))).toHaveLength(2);
+  });
+
+  // The map used to ask for the newest 500 rows whatever the period and drop
+  // the ones outside its window on the client, so a filter whose incidents were
+  // all older fetched five hundred rows and drew none of them.
+  it('asks the database for the window rather than filtering after the fact', () => {
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    // Fixtures are minutes old, so an hour reaches them and a year ago does not
+    // reach anything newer than itself.
+    expect(db.getMapEvents({}, anHourAgo).length).toBeGreaterThan(0);
+    expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000))).toEqual([]);
   });
 });

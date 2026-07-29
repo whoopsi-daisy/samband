@@ -52,6 +52,8 @@ export interface EventFilters {
   location?: string;
   type?: string;
   search?: string;
+  /** ISO timestamp. Only events at or after it, for the map's window. */
+  since?: string;
 }
 
 // Statistics types
