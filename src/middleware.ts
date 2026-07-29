@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // HTTP Basic auth for the operational dashboard and import controls.
 //
 // /stats exposes fetch logs, error history and database internals, and
-// /api/import can start a multi-hour job against a third-party API — or cancel
+// /api/import can start a multi-hour job against a third-party API, or cancel
 // someone else's. Set STATS_USER and STATS_PASSWORD to gate them.
 //
 // With neither set, these routes are CLOSED rather than open. They used to be
@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // costs an operator one environment variable, where the other direction costs
 // them a dashboard they never knew was reachable.
 //
-// STATS_PUBLIC=true restores the open behaviour for anyone who wants it — as a
+// STATS_PUBLIC=true restores the open behaviour for anyone who wants it, as a
 // decision someone made, rather than one made for them by an empty variable.
 
 let warnedAboutPublicDashboard = false;
@@ -108,7 +108,7 @@ export function middleware(request: NextRequest): NextResponse {
 
 export const config = {
   // /api/import is included because it can start a multi-hour job against a
-  // third-party API — not something an anonymous visitor should be able to
+  // third-party API, not something an anonymous visitor should be able to
   // trigger, or cancel.
   matcher: ['/stats/:path*', '/api/import/:path*'],
 };

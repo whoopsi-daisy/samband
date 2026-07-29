@@ -5,7 +5,7 @@ import type { BpkEvent, BpkImportState } from '@/types';
 // Persistence for imported brottsplatskartan.se events.
 //
 // Kept out of db.ts so the polisen.se dataset and this one stay visibly
-// separate — they have independent id spaces and independent lifecycles.
+// separate: they have independent id spaces and independent lifecycles.
 
 export interface BpkEventInput {
   id: number;
@@ -49,7 +49,7 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
   // The full-text index is an external-content FTS5 table, which means SQLite
   // does not maintain it for us: rows have to be written to both, in the same
   // transaction, or a search would miss what was just imported. Only rows that
-  // were actually inserted are indexed — INSERT OR IGNORE swallows the
+  // were actually inserted are indexed: INSERT OR IGNORE swallows the
   // duplicates that page-based pagination re-serves, and indexing those again
   // would return the same event twice from every search.
   const index = db.prepare(
@@ -196,7 +196,7 @@ export function updateBpkImportState(patch: StatePatch): void {
   );
 }
 
-// Highest pubdate seen so far — the watermark an incremental sync stops at.
+// Highest pubdate seen so far: the watermark an incremental sync stops at.
 export function getNewestStoredPubdateUnix(): number | null {
   const db = getDatabase();
   const row = db.prepare('SELECT MAX(pubdate_unix) AS newest FROM bpk_events').get() as {
@@ -213,8 +213,8 @@ export function countBpkEvents(): number {
 /**
  * The stored body of an imported event, as readable text.
  *
- * Imported events carry their full text — the import stores `content` verbatim
- * — so expanding one must never depend on polisen.se still having the page.
+ * Imported events carry their full text: the import stores `content` verbatim
+ *, so expanding one must never depend on polisen.se still having the page.
  * It usually does not: these go back to 2016 and polisen.se drops old events,
  * which is exactly when someone is reading the archive.
  *

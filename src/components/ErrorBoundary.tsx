@@ -41,7 +41,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           <div className="empty">
             <p className="empty-title">Något gick fel</p>
             <p className="empty-text">
-              Sidan kunde inte visas. Försök igen — händelserna finns kvar.
+              Sidan kunde inte visas. Försök igen, händelserna finns kvar.
             </p>
             {/* One action. "Försök igen" and "Ladda om sidan" sat side by side
                 and were the same thing to anyone reading them. */}

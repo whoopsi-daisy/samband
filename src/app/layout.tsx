@@ -2,26 +2,35 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 
-const ICON =
-  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%23165a9b'/><circle cx='20' cy='20' r='13' fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.4'/><circle cx='20' cy='20' r='8' fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.95'/><circle cx='20' cy='20' r='3.6' fill='%23ffffff'/></svg>";
-
 export const metadata: Metadata = {
-  title: 'Sambandscentralen — Polishändelser i realtid',
+  // Only used to resolve the relative share image below to an absolute URL.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://samband.unicast.space'),
+  title: 'Sambandscentralen: polishändelser i realtid',
   description:
     'Följ polisens händelser i realtid över hela Sverige. Se aktuella polishändelser på karta, filtrera efter plats och händelsetyp.',
   keywords: ['polis', 'polishändelser', 'Sverige', 'realtid', 'brott', 'olyckor', 'karta'],
   manifest: '/manifest.json',
-  icons: { icon: ICON },
+  // Files rather than an inline data URI: the same bitmaps the manifest points
+  // at, so an installed app, a browser tab and an iOS home screen all show one
+  // mark, and the markup stops carrying a copy of the artwork on every request.
+  icons: {
+    icon: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Sambandscentralen',
   },
   openGraph: {
-    title: 'Sambandscentralen — Polishändelser i realtid',
+    title: 'Sambandscentralen: polishändelser i realtid',
     description: 'Följ polisens händelser i realtid över hela Sverige.',
     type: 'website',
     locale: 'sv_SE',
+    images: [{ url: '/icons/icon-512.png', width: 512, height: 512 }],
   },
 };
 
@@ -29,7 +38,7 @@ export const viewport: Viewport = {
   // Array form renders two <meta name="theme-color" media="..."> tags; the
   // browser picks the matching one, so the address bar tracks the OS setting
   // with no JS. (It won't track the in-app toggle, which is a one-off override
-  // stored in localStorage — only the OS preference.)
+  // stored in localStorage: only the OS preference.)
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#111111' },

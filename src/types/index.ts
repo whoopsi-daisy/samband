@@ -26,7 +26,14 @@ export interface FormattedEvent {
   summary: string;
   url: string;
   type: string;
+  /** What the source files the notice under. Filters and grouping use this. */
   location: string;
+  /**
+   * The municipality, when the source filed the notice under a county and named
+   * the municipality only in the headline. Empty when `location` is already the
+   * most specific thing known, so a row never claims precision it does not have.
+   */
+  place: string;
   gps: string;
   color: string;
   emoji: string;
@@ -59,6 +66,27 @@ export interface TopItem {
   total: number;
 }
 
+/** One bar of the full-history chart. Years with no data are present at zero. */
+export interface YearlyStats {
+  year: string;
+  count: number;
+}
+
+export interface MonthlyStats {
+  /** "2026-07", for keys and tooltips. */
+  month: string;
+  /** "jul", for the axis. */
+  label: string;
+  year: number;
+  count: number;
+}
+
+/** The single busiest calendar day in the record. */
+export interface DailyPeak {
+  date: string;
+  count: number;
+}
+
 export interface Statistics {
   total: number;
   totalStored: number;
@@ -71,13 +99,21 @@ export interface Statistics {
   hourly: number[];
   weekdays: number[];
   daily: DailyStats[];
+  /** Every year the dataset covers, oldest first. */
+  yearly: YearlyStats[];
+  /** The last 24 calendar months, oldest first. */
+  monthly: MonthlyStats[];
+  /** The busiest single day on record, across both sources. */
+  busiestDay: DailyPeak | null;
+  /** Days between the oldest event and now, for "one every N minutes". */
+  coverageDays: number;
   gpsPercent: number;
   updatedPercent: number;
   uniqueLocations: number;
   uniqueTypes: number;
   /** Oldest event in the dataset, live feed and archive together. */
   oldestEvent: string | null;
-  /** Imported events the app counts — those older than the live feed reaches. */
+  /** Imported events the app counts: those older than the live feed reaches. */
   archiveEvents: number;
   /** Where the archive hands over to the live feed. Null when nothing is imported. */
   archiveCutoff: string | null;
@@ -87,7 +123,7 @@ export interface Statistics {
 export interface TypeStyle {
   /**
    * Shown immediately before the type's name, never on its own. A line-art
-   * glyph sat here before, in a column of its own with the name elsewhere —
+   * glyph sat here before, in a column of its own with the name elsewhere:
    * which asked the reader to decode a small abstract drawing. An emoji beside
    * its own word asks nothing.
    */
@@ -96,16 +132,23 @@ export interface TypeStyle {
   color: string;
 }
 
-// The emoji is the fastest thing on a row — a reader scans the column of glyphs
-// long before they read a single word — so the table below covers polisen.se's
+// The emoji is the fastest thing on a row: a reader scans the column of glyphs
+// long before they read a word. So the table below covers polisen.se's
 // published vocabulary outright rather than a dozen headline categories. It
 // used to hold fourteen entries against a feed that emits something over sixty
 // type strings, which meant most rows fell through to the 📍 pin and the column
 // carried no information at all.
 //
-// Emoji are picked to be legible at 13px and distinct within a colour family,
-// and kept plain rather than lurid — these are real incidents, and the glyph is
-// there to speed up recognition, not to editorialise.
+// Two rules on the glyphs themselves:
+//
+// Legible at 13px, and distinct within a colour family.
+//
+// No cartoon faces on crimes against people. A bandaged smiley standing in for
+// an assault reads as a joke at the expense of whoever it happened to, so the
+// person-crimes use the act or the object instead: a fist for assault, a
+// prohibition sign for sexual offences, a candle for a death. Role pictograms
+// (an officer, an older person) stay, because they name who the notice is
+// about rather than mugging about what happened to them.
 //
 // Colour groups by family rather than by individual type: reds for violence and
 // weapons, oranges and yellows for theft, blues for traffic, teal for rescue and
@@ -123,9 +166,10 @@ export const TYPE_STYLES: Record<string, TypeStyle> = {
   'Sedlighetsbrott': { emoji: '🚷', color: '#9f1239' },
   'Olaga frihetsberövande': { emoji: '⛓️', color: '#9f1239' },
   'Människorov': { emoji: '⛓️', color: '#9f1239' },
-  'Misshandel, grov': { emoji: '🤕', color: '#be123c' },
-  'Misshandel': { emoji: '🤕', color: '#f43f5e' },
-  'Bråk': { emoji: '👊', color: '#f43f5e' },
+  'Människohandel': { emoji: '⛓️', color: '#9f1239' },
+  'Misshandel, grov': { emoji: '👊', color: '#be123c' },
+  'Misshandel': { emoji: '👊', color: '#f43f5e' },
+  'Bråk': { emoji: '🗣️', color: '#f43f5e' },
 
   // ── Weapons, explosives, alarms ───────────────────────────
   'Skottlossning': { emoji: '🔫', color: '#b91c1c' },
@@ -142,13 +186,17 @@ export const TYPE_STYLES: Record<string, TypeStyle> = {
   // ── Threats and harassment ────────────────────────────────
   'Olaga hot': { emoji: '❗', color: '#e11d48' },
   'Våld/hot mot tjänsteman': { emoji: '👮', color: '#e11d48' },
-  'Ofredande/förargelse': { emoji: '😠', color: '#ec4899' },
-  'Ofredande': { emoji: '😠', color: '#ec4899' },
-  'Ofog barn/ungdom': { emoji: '🧒', color: '#ec4899' },
+  'Ofredande/förargelse': { emoji: '💬', color: '#ec4899' },
+  'Ofredande': { emoji: '💬', color: '#ec4899' },
+  'Ofog barn/ungdom': { emoji: '🎒', color: '#ec4899' },
   'Olaga intrång/hemfridsbrott': { emoji: '🏠', color: '#db2777' },
-  'Åldringsbrott': { emoji: '👵', color: '#db2777' },
+  'Olaga diskriminering': { emoji: '⛔', color: '#db2777' },
+  'Åldringsbrott': { emoji: '🧓', color: '#db2777' },
 
   // ── Fire ──────────────────────────────────────────────────
+  // Arson is not a fire, it is a violent crime, and it takes the weapons red
+  // rather than sitting next to a chimney fire in the same orange.
+  'Mordbrand': { emoji: '🔥', color: '#b91c1c' },
   'Brand': { emoji: '🔥', color: '#ef4444' },
   'Brand automatlarm': { emoji: '🚨', color: '#ef4444' },
 
@@ -196,8 +244,10 @@ export const TYPE_STYLES: Record<string, TypeStyle> = {
   'Förfalskningsbrott': { emoji: '📝', color: '#7c3aed' },
   'Missbruk av urkund': { emoji: '📝', color: '#7c3aed' },
   'Penningtvätt': { emoji: '🏦', color: '#7c3aed' },
+  'Bidragsbrott': { emoji: '🏦', color: '#7c3aed' },
   'Miljöbrott': { emoji: '🌿', color: '#65a30d' },
   'Djur': { emoji: '🐾', color: '#65a30d' },
+  'Djur skadat/omhändertaget': { emoji: '🐾', color: '#65a30d' },
 
   // ── Rescue, health, missing people ────────────────────────
   'Sjukdom/olycksfall': { emoji: '🚑', color: '#14b8a6' },
@@ -218,7 +268,7 @@ export const TYPE_STYLES: Record<string, TypeStyle> = {
   'default': { emoji: '📍', color: '#94a3b8' },
 };
 
-/** Lowercased, single-spaced — the shape both lookups below compare on. */
+/** Lowercased, single-spaced: the shape both lookups below compare on. */
 function normaliseTypeName(type: string): string {
   return type.toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -227,41 +277,86 @@ const STYLES_BY_NAME = new Map<string, TypeStyle>(
   Object.entries(TYPE_STYLES).map(([name, style]) => [normaliseTypeName(name), style])
 );
 
-// Last resort before the pin: a word the type contains, for strings the table
-// above does not name outright. Ordered, first match wins, so the specific
-// patterns have to precede the general ones — "trafikolycka" before "olycka",
-// "rattfylleri" before "fylleri". Anchored on word boundaries, since a bare
-// `includes` matched "rån" inside "hjulrån" and "brand" inside "varumärkes-".
-const KEYWORD_STYLES: Array<[RegExp, TypeStyle]> = [
-  [/\bsammanfattning\b/, TYPE_STYLES['Sammanfattning']],
-  [/\buppdatering\b/, TYPE_STYLES['Uppdatering']],
-  [/\bmord\b|\bdråp\b/, TYPE_STYLES['Mord/dråp']],
-  [/\bvåldtäkt\b|\bsexualbrott\b/, TYPE_STYLES['Våldtäkt']],
-  [/\bskottloss/, TYPE_STYLES['Skottlossning']],
-  [/\bexplosion\b|\bdetonation\b|\bsprängn/, TYPE_STYLES['Detonation']],
-  [/\bvapen/, TYPE_STYLES['Vapenlagen']],
-  [/\bmisshandel\b/, TYPE_STYLES['Misshandel']],
-  [/\bhot\b/, TYPE_STYLES['Olaga hot']],
-  [/\bofredande\b|\bförargelse\b/, TYPE_STYLES['Ofredande/förargelse']],
-  [/\bbrand\b|\bbrinner\b/, TYPE_STYLES['Brand']],
-  [/\brån\b/, TYPE_STYLES['Rån']],
-  [/\binbrott\b/, TYPE_STYLES['Inbrott']],
-  [/\bstöld\b|\bstulet\b|\bstulen\b/, TYPE_STYLES['Stöld']],
-  [/\bskadegörelse\b/, TYPE_STYLES['Skadegörelse']],
-  [/\btrafikolycka\b/, TYPE_STYLES['Trafikolycka']],
-  [/\btrafik/, TYPE_STYLES['Trafikbrott']],
-  [/\brattfylleri\b/, TYPE_STYLES['Rattfylleri']],
-  [/\bfylleri\b|\balkohol/, TYPE_STYLES['Fylleri/LOB']],
-  [/\bnarkotika/, TYPE_STYLES['Narkotikabrott']],
-  [/\bbedrägeri\b/, TYPE_STYLES['Bedrägeri']],
-  [/\bräddning/, TYPE_STYLES['Räddningsinsats']],
-  [/\bolycka\b|\bolycksfall\b/, TYPE_STYLES['Sjukdom/olycksfall']],
-  [/\bförsvunnen\b|\bsavnad\b/, TYPE_STYLES['Försvunnen person']],
-  [/\bkontroll\b/, TYPE_STYLES['Kontroll person/fordon']],
-  [/\bpolisinsats\b|\bkommendering\b/, TYPE_STYLES['Polisinsats/kommendering']],
-  [/\blarm\b/, TYPE_STYLES['Larm Inbrott']],
-  [/\bövrigt\b/, TYPE_STYLES['Övrigt']],
+// Last resort before the pin: the words a type is built from.
+//
+// Two things make this less obvious than it looks. Swedish glues compounds into
+// a single word, so "mordbrand" and "villainbrott" have no word boundary to
+// anchor on and every \b-based pattern missed them; and the compound is
+// head-final, so the LAST element is what the thing actually is. A mordbrand is
+// a brand, not a mord. So an unknown word is matched on its ending, longest
+// stem first, and the words of a phrase are read right to left.
+//
+// A stem is only reached when the table above has no entry for the type, so
+// "Mordbrand" still gets its own colour rather than the plain fire orange.
+const STEM_STYLES: Array<[string, TypeStyle]> = [
+  ['sammanfattning', TYPE_STYLES['Sammanfattning']],
+  ['uppdatering', TYPE_STYLES['Uppdatering']],
+  ['mordbrand', TYPE_STYLES['Mordbrand']],
+  ['mord', TYPE_STYLES['Mord/dråp']],
+  ['dråp', TYPE_STYLES['Mord/dråp']],
+  ['våldtäkt', TYPE_STYLES['Våldtäkt']],
+  ['sexualbrott', TYPE_STYLES['Våldtäkt']],
+  ['sedlighetsbrott', TYPE_STYLES['Sedlighetsbrott']],
+  ['skottlossning', TYPE_STYLES['Skottlossning']],
+  ['explosion', TYPE_STYLES['Explosion']],
+  ['detonation', TYPE_STYLES['Detonation']],
+  ['sprängning', TYPE_STYLES['Detonation']],
+  ['bombhot', TYPE_STYLES['Bombhot']],
+  ['vapenlagen', TYPE_STYLES['Vapenlagen']],
+  ['knivlagen', TYPE_STYLES['Knivlagen']],
+  ['misshandel', TYPE_STYLES['Misshandel']],
+  ['hot', TYPE_STYLES['Olaga hot']],
+  ['ofredande', TYPE_STYLES['Ofredande/förargelse']],
+  ['förargelse', TYPE_STYLES['Ofredande/förargelse']],
+  ['hemfridsbrott', TYPE_STYLES['Olaga intrång/hemfridsbrott']],
+  ['åldringsbrott', TYPE_STYLES['Åldringsbrott']],
+  ['bråk', TYPE_STYLES['Bråk']],
+  ['brand', TYPE_STYLES['Brand']],
+  ['rån', TYPE_STYLES['Rån']],
+  ['inbrott', TYPE_STYLES['Inbrott']],
+  ['stöld', TYPE_STYLES['Stöld']],
+  ['stulet', TYPE_STYLES['Stöld']],
+  ['stulen', TYPE_STYLES['Stöld']],
+  ['snatteri', TYPE_STYLES['Snatteri']],
+  ['häleri', TYPE_STYLES['Häleri']],
+  ['skadegörelse', TYPE_STYLES['Skadegörelse']],
+  ['klotter', TYPE_STYLES['Skadegörelse']],
+  ['trafikolycka', TYPE_STYLES['Trafikolycka']],
+  ['trafikkontroll', TYPE_STYLES['Trafikkontroll']],
+  ['trafikhinder', TYPE_STYLES['Trafikhinder']],
+  ['trafikbrott', TYPE_STYLES['Trafikbrott']],
+  ['rattfylleri', TYPE_STYLES['Rattfylleri']],
+  ['fylleri', TYPE_STYLES['Fylleri/LOB']],
+  ['alkohollagen', TYPE_STYLES['Alkohollagen']],
+  ['narkotikabrott', TYPE_STYLES['Narkotikabrott']],
+  ['bedrägeri', TYPE_STYLES['Bedrägeri']],
+  ['ekobrott', TYPE_STYLES['Ekobrott']],
+  ['miljöbrott', TYPE_STYLES['Miljöbrott']],
+  ['räddning', TYPE_STYLES['Räddningsinsats']],
+  ['olycksfall', TYPE_STYLES['Sjukdom/olycksfall']],
+  ['olycka', TYPE_STYLES['Sjukdom/olycksfall']],
+  ['försvunnen', TYPE_STYLES['Försvunnen person']],
+  ['gränskontroll', TYPE_STYLES['Gränskontroll']],
+  ['kontroll', TYPE_STYLES['Kontroll person/fordon']],
+  ['polisinsats', TYPE_STYLES['Polisinsats/kommendering']],
+  ['kommendering', TYPE_STYLES['Polisinsats/kommendering']],
+  ['ordningslagen', TYPE_STYLES['Ordningslagen']],
+  ['sjölagen', TYPE_STYLES['Sjölagen']],
+  ['överfall', TYPE_STYLES['Larm Överfall']],
+  ['larm', TYPE_STYLES['Larm Inbrott']],
+  ['djur', TYPE_STYLES['Djur']],
+  ['övrigt', TYPE_STYLES['Övrigt']],
 ];
+
+const STEMS_BY_NAME = new Map(STEM_STYLES);
+
+/** Longest first, so "trafikolycka" is tried before "olycka". */
+const STEMS_BY_LENGTH = [...STEM_STYLES].sort((a, b) => b[0].length - a[0].length);
+
+/** The words of a type, ignoring the punctuation between them. */
+function typeWords(name: string): string[] {
+  return name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
 
 export function getTypeStyle(type: string): TypeStyle {
   const name = normaliseTypeName(type);
@@ -276,7 +371,7 @@ export function getTypeStyle(type: string): TypeStyle {
   // never resolves as plain "stöld".
   //
   // This replaced a bidirectional `includes` over the table, which matched on
-  // whichever key happened to be declared first: with "Brand automatlarm"
+  // whichever key happened to be declared first, with "Brand automatlarm"
   // present, every plain "Brand" resolved to the automatic-alarm style.
   const cuts: number[] = [];
   for (let i = 0; i < name.length; i++) {
@@ -287,8 +382,17 @@ export function getTypeStyle(type: string): TypeStyle {
     if (stem) return stem;
   }
 
-  for (const [pattern, style] of KEYWORD_STYLES) {
-    if (pattern.test(name)) return style;
+  // Right to left, because the head of a Swedish phrase or compound sits at
+  // the end: "grov misshandel" is a misshandel, "villainbrott" an inbrott.
+  const words = typeWords(name);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const whole = STEMS_BY_NAME.get(words[i]);
+    if (whole) return whole;
+  }
+  for (let i = words.length - 1; i >= 0; i--) {
+    for (const [stem, style] of STEMS_BY_LENGTH) {
+      if (words[i].length > stem.length && words[i].endsWith(stem)) return style;
+    }
   }
 
   return TYPE_STYLES['default'];

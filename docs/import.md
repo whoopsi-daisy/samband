@@ -1,7 +1,7 @@
 # Importing the Brottsplatskartan archive
 
 [Brottsplatskartan](https://brottsplatskartan.se/) publishes a free API covering
-roughly **333,000 events** going back to 2016 — far more history than
+roughly **333,000 events** going back to 2016: far more history than
 polisen.se's API exposes, which only serves recent events. The importer pulls
 that archive into the same SQLite database, into its own `bpk_events` table.
 
@@ -19,12 +19,12 @@ There are two sources and three places to drive them from.
 |-------------|----------|
 | **`/stats` dashboard** | The normal way. Live progress, start and cancel buttons |
 | **`BPK_IMPORT_ON_START`** | Unattended: seed on first boot, stay current on later ones |
-| **`npm run import:bpk`** | A source checkout — the CLI is not in the container image |
+| **`npm run import:bpk`** | A source checkout: the CLI is not in the container image |
 
 ## The dump route (recommended)
 
 A dump is one event per line, each line exactly as the API's `data[]` entries
-are shaped — the output of a mirroring script that paginated
+are shaped: the output of a mirroring script that paginated
 `brottsplatskartan.se/api/events?limit=500&page=N` and wrote every element of
 `data` as its own line. Extra fields are welcome: teasers, viewport corners and
 map image URLs are read and discarded, and the applicable fields are stored (see
@@ -38,8 +38,8 @@ cp ~/brottsplatskartan.ndjson data/
 chmod 644 data/brottsplatskartan.ndjson   # uid 1001 only needs to read it
 ```
 
-Then either start it from **/stats** — the panel lists dumps it finds in the
-data directory — or over HTTP:
+Then either start it from **/stats**: the panel lists dumps it finds in the
+data directory, or over HTTP:
 
 ```bash
 curl -u admin:secret -X POST -H 'content-type: application/json' \
@@ -54,14 +54,14 @@ instead of a file:
 {"mode":"ndjson","source":"https://example.com/brottsplatskartan.ndjson"}
 ```
 
-Requests may only name files **inside the data directory** — mount the dump
+Requests may only name files **inside the data directory**: mount the dump
 there rather than pointing at an arbitrary path. The CLI and
 `BPK_IMPORT_SOURCE`, which are operator-controlled, accept any readable path.
 
 Expect roughly **15,000 events a second** from a local file: a 333k-event, ~700
 MB dump lands in well under a minute. The file is streamed line by line, so its
 size never matters. Corrupt or truncated lines are counted and skipped rather
-than aborting the run, and re-running is free — nothing already stored is
+than aborting the run, and re-running is free: nothing already stored is
 written again.
 
 Afterwards, keep it current from the API:
@@ -134,7 +134,7 @@ If you have no dump, the importer can walk the API itself.
 # Writes nothing.
 npm run import:bpk -- --probe
 
-# Only what is new since the last run — safe on a schedule
+# Only what is new since the last run: safe on a schedule
 npm run import:bpk
 
 # The whole archive
@@ -145,7 +145,7 @@ npm run import:bpk -- --mode=full --concurrency=6 --max-pages=500
 Or over HTTP: `{"mode":"full","concurrency":6}`.
 
 Progress is written to the database after every batch, so **Ctrl-C and
-container restarts are safe** — a full run resumes from the last completed page
+container restarts are safe**: a full run resumes from the last completed page
 rather than starting over. `DELETE /api/import/brottsplatskartan` cancels a
 running import the same way.
 
@@ -164,7 +164,7 @@ bytes of stored fields per event, plus indexes).
 
 ## The CLI
 
-Only available in a source checkout — the container image ships the server, not
+Only available in a source checkout: the container image ships the server, not
 the scripts.
 
 ```bash
@@ -177,7 +177,7 @@ npm run import:bpk -- --mode=full --concurrency=6
 ```
 
 `SAMBAND_DATA_DIR` selects the database, exactly as it does for the app.
-Progress prints live — a meter that rewrites itself on a terminal, periodic
+Progress prints live: a meter that rewrites itself on a terminal, periodic
 lines when redirected to a file:
 
 ```
@@ -211,7 +211,7 @@ Imported events live in their own `bpk_events` table, **not** in `events`.
 
 Both sources number their events from 1, and `events.id` is a primary key
 holding polisen.se's ids. Importing one into the other would silently overwrite
-unrelated polisen events wherever the id spaces collide — and they do. Keeping
+unrelated polisen events wherever the id spaces collide, and they do. Keeping
 them apart also means an import can be dropped and redone without touching the
 data the app collects itself.
 
@@ -239,13 +239,13 @@ Dropped deliberately, whether they arrive from the API or from a dump:
 `content_formatted` (byte-identical to `content` in the responses checked),
 `content_teaser` (a truncation of `content`), `location_string_2` (a prefix of
 `location_string`), the map image URLs and viewport corners (derivable from
-`lat`/`lng`), and `date_human` ("4 timmar sedan" — a rendered string that is
+`lat`/`lng`), and `date_human` ("4 timmar sedan": a rendered string that is
 wrong the moment it is stored). Everything with independent information content
 is kept. Records without a usable id or date are skipped rather than stored
 half-formed.
 
 Legacy records that carry `parsed_date` ("2016-10-14 21:27:00", Swedish local
-time) instead of `pubdate_iso8601` are handled — that is most of the older
+time) instead of `pubdate_iso8601` are handled: that is most of the older
 archive.
 
 ## How the app reads it
@@ -269,7 +269,7 @@ The cutoff is shown in the statistics view, under the headline numbers:
 > händelseström.
 
 What that rule trades away: if the app was down for a stretch inside the live
-window, the archive does not fill that gap — the cutoff is a single point in
+window, the archive does not fill that gap: the cutoff is a single point in
 time, not a per-day check. Re-importing does not change it. The alternative,
 matching individual incidents across two schemas, is guesswork on exactly the
 rows where it matters.
@@ -281,7 +281,7 @@ Two details of how archived rows are presented:
 - **Detail text.** Expanding an archived event shows the `content` the import
   stored, served straight from the database. It deliberately does not fetch
   polisen.se: those pages are removed after a while, so for anything but the
-  most recent events that fetch comes back empty — precisely when someone is
+  most recent events that fetch comes back empty: precisely when someone is
   reading the archive rather than the live feed. The polisen.se link is still
   offered on the card for events whose page is still up.
 
@@ -298,7 +298,7 @@ follow from that:
   160–225 ms of scanning before, on a 333k-event archive.
 
 The tokenizer is the one decision worth knowing about. `BPK_SEARCH_TOKENIZER`
-defaults to `trigram`, which matches substrings the way the old scan did —
+defaults to `trigram`, which matches substrings the way the old scan did:
 searching `guldsmed` finds `guldsmedsaffär`, which matters constantly in
 Swedish. It costs about 350 MB of index for a full archive. Setting it to
 `unicode61` cuts that to ~55 MB and matches whole words and prefixes instead,
@@ -307,7 +307,7 @@ index on the next start, which takes about 20 seconds per 333k events.
 
 Two edges: a one- or two-character search has no trigram to look up and falls
 back to the old scan, and a term that matches a large fraction of the archive
-is bounded by sorting those matches by date rather than by the index — around
+is bounded by sorting those matches by date rather than by the index: around
 200 ms for a term hitting 50k events, which is still no worse than the scan it
 replaced.
 
@@ -325,7 +325,7 @@ during a run that takes hours. The importer walks pages in **ascending** order,
 which is the direction that makes this safe:
 
 - New events are inserted at the head, so every existing event moves toward
-  **later** pages — away from the cursor. An event can never slip behind it.
+  **later** pages: away from the cursor. An event can never slip behind it.
 - The cost is re-reading events already stored. `INSERT OR IGNORE` absorbs
   those, which is why a run reports a large "already had" count.
 
@@ -334,7 +334,7 @@ that run against an archive which grows mid-import:
 
 - **The end of the archive moves.** As events are added, the oldest ones are
   pushed onto page numbers past whatever the last page was when the run started.
-  Fixing that bound at the start silently drops them — and an incremental sync
+  Fixing that bound at the start silently drops them, and an incremental sync
   can never recover them, because it stops at its watermark and these are the
   oldest events there are. The bound is therefore re-read from every response,
   and re-checked once more after the walk appears finished.
@@ -359,7 +359,7 @@ curl -s -u admin:secret http://localhost:3000/api/import/brottsplatskartan \
 ```
 
 A small shortfall is possible and harmless: records the API serves without a
-usable id or date are skipped. Re-running `--mode=full` sweeps again — if the
+usable id or date are skipped. Re-running `--mode=full` sweeps again: if the
 number does not move, the archive is fully read. It is safe to re-run at any
 time; it stores nothing it already has.
 

@@ -13,12 +13,12 @@ interface StatsViewProps {
 const WEEKDAY_NAMES = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const WEEKDAY_LONG = ['måndagar', 'tisdagar', 'onsdagar', 'torsdagar', 'fredagar', 'lördagar', 'söndagar'];
 
-// Date only — these are coverage boundaries, not timestamps, so the time of
+// Date only: these are coverage boundaries, not timestamps, so the time of
 // day is noise. Rendered against the viewer's clock, so it only produces
 // stable markup after mount (see the `mounted` gate below).
 function formatDay(iso: string): string {
   const date = new Date(iso);
-  return isNaN(date.getTime()) ? '—' : date.toLocaleDateString('sv-SE');
+  return isNaN(date.getTime()) ? '–' : date.toLocaleDateString('sv-SE');
 }
 
 function TopList({
@@ -64,7 +64,7 @@ function TopList({
   );
 }
 
-// Which entry of a series is the tallest — the one sentence each chart exists
+// Which entry of a series is the tallest: the one sentence each chart exists
 // to say. A phone has no hover, so without it the weekday and hour charts are
 // shapes with no readable value anywhere on them.
 function peakIndex(values: number[]): number {
@@ -75,11 +75,26 @@ function peakIndex(values: number[]): number {
 
 function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const mounted = useMounted();
-  const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '—');
+  const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '–');
   const maxDaily = Math.max(...stats.daily.map((d) => d.count), 1);
+  const maxYearly = Math.max(...stats.yearly.map((y) => y.count), 1);
+  const maxMonthly = Math.max(...stats.monthly.map((m) => m.count), 1);
+
+  // The running year is only a few months long, so its bar is short for a
+  // reason that has nothing to do with how much happened, and comparing it
+  // with the finished years beside it would be comparing two different things.
+  // It is excluded from the peak and called out on its own instead.
+  const thisYear = String(new Date().getFullYear());
+  const completeYears = stats.yearly.filter((year) => year.year !== thisYear);
+  const peakYear = completeYears.reduce<{ year: string; count: number } | null>(
+    (best, year) => (!best || year.count > best.count ? year : best),
+    null
+  );
+  const runningYear = stats.yearly.find((year) => year.year === thisYear) ?? null;
   const maxWeekday = Math.max(...stats.weekdays, 1);
   const maxHourly = Math.max(...stats.hourly, 1);
 
+  const coveredYears = (stats.coverageDays / 365.25).toFixed(1).replace('.', ',');
   const peakWeekday = peakIndex(stats.weekdays);
   const peakHour = peakIndex(stats.hourly);
   const weekdayTotal = stats.weekdays.reduce((a, b) => a + b, 0);
@@ -116,6 +131,19 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           <span className="stat-value">{stats.uniqueTypes}</span>
           <span className="stat-label">Händelsetyper</span>
         </div>
+        {stats.busiestDay && (
+          <div className="stat">
+            <span className="stat-value">{stats.busiestDay.count.toLocaleString('sv-SE')}</span>
+            <span className="stat-label">Mest på ett dygn</span>
+            <span className="stat-note">{coverageDay(stats.busiestDay.date)}</span>
+          </div>
+        )}
+        {stats.coverageDays > 0 && (
+          <div className="stat">
+            <span className="stat-value">{coveredYears}</span>
+            <span className="stat-label">År med data</span>
+          </div>
+        )}
         {/* "Med GPS-position" and "Uppdaterade" used to sit here. They measure
             how complete the stored data is, not anything about crime in
             Sweden, and they are on the operations dashboard at /stats where an
@@ -138,9 +166,67 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
             därefter polisens egen händelseström.
           </>
         ) : (
-          <>Endast polisens egen händelseström — inget arkiv är importerat.</>
+          <>Endast polisens egen händelseström. Inget arkiv är importerat.</>
         )}
       </p>
+
+      {/* The long view. Everything below the tiles used to look back a week or a
+          month, which is the wrong shape for a database holding ten years: a
+          reader could not see when the archive starts, whether the volume is
+          rising or falling, or that anything happened before last Tuesday. */}
+      {stats.yearly.length > 1 && (
+        <div className="card">
+          <h2 className="card-title">Antal händelser per år</h2>
+          <div className="chart">
+            {stats.yearly.map((year) => (
+              <div
+                key={year.year}
+                className="chart-col"
+                title={`${year.year}: ${year.count.toLocaleString('sv-SE')} händelser`}
+              >
+                <span className="chart-track">
+                  <span className="chart-bar" style={{ height: `${(year.count / maxYearly) * 100}%` }} />
+                </span>
+                <span className="chart-label">{year.year.slice(2)}</span>
+              </div>
+            ))}
+          </div>
+          {peakYear && (
+            <p className="chart-caption">
+              Flest under ett helt år: <strong>{peakYear.year}</strong> med{' '}
+              {peakYear.count.toLocaleString('sv-SE')} händelser.{' '}
+              {runningYear
+                ? `${thisYear} har hittills ${runningYear.count.toLocaleString('sv-SE')} och är inte färdigt.`
+                : ''}
+            </p>
+          )}
+        </div>
+      )}
+
+      {stats.monthly.some((month) => month.count > 0) && (
+        <div className="card">
+          <h2 className="card-title">Per månad, senaste två åren</h2>
+          <div className="chart chart--sm">
+            {stats.monthly.map((month) => (
+              <div
+                key={month.month}
+                className="chart-col"
+                title={`${month.label} ${month.year}: ${month.count.toLocaleString('sv-SE')} händelser`}
+              >
+                <span className="chart-track">
+                  <span
+                    className="chart-bar"
+                    style={{ height: `${(month.count / maxMonthly) * 100}%` }}
+                  />
+                </span>
+                {/* Only January carries a label, so the axis reads as years
+                    rather than as twenty-four crushed month abbreviations. */}
+                <span className="chart-label">{month.label === 'jan' ? month.year : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2 className="card-title">Antal händelser per dag, senaste veckan</h2>
@@ -172,7 +258,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           </div>
           {weekdayTotal > 0 && (
             <p className="chart-caption">
-              Flest händelser inträffar på <strong>{WEEKDAY_LONG[peakWeekday]}</strong> —{' '}
+              Flest händelser inträffar på <strong>{WEEKDAY_LONG[peakWeekday]}</strong>:{' '}
               {stats.weekdays[peakWeekday].toLocaleString('sv-SE')} av de{' '}
               {weekdayTotal.toLocaleString('sv-SE')} senaste 30 dagarnas händelser.
             </p>
@@ -186,7 +272,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
               <div
                 key={hour}
                 className="chart-col"
-                title={`${String(hour).padStart(2, '0')}:00 — ${count} händelser`}
+                title={`kl ${String(hour).padStart(2, '0')}, ${count} händelser`}
               >
                 <span className="chart-track">
                   <span className="chart-bar" style={{ height: `${(count / maxHourly) * 100}%` }} />
@@ -207,7 +293,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
               <strong>
                 kl {String(peakHour).padStart(2, '0')} och {String((peakHour + 1) % 24).padStart(2, '0')}
               </strong>{' '}
-              — {stats.hourly[peakHour].toLocaleString('sv-SE')} av dygnets{' '}
+              med {stats.hourly[peakHour].toLocaleString('sv-SE')} av dygnets{' '}
               {hourlyTotal.toLocaleString('sv-SE')}.
             </p>
           )}

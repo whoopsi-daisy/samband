@@ -13,7 +13,7 @@ interface OperationalDashboardProps {
 }
 
 // Both helpers below depend on the viewer's clock and timezone, so they only
-// produce stable markup after mount — see the `mounted` gate in the component.
+// produce stable markup after mount: see the `mounted` gate in the component.
 function formatTimeAgo(dateString: string | null): string {
   if (!dateString) return 'Aldrig';
   const date = new Date(dateString);
@@ -82,10 +82,10 @@ export default function OperationalDashboard({
   // Clock- and timezone-dependent strings render as a placeholder on the server
   // and are filled in on mount, so hydration never sees two different values.
   const mounted = useMounted();
-  const timeAgo = (value: string | null) => (mounted ? formatTimeAgo(value) : '—');
-  const dateTime = (value: string) => (mounted ? formatDateTime(value) : '—');
+  const timeAgo = (value: string | null) => (mounted ? formatTimeAgo(value) : '–');
+  const dateTime = (value: string) => (mounted ? formatDateTime(value) : '–');
   const dateOnly = (value: string | null) =>
-    !value ? 'N/A' : mounted ? new Date(value).toLocaleDateString('sv-SE') : '—';
+    !value ? 'N/A' : mounted ? new Date(value).toLocaleDateString('sv-SE') : '–';
 
   const maxHourlyFetches = Math.max(...operationalStats.hourlyFetches, 1);
   const maxDailyEventCount = Math.max(...eventStats.daily.map(d => d.count), 1);
@@ -204,7 +204,7 @@ export default function OperationalDashboard({
           </div>
         </section>
 
-        {/* Importstatus — live, se ImportPanel */}
+        {/* Importstatus: live, se ImportPanel */}
         <ImportPanel />
 
         {/* Databashälsa */}

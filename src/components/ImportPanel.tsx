@@ -8,7 +8,7 @@ import type { ImportSnapshot } from '@/lib/brottsplatskartanRunner';
 // Progress arrives over server-sent events, so a running import moves here
 // without the operator reloading anything. If the stream cannot be opened
 // (an old proxy that buffers, a browser that gave up), it falls back to
-// polling the same JSON — the panel is the way to tell whether an import is
+// polling the same JSON: the panel is the way to tell whether an import is
 // working, so it must not go blank.
 
 const ENDPOINT = '/api/import/brottsplatskartan';
@@ -21,7 +21,7 @@ interface DumpFile {
 }
 
 function formatBytes(bytes: number | null): string {
-  if (bytes === null) return '—';
+  if (bytes === null) return '–';
   if (bytes < 1024) return `${bytes} B`;
   const units = ['kB', 'MB', 'GB'];
   let value = bytes / 1024;
@@ -34,7 +34,7 @@ function formatBytes(bytes: number | null): string {
 }
 
 function formatDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) return '—';
+  if (seconds === null || !Number.isFinite(seconds)) return '–';
   const s = Math.max(0, Math.round(seconds));
   if (s < 60) return `${s} s`;
   const m = Math.floor(s / 60);
@@ -166,7 +166,7 @@ export default function ImportPanel() {
   return (
     <section className="ops-section">
       <h2 className="ops-section-title">
-        Import — brottsplatskartan
+        Import från brottsplatskartan
         <span className={`dot dot--sm${live ? ' dot--ok is-pulsing' : ''}`} title={live ? 'Direktström' : 'Pollning'} />
       </h2>
 
@@ -186,7 +186,7 @@ export default function ImportPanel() {
           <span className="stat-label">Nya i körningen</span>
         </div>
         <div className="stat">
-          <span className="stat-value">{snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined ? `${snapshot.coveragePercent}%` : '—'}</span>
+          <span className="stat-value">{snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined ? `${snapshot.coveragePercent}%` : '–'}</span>
           <span className="stat-label">Täckning mot API</span>
         </div>
       </div>
@@ -208,7 +208,7 @@ export default function ImportPanel() {
           <div className="info-list">
             <div className="info-row">
               <span className="info-label">Källa</span>
-              <span className="info-value">{progress?.source ?? (running ? 'API' : '—')}</span>
+              <span className="info-value">{progress?.source ?? (running ? 'API' : '–')}</span>
             </div>
             {progress?.linesRead !== null && progress?.linesRead !== undefined && (
               <div className="info-row">
@@ -238,7 +238,7 @@ export default function ImportPanel() {
             <div className="info-row">
               <span className="info-label">Takt</span>
               <span className="info-value">
-                {progress?.perSecond ? `${progress.perSecond.toLocaleString('sv-SE')} /s` : '—'}
+                {progress?.perSecond ? `${progress.perSecond.toLocaleString('sv-SE')} /s` : '–'}
               </span>
             </div>
             <div className="info-row">

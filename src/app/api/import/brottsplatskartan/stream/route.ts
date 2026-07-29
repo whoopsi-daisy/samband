@@ -5,8 +5,8 @@ import { getImportSnapshot, subscribe } from '@/lib/brottsplatskartanRunner';
 //
 //   curl -N -u user:pass http://localhost:3000/api/import/brottsplatskartan/stream
 //
-// Every message is a complete snapshot — the same JSON the GET endpoint
-// returns — so a watcher that connects mid-import, or reconnects after a drop,
+// Every message is a complete snapshot: the same JSON the GET endpoint
+// returns, so a watcher that connects mid-import, or reconnects after a drop,
 // is immediately up to date without replaying anything.
 export const dynamic = 'force-dynamic';
 

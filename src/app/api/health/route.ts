@@ -21,7 +21,7 @@ export async function GET() {
       : null;
 
     // A database that has never been fetched into is still "starting", not
-    // broken — report healthy so a fresh container passes its first probes.
+    // broken: report healthy so a fresh container passes its first probes.
     const stale = ageMinutes !== null && ageMinutes > STALE_AFTER_MINUTES;
 
     return NextResponse.json(

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
-    // No body is fine — defaults to an incremental sync.
+    // No body is fine: defaults to an incremental sync.
   }
 
   const mode = body.mode === undefined ? 'incremental' : body.mode;

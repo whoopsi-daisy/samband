@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sambandscentralen">
+  <rect width="512" height="512" fill="#165a9b"/>
+  <g fill="none" stroke="#ffffff" stroke-width="19">
+    <circle cx="256" cy="256" r="122" opacity="0.4"/>
+    <circle cx="256" cy="256" r="75" opacity="0.95"/>
+  </g>
+  <circle cx="256" cy="256" r="34" fill="#ffffff"/>
+</svg>

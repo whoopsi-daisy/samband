@@ -40,7 +40,7 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
 
       if (!response.ok) {
         const err = new Error(`HTTP error ${response.status}`);
-        // Client errors (4xx) won't succeed on retry — only 429 is worth retrying.
+        // Client errors (4xx) won't succeed on retry: only 429 is worth retrying.
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           (err as Error & { retryable?: boolean }).retryable = false;
         }
@@ -179,6 +179,8 @@ const HTML_ENTITIES: Record<string, string> = {
   'copy': '©', 'reg': '®', 'trade': '™', 'euro': '€', 'pound': '£', 'yen': '¥',
   'cent': '¢', 'deg': '°', 'plusmn': '±', 'times': '×', 'divide': '÷',
   'frac12': '½', 'frac14': '¼', 'frac34': '¾',
+  // Decoding, not authoring: whatever polisen.se wrote is what the notice
+  // said, so &mdash; stays an em dash here.
   'hellip': '…', 'mdash': '—', 'ndash': '–', 'lsquo': "'", 'rsquo': "'",
   'ldquo': '"', 'rdquo': '"', 'bull': '•', 'middot': '·',
   // Other Nordic/European characters
@@ -200,8 +202,8 @@ export function decodeHtmlEntities(text: string): string {
   });
 
   // Decode numeric entities (&#xNN; hex and &#NNN; decimal).
-  // Use fromCodePoint (not fromCharCode) so characters above U+FFFF — e.g.
-  // emoji — decode correctly instead of being truncated to 16 bits.
+  // Use fromCodePoint (not fromCharCode) so characters above U+FFFF: e.g.
+  // emoji: decode correctly instead of being truncated to 16 bits.
   const fromCode = (match: string, code: number): string =>
     code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
   decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (m, hex) => fromCode(m, parseInt(hex, 16)));
@@ -212,12 +214,14 @@ export function decodeHtmlEntities(text: string): string {
 
 // Fetch event details from polisen.se
 // Readable text out of a fragment of HTML: the paragraphs, tags stripped and
-// entities decoded. Returns null when the fragment has no paragraph markup —
+// entities decoded. Returns null when the fragment has no paragraph markup:
 // on a scraped page that means the layout was not what we expected, and a
 // caller with plain text of its own can fall back to it.
 //
 // Shared by the polisen.se scrape below and by imported brottsplatskartan
 // events, which store their body as the same `<p>` markup.
+const MAX_DETAIL_PARAGRAPHS = 60;
+
 export function paragraphsToText(html: string): string | null {
   const paragraphs: string[] = [];
   const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
@@ -231,7 +235,14 @@ export function paragraphsToText(html: string): string | null {
   // Null, not an empty string: callers treat that as "nothing to show".
   if (paragraphs.length === 0) return null;
 
-  return paragraphs.slice(0, 4).join('\n\n');
+  // The whole notice, not the opening of it. This was capped at four
+  // paragraphs, which quietly cut every longer notice off mid-account with no
+  // sign anything was missing. The summary posts, which are the longest
+  // things in the archive, lost most of their body that way.
+  //
+  // The remaining cap only exists so a page whose layout we misread cannot
+  // hand back a document's worth of text; no real notice comes close to it.
+  return paragraphs.slice(0, MAX_DETAIL_PARAGRAPHS).join('\n\n');
 }
 
 export async function fetchDetailsText(url: string): Promise<string | null> {

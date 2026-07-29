@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Light/dark only. The default is whatever the OS prefers — the inline script
+ * Light/dark only. The default is whatever the OS prefers: the inline script
  * in the root layout applies it before first paint. Toggling stores an explicit
  * override in localStorage; the icon swap itself is pure CSS (`.theme-icon-*`),
  * so it is correct on the very first frame with no hydration flash.

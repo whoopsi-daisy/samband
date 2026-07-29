@@ -34,13 +34,13 @@ const PROXIMITY_THRESHOLD = 0.02;
 // which is the expected behaviour for a dense metro area.
 const MIN_GAP_DEG = 0.035;
 
-// Hard cap — never displace more than ~8 km from the real position.
+// Hard cap, never displace more than ~8 km from the real position.
 const MAX_FAN_RADIUS = 0.07;
 
 /**
  * Pre-compute display positions so co-located markers (same city block)
  * get fanned out slightly.  Markers at distinct locations keep their
- * real GPS coordinates—overlaps at the country-wide zoom are acceptable.
+ * real GPS coordinates-overlaps at the country-wide zoom are acceptable.
  */
 function computeMarkerPositions(events: FormattedEvent[]): Map<number, [number, number]> {
   const positions = new Map<number, [number, number]>();
@@ -210,7 +210,9 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
     const safeSummary = escapeHtml(
       (e.summary || '').length > 120 ? e.summary!.substring(0, 120) + '...' : e.summary || ''
     );
-    const safeLocation = escapeHtml(e.location || '');
+    // Same rule as the feed row: the municipality first when the source only
+    // filed the notice under a county.
+    const safeLocation = escapeHtml(e.place ? `${e.place}, ${e.location}` : e.location || '');
     const safeColor = escapeHtml(e.color || '');
     const safeEmoji = escapeHtml(e.emoji || '');
     const safeUrl = e.url ? escapeHtml(e.url) : '';
@@ -314,7 +316,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
       mapRef.current = map;
       setMapReady(true);
 
-      // Make sure tiles render properly — double-nudge for mobile browsers
+      // Make sure tiles render properly: double-nudge for mobile browsers
       setTimeout(() => map.invalidateSize(), 200);
       setTimeout(() => map.invalidateSize(), 600);
     })();
@@ -334,7 +336,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
       hasFittedBoundsRef.current = false;
       setMapReady(false);
     };
-  }, [isActive]); // Only depends on isActive — stable
+  }, [isActive]); // Only depends on isActive: stable
 
   // --- Render markers when data/range changes (non-playing) ---
   useEffect(() => {
@@ -377,7 +379,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
       return;
     }
 
-    // New run — bump counter, reset tracking
+    // New run: bump counter, reset tracking
     const runId = ++replayRunRef.current;
     addedMarkerIdsRef.current = new Set();
 

@@ -8,7 +8,7 @@ import type { RawEvent } from '@/types';
 
 // The imported archive is part of the dataset the app queries: the feed, the
 // search, the filter dropdowns and the statistics all read it alongside the
-// live polisen.se feed. These cover that seam — including the rule that keeps
+// live polisen.se feed. These cover that seam: including the rule that keeps
 // the two sources from counting the same period twice.
 
 let tempDir: string;
@@ -130,9 +130,9 @@ describe('the overlap between the sources', () => {
     db.insertEvent(makeEvent({ id: 2, datetime: '2026-07-27T12:00:00.000Z' }));
 
     bpkDb.insertBpkEvents([
-      // Inside the live window — the live feed already has this period.
+      // Inside the live window: the live feed already has this period.
       archiveEvent({ id: 10, pubdate: '2026-07-25T12:00:00.000Z' }),
-      // Before it — nothing else has this.
+      // Before it: nothing else has this.
       archiveEvent({ id: 11, pubdate: '2026-07-19T12:00:00.000Z' }),
     ]);
 
@@ -193,7 +193,7 @@ describe('historical search', () => {
     db.insertEvent(makeEvent({ id: 1, type: 'Brand', location: { name: 'Malmö', gps: '' } }));
     bpkDb.insertBpkEvents([
       archiveEvent({ id: 10, titleType: 'Rattfylleri', titleLocation: 'Kiruna' }),
-      // Also in the live feed — must not appear twice.
+      // Also in the live feed: must not appear twice.
       archiveEvent({ id: 11, titleType: 'Brand', titleLocation: 'Malmö' }),
     ]);
 
@@ -232,7 +232,7 @@ describe('statistics over the whole dataset', () => {
 
   it('counts archived events from the weeks just before the cutoff', () => {
     // Everything here sits between "30 days ago" and the live feed's oldest
-    // event — the range where a mis-bound window silently drops archive rows
+    // event: the range where a mis-bound window silently drops archive rows
     // from the totals while older years still look right.
     const now = Date.now();
     const daysAgo = (days: number): string => new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
@@ -272,7 +272,7 @@ describe('statistics over the whole dataset', () => {
     expect(db.getStatsSummary().total).toBe(1);
 
     bpkDb.insertBpkEvents([archiveEvent({ id: 10, pubdate: '2019-01-01T10:00:00.000Z' })]);
-    // Aggregates are cached; an import drops them (see the runner) — without
+    // Aggregates are cached; an import drops them (see the runner), without
     // that, the app would show yesterday's picture for up to a minute.
     db.invalidateAggregateCaches();
 
@@ -289,7 +289,7 @@ describe('statistics over the whole dataset', () => {
 
     const stats = db.getStatsSummary();
 
-    // Still stored and still in the feed — only the breakdowns skip them.
+    // Still stored and still in the feed: only the breakdowns skip them.
     expect(stats.totalStored).toBe(3);
     expect(stats.topTypes).toEqual([{ label: 'Brand', total: 1 }]);
   });

@@ -49,11 +49,11 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   map: {
     title: 'Händelser på karta',
-    lede: 'Var händelserna inträffade. Varje punkt är en notis — tryck på den för att läsa.',
+    lede: 'Var händelserna inträffade. Varje punkt är en notis, tryck på den för att läsa.',
   },
   stats: {
     title: 'Statistik',
-    lede: 'Hur händelserna fördelar sig över dygnet, veckan, platser och typer.',
+    lede: 'Hur händelserna fördelar sig över åren, dygnet, veckan, platser och typer.',
   },
 };
 

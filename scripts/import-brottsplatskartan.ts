@@ -94,7 +94,7 @@ function formatBytes(bytes: number): string {
 
 // On a terminal, rewrite one line in place so progress reads as a live meter.
 // Piped to a file or a log collector, print a new line every few seconds
-// instead — carriage returns there produce an unreadable single-line blob.
+// instead: carriage returns there produce an unreadable single-line blob.
 function makeProgressPrinter(): (text: string, force?: boolean) => void {
   const isTty = Boolean(process.stdout.isTTY);
   const intervalMs = isTty ? 250 : 5000;

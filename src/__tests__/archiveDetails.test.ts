@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 
 // Imported events carry their own text. Expanding one must not depend on
-// polisen.se still serving the page it came from — the archive reaches back to
+// polisen.se still serving the page it came from: the archive reaches back to
 // 2016 and those pages are removed, which is exactly when someone is reading
 // the archive rather than the live feed.
 

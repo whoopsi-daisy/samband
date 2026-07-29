@@ -13,7 +13,7 @@ interface HeaderProps {
 /**
  * Sticky 52px shell header: mark on the left, view nav and theme toggle on the
  * right. The bottom hairline appears only after the first pixel of scroll, via
- * a scroll-driven animation in the stylesheet — no scroll listener, and no
+ * a scroll-driven animation in the stylesheet: no scroll listener, and no
  * collapsing/compacting states.
  */
 export default function Header({ currentView, onViewChange, onLogoClick }: HeaderProps) {
@@ -29,7 +29,7 @@ export default function Header({ currentView, onViewChange, onLogoClick }: Heade
               onLogoClick();
             }
           }}
-          aria-label="Sambandscentralen — till startsidan"
+          aria-label="Sambandscentralen, till startsidan"
         >
           <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" aria-hidden="true">
             <circle cx="20" cy="20" r="13" strokeWidth="2.5" opacity="0.35" />

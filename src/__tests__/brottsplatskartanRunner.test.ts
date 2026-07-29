@@ -37,7 +37,7 @@ function writeDump(name: string, count: number): string {
 }
 
 // Lines carrying only what the mapper needs. The tests below are about the
-// runner's mechanics — progress, cancellation, refusal — not about field
+// runner's mechanics (progress, cancellation, refusal) not about field
 // mapping, and a dump of real-shaped events is ~2 KB a line, which turns a
 // 20,000-row run into 44 MB of file I/O inside a 5-second timeout.
 function writeMinimalDump(name: string, count: number): string {
@@ -103,7 +103,7 @@ describe('startImport (ndjson)', () => {
     await settle();
     unsubscribe();
 
-    // Snapshots are throttled, so a dump this size may only produce one — the
+    // Snapshots are throttled, so a dump this size may only produce one: the
     // point is that a run is observable while it is still going, not how many
     // frames it emits.
     expect(seen.length).toBeGreaterThanOrEqual(1);
@@ -157,7 +157,7 @@ describe('startImport (ndjson)', () => {
     const file = path.join(tempDir, 'gone.ndjson');
     fs.writeFileSync(file, '');
     runner.startImport({ mode: 'ndjson', source: 'gone.ndjson' });
-    // Delete it out from under the run — the stream fails mid-flight.
+    // Delete it out from under the run: the stream fails mid-flight.
     fs.rmSync(file, { force: true });
 
     await settle();
@@ -175,11 +175,11 @@ describe('cancelImport', () => {
     // first chunk, stores it, then waits for more that never comes. The run is
     // therefore in flight by construction, on any machine.
     //
-    // The obvious alternative — subscribe() and cancel on the first snapshot
-    // reporting imported > 0 — does not work, and was this test's original
+    // The obvious alternative: subscribe() and cancel on the first snapshot
+    // reporting imported > 0: does not work, and was this test's original
     // flake. Publishes to listeners are throttled to one per 500 ms, and a
     // dump of this size finishes well inside that, so a subscriber saw two
-    // snapshots: one at the start with no progress attached, and one after the
+    // snapshots, one at the start with no progress attached, and one after the
     // whole file had been read. Cancelling then aborts a run that has already
     // finished. (Polling getImportSnapshot() instead reads live state with no
     // throttle, which works but races the reader against the importer.)

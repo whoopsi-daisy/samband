@@ -34,8 +34,8 @@ The app is on <http://localhost:3000>; `docker compose ps` should show
 `(healthy)` within 40 seconds. Edit `.env` to set a port, credentials for
 `/stats` (which stays closed until you do), or a pinned release.
 
-That is the whole deployment. Everything else — reverse proxies, updating,
-rollback, backups, migrating an existing install — is in
+That is the whole deployment. Everything else: reverse proxies, updating,
+rollback, backups, migrating an existing install: is in
 **[docs/deploy.md](docs/deploy.md)**.
 
 > **Do not change `TZ`.** The app parses Swedish wall-clock times out of event
@@ -60,7 +60,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ## Importing the Brottsplatskartan archive
 
-Optional. Pulls ~333,000 events going back to 2016 into `bpk_events` — far more
+Optional. Pulls ~333,000 events going back to 2016 into `bpk_events`: far more
 history than polisen.se's API exposes.
 
 Put an NDJSON dump (one API event per line) in the data directory and start it
@@ -78,7 +78,7 @@ Roughly 15,000 events a second from a local file, so a full archive lands in
 under a minute. On later boots it runs an incremental API sync instead of
 re-reading the file.
 
-Progress is visible while it runs — a live panel on `/stats`, a server-sent
+Progress is visible while it runs: a live panel on `/stats`, a server-sent
 event stream, and a line in the container log every 15 seconds:
 
 ```bash
@@ -92,7 +92,7 @@ requests, resumable).
 Imported events are part of the dataset as soon as the import finishes: the
 statistics cover them, and search reaches back through every period they hold.
 Where the two sources overlap, the live feed wins for the period it covers and
-the archive supplies everything before it, so nothing is counted twice — the
+the archive supplies everything before it, so nothing is counted twice: the
 statistics view names that boundary. Full guide, HTTP reference and the mapping
 of dump fields to columns: **[docs/import.md](docs/import.md)**.
 
@@ -153,10 +153,10 @@ docs/                        # deploy, import, publishing, reference
 
 ## Docs
 
-- **[docs/deploy.md](docs/deploy.md)** — running it: proxies, updates, backups, migrating an existing install, troubleshooting
-- **[docs/import.md](docs/import.md)** — the archive importer in full
-- **[docs/publishing.md](docs/publishing.md)** — publishing images from your own fork
-- **[docs/reference.md](docs/reference.md)** — endpoints, schema, configuration, views, shortcuts
+- **[docs/deploy.md](docs/deploy.md)**: running it: proxies, updates, backups, migrating an existing install, troubleshooting
+- **[docs/import.md](docs/import.md)**: the archive importer in full
+- **[docs/publishing.md](docs/publishing.md)**: publishing images from your own fork
+- **[docs/reference.md](docs/reference.md)**: endpoints, schema, configuration, views, shortcuts
 
 ## Tech
 

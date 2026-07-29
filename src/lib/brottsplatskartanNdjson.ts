@@ -16,14 +16,14 @@ import { resolveImportSource, type ResolvedImportSource } from './importSource';
 // One event per line, exactly as the API's `data[]` entries are shaped. Lines
 // carry far more fields than this app stores (teasers, viewport corners, map
 // images); they are dropped and the applicable ones are written, because rows
-// go through the same mapper as the live import — both paths store identical
+// go through the same mapper as the live import: both paths store identical
 // data.
 //
 // This is the fastest and kindest way to load the archive: a dump someone has
 // already taken costs the site nothing, and reading a local file beats ~670
 // paginated requests.
 //
-// Streamed line by line — the full archive is a few hundred MB and must never
+// Streamed line by line: the full archive is a few hundred MB and must never
 // be held in memory at once.
 
 const BATCH_SIZE = 1000;
@@ -129,8 +129,8 @@ export async function importNdjson(options: NdjsonImportOptions): Promise<Ndjson
   let lastProgressAt = 0;
   let lastStateWriteAt = 0;
 
-  // Progress is reported on every batch — a fast dump would otherwise finish
-  // between two ticks of the interval and never report at all — and on the
+  // Progress is reported on every batch: a fast dump would otherwise finish
+  // between two ticks of the interval and never report at all, and on the
   // interval in between, so a slow source still looks alive.
   const report = (persist = false): void => {
     const now = Date.now();
