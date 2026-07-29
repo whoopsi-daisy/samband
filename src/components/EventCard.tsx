@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useId } from 'react';
 import { FormattedEvent } from '@/types';
 import { formatRelativeTime } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
@@ -176,6 +176,11 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
   const showSummary = !(expanded && detail.supersedesSummary);
 
+  // Stable across renders and unique per row, which is what aria-controls needs
+  // to point at anything. useId rather than the event id: a row can be rendered
+  // twice on one page, pinned above the feed and again in its day.
+  const detailId = `event-detail-${useId()}`;
+
   const rowClasses = [
     'event-row',
     expanded ? 'event-row--expanded' : '',
@@ -186,7 +191,17 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
   return (
     <article className={rowClasses} data-event-id={event.id ?? undefined}>
-      <button type="button" className="event-summary-btn" onClick={toggle} aria-expanded={expanded}>
+      <button
+        type="button"
+        className="event-summary-btn"
+        onClick={toggle}
+        aria-expanded={expanded}
+        // Names the region the button opens. Without it a screen reader
+        // announces "expanded" and leaves the reader to hunt for what appeared.
+        // Only while it exists: the detail is unmounted when collapsed, and an
+        // aria-controls pointing at nothing is an invalid reference.
+        aria-controls={expanded ? detailId : undefined}
+      >
         {/* Where, then what, then the summary: each on its own line, so the
             same information sits in the same place in every row. */}
         <span className="event-main">
@@ -239,7 +254,7 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
       </button>
 
       {expanded && (
-        <div className="event-detail">
+        <div className="event-detail" id={detailId}>
           <p className="event-detail-time">
             Inträffade {absoluteTime}
             {event.wasUpdated && updatedTime ? ` · uppdaterad ${updatedTime}` : ''}

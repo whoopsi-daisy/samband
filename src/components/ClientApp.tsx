@@ -53,7 +53,7 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   stats: {
     title: 'Statistik',
-    lede: 'Hur händelserna fördelar sig över åren, dygnet, veckan, platser och typer.',
+    lede: 'Vad som händer, när det händer och var. Räknat på allt som finns lagrat.',
   },
 };
 

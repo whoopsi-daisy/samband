@@ -13,19 +13,26 @@ const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000;
 // whether "there is more" is worth a sentence or is just the next tap.
 const PAGE_SIZE = 40;
 
-// How many pages will load on scroll before the reader has to ask again.
+// How many rows scrolling will add before the reader has to ask again.
 //
-// Not unlimited, deliberately. The archive runs past 300,000 rows, so an
-// endless feed would keep growing the DOM until the tab crawls, and it would
-// put the footer permanently out of reach: every scroll toward it adds another
-// screen of rows before it arrives. Five pages is two hundred incidents, which
-// is well past what anyone reads in one sitting, and after that the button
-// comes back and the page has an end again.
-const AUTO_LOAD_PAGES = 5;
+// Counted in rows rather than pages, because rows are what a reader
+// experiences. This was five pages, two hundred incidents, which is long
+// enough that the feed stops feeling like it has a bottom: you scroll, more
+// appears, and there is never a point where the page is a fixed thing you have
+// read to the end of.
+//
+// Pages arrive forty at a time, so sixty added rows means two more pages and a
+// feed that settles at about a hundred and twenty before the button returns.
+const AUTO_LOAD_ADDED_ROWS = 60;
 
-// Start fetching this far before the end of the list, so the next rows are
-// usually there by the time the reader reaches the ones above them.
-const AUTO_LOAD_MARGIN = '800px';
+// Start fetching this far before the end of the list. Close enough that the
+// loading rows below are on screen when they appear, so the feed is visibly
+// fetching rather than silently growing under the scrollbar.
+const AUTO_LOAD_MARGIN = '300px';
+
+// Placeholder rows shown while a page is on its way. Matches the page size the
+// server will actually send, so the list does not jump when they are replaced.
+const SKELETON_ROWS = 4;
 
 /**
  * Why a request the reader asked for did not happen. Every one of these paths
@@ -91,8 +98,10 @@ export default function EventList({
   const [failure, setFailure] = useState<FetchFailure | null>(null);
   const [newEventsCount, setNewEventsCount] = useState(0);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
-  /** Pages fetched by scrolling since the reader last asked for more. */
-  const [autoLoads, setAutoLoads] = useState(0);
+  /** Row count the current scroll budget started from. */
+  const [autoLoadFrom, setAutoLoadFrom] = useState(initialEvents.length);
+  /** Whether the page now on its way was asked for by scrolling. */
+  const [scrolledFor, setScrolledFor] = useState(false);
   const lastRefreshRef = useRef<number>(Date.now());
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const eventsRef = useRef<FormattedEvent[]>(events);
@@ -114,7 +123,7 @@ export default function EventList({
     setHasMore(initialHasMore);
     setPage(1);
     setNewEventsCount(0);
-    setAutoLoads(0);
+    setAutoLoadFrom(initialEvents.length);
     lastRefreshRef.current = Date.now();
   }, [filterKey, initialEvents, initialTotal, initialHasMore]);
 
@@ -206,6 +215,7 @@ export default function EventList({
       setHasMore(data.hasMore);
       setPage(1);
       setNewEventsCount(0);
+      setAutoLoadFrom(data.events.length);
       lastRefreshRef.current = Date.now();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -222,6 +232,10 @@ export default function EventList({
 
       setLoading(true);
       setFailure(null);
+      setScrolledFor(viaScroll);
+      // Asking for more explicitly restarts the budget from here, so a reader
+      // who wants to keep going is not made to click for every page after it.
+      if (!viaScroll) setAutoLoadFrom(events.length);
       const nextPage = page + 1;
 
       try {
@@ -235,19 +249,17 @@ export default function EventList({
         if (typeof data.total === 'number') setTotal(data.total);
         setHasMore(data.hasMore);
         setPage(nextPage);
-        // Asking for more explicitly resets the budget, so someone who wants
-        // to keep going is not made to click every page.
-        setAutoLoads((count) => (viaScroll ? count + 1 : 0));
+        setScrolledFor(viaScroll);
       } catch (err) {
         setFailure((err as { failure?: FetchFailure }).failure ?? 'failed');
       } finally {
         setLoading(false);
       }
     },
-    [loading, hasMore, page, fetchPage]
+    [loading, hasMore, page, fetchPage, events.length]
   );
 
-  const autoLoadExhausted = autoLoads >= AUTO_LOAD_PAGES;
+  const autoLoadExhausted = events.length - autoLoadFrom >= AUTO_LOAD_ADDED_ROWS;
   // Assumed present, which is what the server renders against, so the button
   // does not appear for a frame and vanish. A browser without the observer
   // corrects this on mount and keeps the button for good.
@@ -444,6 +456,28 @@ export default function EventList({
         ))}
       </section>
 
+      {/* Rows on their way, drawn where they will land. Scrolling used to add
+          pages in silence: the only sign was a spinner in a button below the
+          fold that had usually finished before it came into view, so the feed
+          just grew under the scrollbar with no cause a reader could see. */}
+      {loading && scrolledFor && (
+        <div className="panel event-list event-list--loading" aria-hidden="true">
+          {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+            <div className="event-row skeleton-row" key={i}>
+              <span className="skeleton skeleton--title" />
+              <span className="skeleton skeleton--meta" />
+              <span className="skeleton skeleton--text" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Said once, for a screen reader: the skeletons above are decoration and
+          the row count in the lede changes too quietly to notice. */}
+      <p className="sr-only" role="status">
+        {loading && scrolledFor ? 'Hämtar fler händelser' : ''}
+      </p>
+
       {/* Where scrolling picks up the next page. Sits above the controls so the
           fetch starts while the reader is still on the rows above it. */}
       {hasMore && <div ref={sentinelRef} aria-hidden="true" />}
@@ -464,7 +498,7 @@ export default function EventList({
                 once the scroll budget is spent, when a request fails, and in a
                 browser with no IntersectionObserver, which are the three cases
                 where it has a job to do. */}
-            {(loading || !scrollLoads) && (
+            {(!scrollLoads || (loading && !scrolledFor)) && (
               <button
                 className="btn-quiet"
                 type="button"
