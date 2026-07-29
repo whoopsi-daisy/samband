@@ -1361,13 +1361,21 @@ main {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0 var(--space-2);
-  margin: var(--space-6) 0 var(--space-2);
+  margin: 0 0 var(--space-2);
   font-size: inherit;
   font-weight: inherit;
   letter-spacing: normal;
 }
 
-.day-heading:first-of-type { margin-top: 0; }
+/* The space between days belongs to the group, not the heading.
+   It was `.day-heading:first-of-type { margin-top: 0 }`, meant to spare the
+   first day a gap it does not need. But each heading is the only <h2> inside
+   its own wrapper, so :first-of-type matched every one of them and the rule
+   removed the gap from all of them: measured 4px above each heading against 8px
+   below, so "Igår" sat glued to the last card of "Idag" and drifted toward the
+   list it belongs to. A heading has to sit nearer what it labels than what it
+   follows. */
+.day-group + .day-group { margin-top: var(--space-6); }
 
 .day-heading-count {
   font-size: var(--text-2xs);
@@ -1482,15 +1490,15 @@ main {
   gap: var(--space-1);
 }
 
-/* Three fixed lines, in the order a reader actually scans them: where, then
-   what, then the summary. The type badge, the place and the time used to share
-   one wrapping flex row, so the time landed on a different line in every other
-   row and no column lined up down the list. */
+/* One line: what, where, when. It was three lines, with the place alone on the
+   middle one, which made every row in the feed a line taller than the two facts
+   in it needed and left the type and the place reading as unrelated fragments.
+   Nothing wraps, so the time holds the same column all the way down the list. */
 .event-head {
   display: flex;
   align-items: baseline;
   flex-wrap: nowrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 /* The kind of incident is the row's headline: it is what a reader scans for,
@@ -1499,7 +1507,8 @@ main {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  flex: 1;
+  /* Shrinks only after the place has: the type is the headline. */
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--text-body);
   font-weight: var(--weight-semi);
@@ -1511,14 +1520,20 @@ main {
   white-space: nowrap;
 }
 
+/* A fixed advance, so the type words line up in a column down the list however
+   wide the glyph the font happens to pick. */
 .event-type-emoji {
   flex-shrink: 0;
+  width: 1.35em;
   font-size: var(--text-ui);
   line-height: 1;
+  text-align: center;
 }
 
-/* Where it happened: meta, one step below the headline and the body text. */
-.event-location {
+/* Where it happened, beside what happened. Takes the slack in the row, which is
+   what pushes the time to its column on the right. */
+.event-place {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
@@ -1529,16 +1544,10 @@ main {
   white-space: nowrap;
 }
 
-/* The county behind the municipality. Quieter than the place itself, so the
-   eye lands on the part that answers "is this near me". */
-.event-location-area {
-  font-weight: var(--weight-normal);
-  opacity: 0.8;
-}
-
-.event-location-area::before {
+.event-place::before {
   content: '·';
-  margin: 0 var(--space-1);
+  margin-right: var(--space-2);
+  color: var(--border-strong);
 }
 
 .event-time {
@@ -1546,13 +1555,7 @@ main {
   font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
-}
-
-.event-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 72ch, not the full 700px column: at 14px that column ran to a hundred
@@ -1569,11 +1572,18 @@ main {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  /* Reserve both lines whether the notice fills them or not. polisen.se writes
+     anything from "Singelolycka på riksväg 23." to three sentences, so clamping
+     alone left the list jumping between two row heights, and a feed that never
+     settles into a beat is the thing that reads as unfinished. Mail clients
+     reserve their preview line for the same reason. */
+  min-height: calc(2em * var(--leading-normal));
 }
 
 .event-row--expanded .event-text {
   display: block;
   -webkit-line-clamp: unset;
+  min-height: 0;
 }
 
 /* Expanded detail, aligned with the row's own text rather than indented past
@@ -1612,9 +1622,10 @@ main {
 .event-detail-text { margin-top: var(--space-3); }
 
 /* The clock time behind the relative one. A title attribute carried it before,
-   which no touch device can reach. */
+   which no touch device can reach. Set below the text as a footnote: above it,
+   it split the notice between its opening sentence and the rest. */
 .event-detail-time {
-  margin-bottom: var(--space-2);
+  margin-top: var(--space-4);
   font-size: var(--text-xs);
   color: var(--muted);
 }

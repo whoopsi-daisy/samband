@@ -328,12 +328,13 @@ export default function EventList({
       return key.slice(0, 4) === thisYear ? head : `${head} ${key.slice(0, 4)}`;
     };
 
-    const groups: { key: string; label: string; events: FormattedEvent[] }[] = [];
-    let current: { key: string; label: string; events: FormattedEvent[] } | null = null;
+    type Group = { key: string; label: string; isToday: boolean; events: FormattedEvent[] };
+    const groups: Group[] = [];
+    let current: Group | null = null;
     for (const ev of events) {
       const key = dayKey(new Date(ev.date.iso || ev.datetime));
       if (!current || current.key !== key) {
-        current = { key, label: label(key), events: [] };
+        current = { key, label: label(key), isToday: key === today, events: [] };
         groups.push(current);
       }
       current.events.push(ev);
@@ -438,7 +439,7 @@ export default function EventList({
 
       <section>
         {dayGroups.map((group) => (
-          <div key={group.key}>
+          <div className="day-group" key={group.key}>
             {/* The count used to sit alone at the right edge of this line: a
                 bare "2" floating above the cards with nothing saying what it
                 counted. It reads as part of the heading instead. */}
@@ -454,6 +455,7 @@ export default function EventList({
                   key={event.id ?? `${group.key}-${index}`}
                   event={event}
                   onShowMap={onShowMap}
+                  isToday={group.isToday}
                   // Guard the null case: an event with no id must never match a
                   // null highlight, or every row deep-links to itself at once.
                   isHighlighted={event.id !== null && event.id === highlightedEventId}
