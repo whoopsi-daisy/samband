@@ -291,7 +291,7 @@ function EventMapInner({ events, isActive, loading = false, error = false, onRet
         center: [62.5, 17.5],
         zoom: 5,
         zoomControl: true,
-        attributionControl: true,
+        attributionControl: false,
       });
 
       const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
