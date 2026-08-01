@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, Suspense, useMemo } from 'react';
+import { useState, useCallback, Suspense, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from './Header';
 import BottomNav from './BottomNav';
@@ -184,6 +184,20 @@ function ClientAppContent({
   const vma = useVma();
 
   const intro = VIEW_INTRO[currentView] ?? VIEW_INTRO.list;
+
+  /**
+   * Name the tab after the view.
+   *
+   * The views are client state rather than routes, so every one of them shared
+   * the one title from the metadata: four open tabs, four identical labels, and
+   * a browser history where every entry read "Sambandscentralen: polishändelser
+   * i realtid" whichever view it went back to. The document title is the label
+   * on the tab, the history entry and the bookmark, and it is the first thing a
+   * screen reader reads on arrival.
+   */
+  useEffect(() => {
+    document.title = `${intro.title} · Sambandscentralen`;
+  }, [intro.title]);
 
   return (
     <>

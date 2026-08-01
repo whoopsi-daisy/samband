@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useId } from 'react';
 import { FormattedEvent } from '@/types';
-import { formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime, formatShortRelativeTime } from '@/lib/utils';
 import { QUERY } from '@/lib/urlParams';
 import { useNow } from '@/hooks/useNow';
 
@@ -10,6 +10,15 @@ interface EventCardProps {
   event: FormattedEvent;
   onShowMap?: (lat: number, lng: number, location: string) => void;
   isHighlighted?: boolean;
+  /**
+   * Whether this row sits under today's heading.
+   *
+   * Decides which clock the row shows. Under "Igår" or "Tisdag 28 jul" every
+   * row would otherwise read "1 dag sedan": a restatement of the heading it
+   * already sits beneath, in place of the one thing the heading cannot say,
+   * which is what time of day it happened.
+   */
+  isToday?: boolean;
 }
 
 /**
@@ -22,7 +31,7 @@ function normaliseText(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-export default function EventCard({ event, onShowMap, isHighlighted }: EventCardProps) {
+export default function EventCard({ event, onShowMap, isHighlighted, isToday = true }: EventCardProps) {
   const [expanded, setExpanded] = useState(isHighlighted || false);
   const [details, setDetails] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,6 +144,16 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
     return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
   }, [now, event.date.iso, event.date.relative, event.datetime]);
 
+  const shortRelativeTime = useMemo(() => {
+    if (now === null) return event.date.relative;
+    return formatShortRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
+  }, [now, event.date.iso, event.date.relative, event.datetime]);
+
+  // Today's rows count up from now, which is what recency means on the day it
+  // happens. Older rows show the clock, because the heading has already said
+  // which day it was and "1 dag sedan" on all of them says nothing else.
+  const headTime = isToday ? shortRelativeTime : event.date.time;
+
   // "28 jul, 14:32": the clock time behind "2 timmar sedan". Shown outright
   // once the row is open; a title attribute alone is unreachable on a phone.
   const absoluteTime = `${event.date.day} ${event.date.month.toLowerCase()}, ${event.date.time}`;
@@ -203,46 +222,52 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
         // aria-controls pointing at nothing is an invalid reference.
         aria-controls={expanded ? detailId : undefined}
       >
-        {/* Where, then what, then the summary: each on its own line, so the
-            same information sits in the same place in every row. */}
+        {/* Two lines, not three. What and where are the pair a reader scans
+            together, and giving the place a line of its own cost every row in
+            the feed a line to say one word. */}
         <span className="event-main">
-          {/* What happened leads the row. The county is where it happened:
-              useful, but not what anyone scans a feed for, and it was set in
-              the largest, heaviest type on the card while the kind of incident
-              sat in an 11px badge underneath. */}
           <span className="event-head">
+            {/* What happened leads the row. The county is where it happened:
+                useful, but not what anyone scans a feed for, and it was set in
+                the largest, heaviest type on the card while the kind of incident
+                sat in an 11px badge underneath. */}
             <span className="event-type">
               {/* Decoration beside the word it decorates: a screen reader
                   reads the type, not "speaking head". */}
               <span className="event-type-emoji" aria-hidden="true">
                 {event.emoji}
               </span>
-              {event.type}
+              {/* Its own element so it can ellipsise. As a bare text child of
+                  the flex container above it was an anonymous flex item, which
+                  text-overflow does not apply to, so a long type was chopped
+                  mid-word with no ellipsis and at a different point in every
+                  row, depending on how long that row's place name was. */}
+              <span className="event-type-label">{event.type}</span>
             </span>
-            <span className="event-time" title={absoluteTime}>
-              {relativeTime}
-            </span>
-          </span>
-          <span className="event-meta">
-            {/* Where it happened, most specific first. When the source files a
-                notice under a county but names the municipality in its title,
-                showing only the county leaves the reader unable to tell a local
-                incident from one at the other end of the län. */}
-            <span className="event-location">
-              {event.place ? (
-                <>
-                  {event.place}
-                  <span className="event-location-area">{event.location}</span>
-                </>
-              ) : (
-                event.location
-              )}
+            {/* The most specific place we have, which is the half that answers
+                "is this near me". The county rides along in the tooltip rather
+                than taking room on the row: when the source files a notice under
+                a county but names the municipality in its title, the
+                municipality is the useful word. */}
+            <span className="event-place" title={place}>
+              {event.place || event.location}
             </span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
                 uppdaterad
               </span>
             )}
+            {/* Read as "3 tim", announced as "3 timmar sedan": the short form
+                is a layout concession and should not cost a screen reader the
+                sentence. The title carries whichever reading the row is not
+                showing. */}
+            <span
+              className="event-time"
+              title={isToday ? absoluteTime : relativeTime}
+              aria-label={isToday ? relativeTime : `Klockan ${event.date.time}`}
+            >
+              {headTime}
+            </span>
           </span>
           {showSummary && <span className="event-text">{event.summary}</span>}
         </span>
@@ -256,11 +281,6 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
 
       {expanded && (
         <div className="event-detail" id={detailId}>
-          <p className="event-detail-time">
-            Inträffade {absoluteTime}
-            {event.wasUpdated && updatedTime ? ` · uppdaterad ${updatedTime}` : ''}
-          </p>
-
           {loading && (
             <span className="event-detail-status">
               <span className="spinner-sm" />
@@ -282,6 +302,16 @@ export default function EventCard({ event, onShowMap, isHighlighted }: EventCard
               {paragraph}
             </p>
           ))}
+
+          {/* After the text, not before it. Sitting above the body this line
+              landed between the teaser and the paragraph that continues it, so
+              the notice read as one sentence, a timestamp, then the rest. The
+              exact time is a footnote to the story, and the row's own head
+              already says how long ago it was. */}
+          <p className="event-detail-time">
+            Inträffade {absoluteTime}
+            {event.wasUpdated && updatedTime ? ` · uppdaterad ${updatedTime}` : ''}
+          </p>
 
           <div className="event-actions">
             {event.url && (

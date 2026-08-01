@@ -45,12 +45,41 @@ describe('EventCard', () => {
   // polisen.se files a large share of the feed under a county and names the
   // municipality only in the notice's title. A row showing the county alone
   // cannot tell a reader whether something happened in their town.
-  it('leads with the municipality and keeps the county behind it', () => {
+  it('leads with the municipality and keeps the county within reach', () => {
     render(<EventCard event={createEvent()} />);
 
-    const location = screen.getByText('Ljungby').closest('.event-location');
-    expect(location).toHaveTextContent('Ljungby');
-    expect(location).toHaveTextContent('Kronobergs län');
+    // On the row: the municipality, which is the half that answers "is this
+    // near me". The county rides in the tooltip rather than taking room on a
+    // line the type and the time now share.
+    const place = screen.getByText('Ljungby');
+    expect(place).toHaveClass('event-place');
+    expect(place).toHaveAttribute('title', 'Ljungby, Kronobergs län');
+  });
+
+  // Under "Igår" or "Tisdag 28 jul" every row would otherwise read "1 dag
+  // sedan": a restatement of the heading it sits beneath, in place of the one
+  // thing that heading cannot say.
+  it('counts up from now only under today, and shows the clock otherwise', () => {
+    // The relative string is recomputed against the real clock, so match its
+    // shape rather than a value that goes stale the day this is run.
+    const { container, rerender } = render(<EventCard event={createEvent()} isToday />);
+    const time = () => container.querySelector('.event-time')!;
+
+    expect(time().textContent).toMatch(/sedan$|^Just nu$/);
+
+    rerender(<EventCard event={createEvent()} isToday={false} />);
+    expect(time().textContent).toBe('08:53');
+  });
+
+  // Whichever it is not showing stays reachable.
+  it('keeps the other reading of the time in the tooltip', () => {
+    const { container, rerender } = render(<EventCard event={createEvent()} isToday={false} />);
+    const time = () => container.querySelector('.event-time')!;
+
+    expect(time().getAttribute('title')).toMatch(/sedan$|^Just nu$/);
+
+    rerender(<EventCard event={createEvent()} isToday />);
+    expect(time().getAttribute('title')).toBe('16 jul, 08:53');
   });
 
   it('shows the location once when there is nothing more specific to add', () => {

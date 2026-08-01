@@ -227,7 +227,11 @@ const TYPE_FAMILY_BY_NAME: Record<string, { emoji: string; family: TypeFamilyKey
   'Larm Inbrott': { emoji: '🔔', family: 'theft' },
 
   // ── Threats and harassment ────────────────────────────────
-  'Olaga hot': { emoji: '❗', family: 'violence' },
+  // Solid, and pictorial rather than punctuation. ❗ is a bare exclamation mark
+  // that named no more than "something"; 🗯️ reads as a threat but draws as a
+  // white outline that all but disappears beside the saturated glyphs above and
+  // below it in the icon column. 💢 carries weight at 14px.
+  'Olaga hot': { emoji: '💢', family: 'violence' },
   'Våld/hot mot tjänsteman': { emoji: '👮', family: 'violence' },
   'Ofredande/förargelse': { emoji: '💬', family: 'harassment' },
   'Ofredande': { emoji: '💬', family: 'harassment' },

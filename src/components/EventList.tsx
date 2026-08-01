@@ -328,12 +328,13 @@ export default function EventList({
       return key.slice(0, 4) === thisYear ? head : `${head} ${key.slice(0, 4)}`;
     };
 
-    const groups: { key: string; label: string; events: FormattedEvent[] }[] = [];
-    let current: { key: string; label: string; events: FormattedEvent[] } | null = null;
+    type Group = { key: string; label: string; isToday: boolean; events: FormattedEvent[] };
+    const groups: Group[] = [];
+    let current: Group | null = null;
     for (const ev of events) {
       const key = dayKey(new Date(ev.date.iso || ev.datetime));
       if (!current || current.key !== key) {
-        current = { key, label: label(key), events: [] };
+        current = { key, label: label(key), isToday: key === today, events: [] };
         groups.push(current);
       }
       current.events.push(ev);
@@ -438,11 +439,20 @@ export default function EventList({
 
       <section>
         {dayGroups.map((group) => (
-          <div key={group.key}>
+          <div className="day-group" key={group.key}>
             {/* The count used to sit alone at the right edge of this line: a
                 bare "2" floating above the cards with nothing saying what it
                 counted. It reads as part of the heading instead. */}
-            <h2 className="day-heading">
+            {/* Named explicitly, because the computed name was "IDAG ·3HÄNDELSER":
+                the two spans sit on separate lines in the source so JSX drops the
+                whitespace between them, and the separator is a CSS ::before that
+                counts toward the name but brings no space of its own. */}
+            <h2
+              className="day-heading"
+              aria-label={`${group.label}, ${group.events.length} ${
+                group.events.length === 1 ? 'händelse' : 'händelser'
+              }`}
+            >
               <span className="section-label">{group.label}</span>
               <span className="day-heading-count">
                 {group.events.length} {group.events.length === 1 ? 'händelse' : 'händelser'}
@@ -454,6 +464,7 @@ export default function EventList({
                   key={event.id ?? `${group.key}-${index}`}
                   event={event}
                   onShowMap={onShowMap}
+                  isToday={group.isToday}
                   // Guard the null case: an event with no id must never match a
                   // null highlight, or every row deep-links to itself at once.
                   isHighlighted={event.id !== null && event.id === highlightedEventId}
@@ -538,8 +549,11 @@ export default function EventList({
             )}
           </>
         )}
+        {/* Not a live region. It is the last thing on the page, reachable by
+            reading on, and announcing it interrupted whatever the reader was in
+            the middle of every time a page settled. */}
         {!hasMore && (
-          <p className="all-loaded-message" role="status">
+          <p className="all-loaded-message">
             Slut på listan. Alla {events.length.toLocaleString('sv-SE')} händelser visas.
           </p>
         )}
