@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useId } from 'react';
 import { FormattedEvent } from '@/types';
-import { formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime, formatShortRelativeTime } from '@/lib/utils';
 import { QUERY } from '@/lib/urlParams';
 import { useNow } from '@/hooks/useNow';
 
@@ -144,10 +144,15 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
     return formatRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
   }, [now, event.date.iso, event.date.relative, event.datetime]);
 
+  const shortRelativeTime = useMemo(() => {
+    if (now === null) return event.date.relative;
+    return formatShortRelativeTime(new Date(event.date.iso || event.datetime), new Date(now));
+  }, [now, event.date.iso, event.date.relative, event.datetime]);
+
   // Today's rows count up from now, which is what recency means on the day it
   // happens. Older rows show the clock, because the heading has already said
   // which day it was and "1 dag sedan" on all of them says nothing else.
-  const headTime = isToday ? relativeTime : event.date.time;
+  const headTime = isToday ? shortRelativeTime : event.date.time;
 
   // "28 jul, 14:32": the clock time behind "2 timmar sedan". Shown outright
   // once the row is open; a title attribute alone is unreachable on a phone.
@@ -232,7 +237,12 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
               <span className="event-type-emoji" aria-hidden="true">
                 {event.emoji}
               </span>
-              {event.type}
+              {/* Its own element so it can ellipsise. As a bare text child of
+                  the flex container above it was an anonymous flex item, which
+                  text-overflow does not apply to, so a long type was chopped
+                  mid-word with no ellipsis and at a different point in every
+                  row, depending on how long that row's place name was. */}
+              <span className="event-type-label">{event.type}</span>
             </span>
             {/* The most specific place we have, which is the half that answers
                 "is this near me". The county rides along in the tooltip rather
@@ -247,8 +257,15 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
                 uppdaterad
               </span>
             )}
-            {/* The title carries whichever of the two the row is not showing. */}
-            <span className="event-time" title={isToday ? absoluteTime : relativeTime}>
+            {/* Read as "3 tim", announced as "3 timmar sedan": the short form
+                is a layout concession and should not cost a screen reader the
+                sentence. The title carries whichever reading the row is not
+                showing. */}
+            <span
+              className="event-time"
+              title={isToday ? absoluteTime : relativeTime}
+              aria-label={isToday ? relativeTime : `Klockan ${event.date.time}`}
+            >
               {headTime}
             </span>
           </span>

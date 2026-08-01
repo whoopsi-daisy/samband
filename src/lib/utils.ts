@@ -22,6 +22,31 @@ export function swedishDayKey(date: Date): string {
   return swedishDayFormat.format(date);
 }
 
+/**
+ * The same age, short enough to share a line.
+ *
+ * A feed row on a phone carries the type, the place and the time, and at 390px
+ * "3 timmar sedan" takes enough of that line that a long type and its place
+ * both end up as ellipses. Only rows filed today show a relative time at all,
+ * so this never has to render anything coarser than hours; anything older falls
+ * through to the full wording, which is what the pinned linked event uses.
+ *
+ * The long form stays on the element as its accessible name, so "3 tim" is what
+ * you read and "3 timmar sedan" is what a screen reader announces.
+ */
+export function formatShortRelativeTime(date: Date, now: Date): string {
+  const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffSeconds < 60) return 'Just nu';
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes} min`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} tim`;
+
+  return formatRelativeTime(date, now);
+}
+
 export function formatRelativeTime(date: Date, now: Date): string {
   const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 

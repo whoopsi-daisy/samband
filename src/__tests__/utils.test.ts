@@ -1,4 +1,4 @@
-import { formatRelativeTime, sanitizeInput, sanitizeLocation, sanitizeType, sanitizeSearch, swedishDayKey } from '@/lib/utils';
+import { formatRelativeTime, formatShortRelativeTime, sanitizeInput, sanitizeLocation, sanitizeType, sanitizeSearch, swedishDayKey } from '@/lib/utils';
 
 describe('formatRelativeTime', () => {
   const baseDate = new Date('2024-01-15T12:00:00Z');
@@ -44,6 +44,32 @@ describe('formatRelativeTime', () => {
     expect(ago(1)).toBe('1 dag sedan');
     expect(ago(14)).toBe('2 veckor sedan');
     expect(ago(61)).toBe('2 månader sedan');
+  });
+});
+
+// The feed row carries the type, the place and the time on one line. At 390px
+// "3 timmar sedan" takes enough of it that a long type and its place both come
+// out as ellipses.
+describe('formatShortRelativeTime', () => {
+  const baseDate = new Date('2024-01-15T12:00:00Z');
+  const ago = (ms: number) => formatShortRelativeTime(new Date(baseDate.getTime() - ms), baseDate);
+
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+
+  it('drops "sedan" from the units a feed row can actually show', () => {
+    expect(ago(30 * 1000)).toBe('Just nu');
+    expect(ago(5 * MIN)).toBe('5 min');
+    expect(ago(3 * HOUR)).toBe('3 tim');
+    expect(ago(23 * HOUR)).toBe('23 tim');
+  });
+
+  // Only rows filed today show a relative time, so hours is as coarse as this
+  // has to get. Anything older belongs to the pinned linked event, which has a
+  // line to itself and should read as a sentence.
+  it('hands anything past a day back to the full wording', () => {
+    expect(ago(25 * HOUR)).toBe('1 dag sedan');
+    expect(ago(21 * 24 * HOUR)).toBe('3 veckor sedan');
   });
 });
 
