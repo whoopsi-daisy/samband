@@ -1613,12 +1613,15 @@ main {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  /* Reserve both lines whether the notice fills them or not. polisen.se writes
-     anything from "Singelolycka på riksväg 23." to three sentences, so clamping
-     alone left the list jumping between two row heights, and a feed that never
-     settles into a beat is the thing that reads as unfinished. Mail clients
-     reserve their preview line for the same reason. */
-  min-height: calc(2em * var(--leading-normal));
+  /* Two lines at most, and only as many as the notice actually fills.
+     This used to reserve both lines so every row came out the same height. That
+     was measured against seeded summaries that mostly ran two or three
+     sentences; the real feed is the other way round. Most polisen.se notices
+     are one short sentence, "Mc i singelolycka." or "Larm om skadad man.", so
+     the reserved line was not an occasional gap but an empty half in the
+     majority of cards, which reads as a row that failed to finish rendering.
+     An even beat is not worth buying at that price: a card that fits its own
+     text is the more settled of the two. */
 }
 
 .event-row--expanded .event-text {
