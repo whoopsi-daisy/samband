@@ -39,9 +39,11 @@ export const viewport: Viewport = {
   // browser picks the matching one, so the address bar tracks the OS setting
   // with no JS. (It won't track the in-app toggle, which is a one-off override
   // stored in localStorage: only the OS preference.)
+  // Kept in step with --bg in globals.css. A pure white bar over a tinted
+  // canvas reads as a seam across the top of the app.
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#111111' },
+    { media: '(prefers-color-scheme: light)', color: '#f2f5f9' },
+    { media: '(prefers-color-scheme: dark)', color: '#0e1218' },
   ],
   width: 'device-width',
   initialScale: 1,
