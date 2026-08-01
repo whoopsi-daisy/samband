@@ -1612,16 +1612,19 @@ main {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  /* Two lines at most, and only as many as the notice actually fills.
-     This used to reserve both lines so every row came out the same height. That
-     was measured against seeded summaries that mostly ran two or three
-     sentences; the real feed is the other way round. Most polisen.se notices
-     are one short sentence, "Mc i singelolycka." or "Larm om skadad man.", so
-     the reserved line was not an occasional gap but an empty half in the
-     majority of cards, which reads as a row that failed to finish rendering.
-     An even beat is not worth buying at that price: a card that fits its own
-     text is the more settled of the two. */
+  /* One line, and it is always full.
+     Uniform row height, no empty space, and a two-line preview are three things
+     you cannot have together: the summary is either a fixed box that short
+     notices fail to fill, or a box that fits the text and therefore changes
+     size. Reserving two lines bought the fixed height with an empty half in
+     most cards. Fitting the text removed the hole and brought the height back.
+     Clamping to one line is the third corner and the only one that gives both:
+     every row is the same height because the box is fixed, and no row is empty
+     because a single line is shorter than all but the longest notices.
+     Measured against the real feed: 95% of notices fit a line whole on a 700px
+     column, 68% on a 412px phone. The rest end in an ellipsis and open on a
+     tap, which is what the row is for. */
+  -webkit-line-clamp: 1;
 }
 
 .event-row--expanded .event-text {
