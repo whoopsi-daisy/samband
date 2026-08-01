@@ -176,8 +176,13 @@ export default function Filters({ locations, types, currentView, filters }: Filt
         ))}
       </select>
 
+      {/* Not a live region either. Changing a filter used to announce three
+          things at once: these chips, the match count above the feed, and the
+          end-of-list line. The count is the one that answers what the reader
+          just asked, so it keeps the announcement and the chips became what
+          they look like, a visible record of what is applied. */}
       {hasActiveFilters && (
-        <div className="active-filters" role="status" aria-live="polite">
+        <div className="active-filters">
           <span className="active-filters-label">Filtrerar på</span>
           {(
             [

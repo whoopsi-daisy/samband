@@ -443,7 +443,16 @@ export default function EventList({
             {/* The count used to sit alone at the right edge of this line: a
                 bare "2" floating above the cards with nothing saying what it
                 counted. It reads as part of the heading instead. */}
-            <h2 className="day-heading">
+            {/* Named explicitly, because the computed name was "IDAG ·3HÄNDELSER":
+                the two spans sit on separate lines in the source so JSX drops the
+                whitespace between them, and the separator is a CSS ::before that
+                counts toward the name but brings no space of its own. */}
+            <h2
+              className="day-heading"
+              aria-label={`${group.label}, ${group.events.length} ${
+                group.events.length === 1 ? 'händelse' : 'händelser'
+              }`}
+            >
               <span className="section-label">{group.label}</span>
               <span className="day-heading-count">
                 {group.events.length} {group.events.length === 1 ? 'händelse' : 'händelser'}
@@ -540,8 +549,11 @@ export default function EventList({
             )}
           </>
         )}
+        {/* Not a live region. It is the last thing on the page, reachable by
+            reading on, and announcing it interrupted whatever the reader was in
+            the middle of every time a page settled. */}
         {!hasMore && (
-          <p className="all-loaded-message" role="status">
+          <p className="all-loaded-message">
             Slut på listan. Alla {events.length.toLocaleString('sv-SE')} händelser visas.
           </p>
         )}

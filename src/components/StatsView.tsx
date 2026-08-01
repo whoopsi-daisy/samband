@@ -42,6 +42,23 @@ function Block({ title, lede, children }: { title: string; lede: string; childre
   );
 }
 
+/**
+ * How far back the data reaches, in a unit that suits the distance.
+ *
+ * This was always years to one decimal, which reads "0,0 års historik" beside
+ * "140 händelser totalt" on any install where the archive has not been imported
+ * yet: a tile claiming there is no history next to one counting it. The feed's
+ * own relative times already step through their units for the same reason.
+ */
+function coverageSpan(days: number): { value: string; label: string } {
+  const whole = Math.max(0, Math.round(days));
+  // "1 dygns historik" and "5 dygns historik": the genitive does not inflect.
+  if (whole < 60) return { value: sv(whole), label: 'Dygns historik' };
+  const months = Math.round(days / 30.44);
+  if (months < 24) return { value: sv(months), label: 'Månaders historik' };
+  return { value: (days / 365.25).toFixed(1).replace('.', ','), label: 'Års historik' };
+}
+
 function Stat({ value, label, note }: { value: string; label: string; note?: string }) {
   return (
     <div className="stat">
@@ -126,7 +143,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
       null
     );
   const runningYear = stats.yearly.find((year) => year.year === thisYear) ?? null;
-  const coveredYears = (stats.coverageDays / 365.25).toFixed(1).replace('.', ',');
+  const coverage = coverageSpan(stats.coverageDays);
 
   return (
     <>
@@ -254,7 +271,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
       >
         <div className="stats-grid stats-grid--four">
           <Stat value={sv(stats.total)} label="Händelser totalt" />
-          <Stat value={coveredYears} label="Års historik" />
+          <Stat value={coverage.value} label={coverage.label} />
           <Stat value={sv(stats.avgPerDay)} label="Snitt per dygn" />
           {stats.busiestDay ? (
             <Stat
