@@ -91,24 +91,14 @@
   --t-base: 180ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* ── Colour ─────────────────────────────────────────────────
-     Every neutral here carries a little blue, around hue 215 at 6-14%
-     saturation. Nothing in the ramp is a pure grey, because a pure grey ramp is
-     what a page looks like when nobody chose its colours: correct, legible and
-     bleak. The cast is well under the threshold where anyone would call the
-     page blue; it just stops the surfaces reading as absence.
-
-     The canvas is tinted and the cards are near-white, rather than the other
-     way round. That is the arrangement that gives a light interface depth
-     without shadows doing all the work, and it is why the feed now reads as
-     paper on a desk instead of hairlines on a void. */
-  --bg: #f2f5f9;         /* the desk */
-  --fg: #0e1520;         /* primary text: 16.9:1 on --surface */
-  --fg-secondary: #37424f; /* body prose: 9.5:1 on --surface */
-  --muted: #5e6b7a;      /* meta and labels: 5.2:1 on --surface */
-  --subtle: #e9eff6;
-  --border: #dce4ed;
-  --border-strong: #b4c1d0;
+  /* ── Colour ─────────────────────────────────────────────── */
+  --bg: #ffffff;
+  --fg: #111111;         /* primary text: 18.1:1 on --bg */
+  --fg-secondary: #3d3d3d; /* body prose: 10.4:1 on --surface */
+  --muted: #6b6b6b;      /* meta and labels: 5.1:1 on --surface */
+  --subtle: #f5f5f5;
+  --border: #e0e0e0;
+  --border-strong: #c0c0c0;
 
   /* The outline of anything you can click or type into. --border is 1.26:1 on
      a card and --border-strong 1.82:1, both well under the 3:1 that WCAG 1.4.11
@@ -116,27 +106,22 @@
      filter selects had no visible edge at all. 3.4:1 on --bg, --surface and
      --subtle alike. Structural hairlines: dividers, card edges, table rules:
      keep --border, which carries no information and is exempt. */
-  --border-control: #7c8a9b;
+  --border-control: #8a8a8a;
 
   /* Resting fill for cards so bordered surfaces read as solid objects rather
-     than hairline wireframe outlines. Near-white against the tinted canvas, so
-     a card is lifted by being cleaner than the page rather than by a shadow. */
-  --surface: #fbfcfe;
-  --surface-hover: #f4f8fc;
+     than hairline wireframe outlines. */
+  --surface: #fafafa;
+  --surface-hover: #f2f2f2;
   /* One step above --surface, for the single row that is currently open. */
   --surface-raised: #ffffff;
 
-  /* Cast to match the ramp: a neutral-black shadow over a tinted surface reads
-     as dirt on the page rather than as depth. */
-  --shadow-sm: 0 1px 2px rgba(16, 30, 54, 0.05), 0 2px 6px rgba(16, 30, 54, 0.06);
-  --shadow-md: 0 2px 6px rgba(16, 30, 54, 0.07), 0 10px 28px rgba(16, 30, 54, 0.11);
+  --shadow-sm: 0 1px 2px rgba(17, 17, 17, 0.04), 0 2px 6px rgba(17, 17, 17, 0.05);
+  --shadow-md: 0 2px 6px rgba(17, 17, 17, 0.06), 0 10px 28px rgba(17, 17, 17, 0.10);
 
-  /* Single accent, and it is allowed to mean it: 7.4:1 on --surface. Carries
-     the mark, active nav, links, chart fills, type badges and focus rings.
-     Nothing else. The old value was half a step duller and read as a grey that
-     happened to be blue. */
-  --accent: #0d5cad;
-  --accent-strong: #0a4a8d; /* pressed states, text on an accent tint */
+  /* Single restrained accent: 7.07:1 on --bg. Carries the mark, active nav,
+     the newest incident's rail, type badges and focus rings. Nothing else. */
+  --accent: #165a9b;
+  --accent-strong: #114a80; /* pressed states, text on an accent tint */
 
   /* Derived tints, so every accent-tinted surface in the app is the same wash
      rather than a hand-picked rgba per component. */
@@ -151,16 +136,10 @@
   --pill-alert-ink: color-mix(in srgb, var(--alert), #000 8%);
 
   /* Status hues. Three, each AA on --bg and on a 12% tint of itself. Used for
-     live/error/stale signals, never decoratively.
-
-     Pulled apart from each other and from the accent: the old green was close
-     enough to neutral that "live" read as a dot rather than as a state, and the
-     old warn was a brown that could have been either a warning or a link. Each
-     is now unmistakably its own hue while staying dark enough to be read as
-     text on a light page. */
-  --ok: #0c7a43;
-  --warn: #9a5504;
-  --alert: #b62f28;
+     live/error/stale signals, never decoratively. */
+  --ok: #18713b;
+  --warn: #935110;
+  --alert: #b33528;
 
   /* The VMA ribbon's fill. Deliberately NOT --alert and deliberately not
      overridden in the dark block: --alert is tuned to be readable *as text* on
@@ -168,7 +147,7 @@
      3.1:1 behind white. This is a fixed fill that holds 6.1:1 with white in
      both themes, which is also the right instinct for a warning: it should not
      dim when the lights go out. */
-  --vma-ribbon-bg: #b62f28;
+  --vma-ribbon-bg: #b33528;
 }
 
 /* Touch. See the note on --control-xl for why this is one block rather than a
@@ -184,36 +163,32 @@
   }
 }
 
-/* The same ramp, inverted. Dark carries the cast more openly than light does,
-   because a pure-neutral dark theme goes muddy rather than merely plain: the
-   blue is what keeps these surfaces reading as slate instead of as soot. */
 [data-theme="dark"] {
-  --bg: #0e1218;
-  --fg: #e7ecf2;
-  --fg-secondary: #b7c1cd; /* 8.6:1 on --surface */
-  --muted: #8e9bab;        /* 5.5:1 on --surface */
-  --subtle: #151b23;
-  --border: #262e3a;
-  --border-strong: #3d4757;
+  --bg: #111111;
+  --fg: #e8e8e8;
+  --fg-secondary: #bdbdbd; /* 8.5:1 on --surface */
+  --muted: #999999;        /* 5.6:1 on --surface */
+  --subtle: #1a1a1a;
+  --border: #2e2e2e;
+  --border-strong: #444444;
   /* 3.9:1 on --surface, 4.6:1 on --bg: the same headroom as the light theme.
      Measured against --surface-raised, the lightest thing a control ever sits
      on here, it still clears 3:1. */
-  --border-control: #788493;
+  --border-control: #7d7d7d;
 
-  --surface: #181e27;
-  --surface-hover: #1f2733;
+  --surface: #222222;
+  --surface-hover: #2b2b2b;
   /* Dark raises by lightening too, so "open" reads the same way in both themes. */
-  --surface-raised: #222b37;
+  --surface-raised: #2c2c2c;
 
   /* On dark, elevation reads mostly from the lighter surface; keep shadows
      present but subtle so edges still gain depth. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px rgba(0, 0, 0, 0.34);
-  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.40), 0 12px 32px rgba(0, 0, 0, 0.50);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.45);
 
-  /* Lightened to mirror the light theme's headroom, and given the same lift in
-     chroma so the accent reads as the same colour in both themes. */
-  --accent: #58a9ee;
-  --accent-strong: #80c0f5;
+  /* Lightened to 6.61:1 on --bg, mirroring the light theme's headroom. */
+  --accent: #4d9fe0;
+  --accent-strong: #74b4e8;
 
   /* Dark flips the contrast direction: pill ink must be LIGHTER than its tint,
      so mix toward white. */
@@ -223,9 +198,9 @@
      badge text. The lightened ink clears it at 4.73:1. */
   --pill-alert-ink: color-mix(in srgb, var(--alert), #fff 8%);
 
-  --ok: #46c07d;
-  --warn: #e8a94e;
-  --alert: #f07b73;
+  --ok: #5ab870;
+  --warn: #e0a055;
+  --alert: #e07070;
 }
 
 /* ── Reset + base ─────────────────────────────────────────── */
@@ -2346,10 +2321,7 @@ main {
   width: 100%;
   min-height: 2px;
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  /* 45% left the charts the palest thing on the page: a page of data drawn in
-     a colour that looked like it was still loading. At 70% the bars carry the
-     accent properly and still sit under the solid fill that marks the peak. */
-  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
   transition: background var(--t-fast) var(--ease);
 }
 
@@ -2361,8 +2333,8 @@ main {
 .chart-bar--partial {
   background: repeating-linear-gradient(
     -45deg,
-    color-mix(in srgb, var(--accent) 70%, transparent) 0 4px,
-    color-mix(in srgb, var(--accent) 26%, transparent) 4px 8px
+    color-mix(in srgb, var(--accent) 45%, transparent) 0 4px,
+    color-mix(in srgb, var(--accent) 18%, transparent) 4px 8px
   );
 }
 
