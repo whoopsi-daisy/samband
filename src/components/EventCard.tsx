@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useId } from 'react';
-import { FormattedEvent } from '@/types';
+import { FormattedEvent, getTypeStyle } from '@/types';
 import { formatRelativeTime, formatShortRelativeTime } from '@/lib/utils';
 import { QUERY } from '@/lib/urlParams';
 import { useNow } from '@/hooks/useNow';
@@ -226,12 +226,18 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
             together, and giving the place a line of its own cost every row in
             the feed a line to say one word. */}
         <span className="event-main">
+          {/* Three lines, each with room to be read.
+              Type, place and time shared one line for a while. Five things on a
+              phone's width could not all fit, so the place was routinely cut to
+              "Bo…" and the card read as crammed. A tag, a place and a sentence
+              are three different kinds of thing; giving each its own line costs
+              height a reader has plenty of and buys back the legibility. */}
           <span className="event-head">
-            {/* What happened leads the row. The county is where it happened:
-                useful, but not what anyone scans a feed for, and it was set in
-                the largest, heaviest type on the card while the kind of incident
-                sat in an 11px badge underneath. */}
-            <span className="event-type">
+            {/* The family decides the tag's colour. Derived here rather than
+                carried on the event: getTypeStyle is pure and the map already
+                lives in the type registry, so there is nothing to keep in
+                sync. */}
+            <span className="event-type" data-family={getTypeStyle(event.type).family}>
               {/* Decoration beside the word it decorates: a screen reader
                   reads the type, not "speaking head". */}
               <span className="event-type-emoji" aria-hidden="true">
@@ -243,14 +249,6 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
                   mid-word with no ellipsis and at a different point in every
                   row, depending on how long that row's place name was. */}
               <span className="event-type-label">{event.type}</span>
-            </span>
-            {/* The most specific place we have, which is the half that answers
-                "is this near me". The county rides along in the tooltip rather
-                than taking room on the row: when the source files a notice under
-                a county but names the municipality in its title, the
-                municipality is the useful word. */}
-            <span className="event-place" title={place}>
-              {event.place || event.location}
             </span>
             {event.wasUpdated && event.updated && (
               <span className="badge badge--neutral" title={`Uppdaterad ${event.updated}`}>
@@ -269,6 +267,13 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
               {headTime}
             </span>
           </span>
+
+          {/* Where, on a line of its own, so a long municipality is never cut
+              to two letters to make room for a tag. */}
+          <span className="event-place" title={place}>
+            {event.place || event.location}
+          </span>
+
           {showSummary && <span className="event-text">{event.summary}</span>}
         </span>
 
