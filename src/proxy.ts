@@ -60,7 +60,7 @@ function unauthorized(): NextResponse {
   });
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const user = process.env.STATS_USER;
   const password = process.env.STATS_PASSWORD;
 
