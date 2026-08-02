@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthlyStats, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthlyStats, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot } from '@/types';
 import { escapeLikeWildcards } from './utils';
 import { memoizeWithTtl } from './cache';
 
@@ -1501,6 +1501,27 @@ export function invalidateAggregateCaches(): void {
 }
 
 // Get operational statistics for monitoring
+// One classification of error_message, shared by the error list and the log
+// table so the two cannot disagree about what a row is.
+//
+// The labels are Swedish because the page is. The old set was English on an
+// otherwise Swedish screen, and bucketed a 503 as "Other Error" because it
+// tested for the literal '500'.
+const ERROR_TYPE_CASE = `
+  CASE
+    WHEN error_message LIKE '%timeout%' OR error_message LIKE '%ETIMEDOUT%' THEN 'Tidsgräns'
+    WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Nekad anslutning'
+    WHEN error_message LIKE '%ENOTFOUND%' OR error_message LIKE '%EAI_AGAIN%' THEN 'DNS-fel'
+    WHEN error_message LIKE '%ECONNRESET%' OR error_message LIKE '%socket hang up%' THEN 'Bruten anslutning'
+    WHEN error_message LIKE '%429%' OR error_message LIKE '%rate%' THEN 'Nedstrypt'
+    WHEN error_message LIKE '%50_%' THEN 'Serverfel'
+    WHEN error_message LIKE '%404%' THEN 'Hittas inte'
+    WHEN error_message LIKE '%403%' THEN 'Nekad'
+    WHEN error_message IS NOT NULL THEN 'Fel'
+    ELSE NULL
+  END
+`;
+
 export function getOperationalStats(): OperationalStats {
   const pdo = getDatabase();
   const now = new Date();
@@ -1522,8 +1543,20 @@ export function getOperationalStats(): OperationalStats {
   // Fetches in last 7d
   const fetches7d = (pdo.prepare('SELECT COUNT(*) as count FROM fetch_log WHERE fetched_at >= ?').get(since7d) as { count: number }).count;
 
-  // Success rate
+  // Outcome of the last 24 hours, separately from the lifetime figures.
+  //
+  // A lifetime success rate is the wrong number to watch: a container up for a
+  // year sits at 99.9% all through an outage that started this morning, because
+  // one bad day cannot move a denominator of fifty thousand. The 24h rate falls
+  // immediately, which is what an operator opening this page needs to see.
+  const successfulFetches24h = (pdo
+    .prepare('SELECT COUNT(*) as count FROM fetch_log WHERE fetched_at >= ? AND success = 1')
+    .get(since24h) as { count: number }).count;
+  const failedFetches24h = fetches24h - successfulFetches24h;
+
   const successRate = totalFetches > 0 ? Math.round((successfulFetches / totalFetches) * 1000) / 10 : 100;
+  const successRate24h =
+    fetches24h > 0 ? Math.round((successfulFetches24h / fetches24h) * 1000) / 10 : 100;
 
   // Average fetch interval (in minutes)
   let avgFetchInterval = 30; // default
@@ -1543,46 +1576,58 @@ export function getOperationalStats(): OperationalStats {
   // Last failed fetch
   const lastFailure = pdo.prepare('SELECT fetched_at FROM fetch_log WHERE success = 0 ORDER BY fetched_at DESC LIMIT 1').get() as { fetched_at: string } | undefined;
 
-  // Recent errors (last 10, without detailed messages for security)
-  const recentErrors = pdo.prepare(`
-    SELECT
-      fetched_at,
-      CASE
-        WHEN error_message LIKE '%timeout%' THEN 'Timeout'
-        WHEN error_message LIKE '%network%' THEN 'Network Error'
-        WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Connection Refused'
-        WHEN error_message LIKE '%ENOTFOUND%' THEN 'DNS Error'
-        WHEN error_message LIKE '%500%' THEN 'Server Error (5xx)'
-        WHEN error_message LIKE '%404%' THEN 'Not Found (404)'
-        WHEN error_message LIKE '%403%' THEN 'Forbidden (403)'
-        WHEN error_message LIKE '%rate%' THEN 'Rate Limited'
-        WHEN error_message IS NOT NULL THEN 'Other Error'
-        ELSE 'Unknown'
-      END as error_type
+  // Recent errors, with what the upstream actually said.
+  //
+  // These used to be reduced to a bucket ("Other Error") and the message
+  // dropped, on the reasoning that it might leak something. The page is behind
+  // a login now, and the bucket on its own cannot be acted on: "Other Error"
+  // ten times in a row is the same screen whether polisen.se returned 503 or
+  // the container lost DNS. Keep the bucket for scanning and the message for
+  // diagnosing.
+  const recentErrors = (pdo.prepare(`
+    SELECT fetched_at, error_message, ${ERROR_TYPE_CASE} as error_type
     FROM fetch_log
     WHERE success = 0
     ORDER BY fetched_at DESC
     LIMIT 10
-  `).all() as Array<{ fetched_at: string; error_type: string }>;
+  `).all() as Array<{ fetched_at: string; error_message: string | null; error_type: string }>).map(
+    (row) => ({
+      fetchedAt: row.fetched_at,
+      errorType: row.error_type,
+      message: row.error_message,
+    })
+  );
 
-  // Fetch history by hour (last 24h)
+  // The last 24 hours by hour, split by outcome.
+  //
+  // Counting fetches alone drew a flat wall of identical bars: on a working
+  // schedule every hour holds exactly six, so the chart said nothing that the
+  // interval did not. Splitting it means an outage is a visible notch.
   const fetchesByHour = pdo.prepare(`
-    SELECT strftime('%H', fetched_at, 'localtime') AS hour, COUNT(*) AS count
+    SELECT
+      strftime('%H', fetched_at, 'localtime') AS hour,
+      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
+      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed
     FROM fetch_log
     WHERE fetched_at >= ?
     GROUP BY hour
     ORDER BY hour
-  `).all(since24h) as Array<{ hour: string; count: number }>;
-  const hourlyFetches: number[] = Array(24).fill(0);
+  `).all(since24h) as Array<{ hour: string; ok: number; failed: number }>;
+  const hourlyFetches = Array.from({ length: 24 }, () => ({ ok: 0, failed: 0 }));
   for (const row of fetchesByHour) {
-    hourlyFetches[parseInt(row.hour, 10)] = row.count;
+    hourlyFetches[parseInt(row.hour, 10)] = { ok: row.ok, failed: row.failed };
   }
 
-  // Events added per fetch (average)
+  // New events per successful fetch.
+  //
+  // This excluded fetches that brought nothing, which made it "the average
+  // number of new events among the fetches that had any": always well above 1,
+  // whatever the feed was doing. Most fetches legitimately return nothing new,
+  // and they belong in the denominator.
   const avgEventsPerFetch = pdo.prepare(`
     SELECT AVG(events_new) as avg
     FROM fetch_log
-    WHERE success = 1 AND events_new > 0
+    WHERE success = 1
   `).get() as { avg: number | null };
 
   // Total events added today
@@ -1592,21 +1637,34 @@ export function getOperationalStats(): OperationalStats {
     WHERE date(fetched_at, 'localtime') = date('now', 'localtime')
   `).get() as { count: number }).count;
 
-  // Uptime (based on successful fetches in expected intervals)
-  // If we expect a fetch every 10 min, check how many we got vs expected in last 24h
-  const expectedFetches24h = 144; // 24h / 10min
-  const uptimeScore = Math.min(100, Math.round((fetches24h / expectedFetches24h) * 100));
+  // Uptime: successful fetches in 24h against the 144 a 10-minute schedule
+  // expects.
+  //
+  // This counted every attempt, successful or not, so a container whose every
+  // fetch failed for a whole day still reported 100% uptime: it kept trying on
+  // schedule, and trying was all the number measured. It is the headline tile
+  // on this page, so it now counts the ones that worked.
+  const expectedFetches24h = 144; // 24h / 10 min
+  const uptimeScore = Math.min(100, Math.round((successfulFetches24h / expectedFetches24h) * 100));
+
+  const minutesSinceLastSuccess = lastSuccess
+    ? Math.max(0, Math.round((now.getTime() - new Date(lastSuccess.fetched_at).getTime()) / 60000))
+    : null;
 
   return {
     totalFetches,
     successfulFetches,
     failedFetches,
     fetches24h,
+    successfulFetches24h,
+    failedFetches24h,
     fetches7d,
     successRate,
+    successRate24h,
     avgFetchInterval,
     lastSuccessfulFetch: lastSuccess?.fetched_at || null,
     lastFailedFetch: lastFailure?.fetched_at || null,
+    minutesSinceLastSuccess,
     recentErrors,
     hourlyFetches,
     avgEventsPerFetch: avgEventsPerFetch.avg ? Math.round(avgEventsPerFetch.avg * 10) / 10 : 0,
@@ -1625,18 +1683,8 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
       events_fetched,
       events_new,
       success,
-      CASE
-        WHEN error_message LIKE '%timeout%' THEN 'Timeout'
-        WHEN error_message LIKE '%network%' THEN 'Network Error'
-        WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Connection Refused'
-        WHEN error_message LIKE '%ENOTFOUND%' THEN 'DNS Error'
-        WHEN error_message LIKE '%500%' THEN 'Server Error'
-        WHEN error_message LIKE '%404%' THEN 'Not Found'
-        WHEN error_message LIKE '%403%' THEN 'Forbidden'
-        WHEN error_message LIKE '%rate%' THEN 'Rate Limited'
-        WHEN error_message IS NOT NULL THEN 'Error'
-        ELSE NULL
-      END as error_type
+      error_message,
+      ${ERROR_TYPE_CASE} as error_type
     FROM fetch_log
     ORDER BY fetched_at DESC
     LIMIT ?
@@ -1646,6 +1694,7 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
     events_fetched: number;
     events_new: number;
     success: number;
+    error_message: string | null;
     error_type: string | null;
   }>;
 
@@ -1656,7 +1705,57 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
     eventsNew: row.events_new,
     success: row.success === 1,
     errorType: row.error_type,
+    errorMessage: row.error_message,
   }));
+}
+
+/**
+ * What the container is, rather than what it has fetched.
+ *
+ * Every field answers something that used to need a shell on the host. The
+ * size on disk is the one an operator wants most: a full archive with a
+ * trigram index is several hundred megabytes, and the only warning that a
+ * volume is filling up was the app failing to write.
+ */
+export function getSystemSnapshot(): SystemSnapshot {
+  const pdo = getDatabase();
+
+  const fileSize = (file: string): number => {
+    try {
+      return fs.statSync(file).size;
+    } catch {
+      // The -wal and -shm sidecars only exist between checkpoints.
+      return 0;
+    }
+  };
+
+  const builtTokenizer = (pdo
+    .prepare("SELECT value FROM meta WHERE key = 'bpk_search_tokenizer'")
+    .get() as { value: string } | undefined)?.value ?? null;
+  const configuredTokenizer = configuredSearchTokenizer();
+
+  // Resolved rather than read from process.env.TZ: the image sets it, but a
+  // compose file can override it, and what matters is what the process ended
+  // up with. Every stored timestamp is parsed out of Swedish wall-clock text.
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return {
+    dataDir: DATA_DIR,
+    databaseBytes: fileSize(DB_PATH),
+    walBytes: fileSize(`${DB_PATH}-wal`),
+    timeZone,
+    timeZoneCorrect: timeZone === 'Europe/Stockholm',
+    nodeVersion: process.version,
+    processUptimeSeconds: Math.round(process.uptime()),
+    searchTokenizer: {
+      configured: configuredTokenizer,
+      built: builtTokenizer,
+      // A mismatch is not an error: the index rebuilds on the next start. It
+      // does mean search is answering with the old tokenizer until then.
+      matches: builtTokenizer === null || builtTokenizer === configuredTokenizer,
+    },
+    archive: getArchiveCoverage(),
+  };
 }
 
 // Get database health metrics
