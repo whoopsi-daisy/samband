@@ -1,7 +1,16 @@
 'use client';
 
 import { memo, ReactNode } from 'react';
-import { Statistics, getTypeStyle } from '@/types';
+import {
+  Statistics,
+  TYPE_FAMILIES,
+  TypeFamilyKey,
+  MonthGridRow,
+  SeasonProfile,
+  FamilyYear,
+  YearToDate,
+  getTypeStyle,
+} from '@/types';
 import { useMounted } from '@/hooks/useMounted';
 
 interface StatsViewProps {
@@ -118,6 +127,255 @@ function peakIndex(values: number[]): number {
   return best;
 }
 
+const MONTH_ABBR = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const MONTH_NAMES = [
+  'januari', 'februari', 'mars', 'april', 'maj', 'juni',
+  'juli', 'augusti', 'september', 'oktober', 'november', 'december',
+];
+
+/**
+ * Ten years of monthly totals as a grid, one row per year.
+ *
+ * Drawn as a single strip of bars, a decade is a hairline per month and can
+ * only be read for trend. Stacked into rows of twelve, the same numbers read
+ * down the columns as well, which is where the seasons are, and a gap in the
+ * record becomes a hole rather than two years that look adjacent.
+ *
+ * It is a real table. The colour is the fast read; the numbers underneath it
+ * are the actual answer, and a screen reader gets those rather than a picture.
+ */
+function MonthHeatmap({ rows, season }: { rows: MonthGridRow[]; season: SeasonProfile }) {
+  // The month in progress. Derived from the data rather than from the clock,
+  // so the server and the browser cannot disagree about which cell it is: in
+  // the running year it is simply the last month with a number in it.
+  const runningRow = rows.findIndex((row) => row.running);
+  const partialMonth =
+    runningRow === -1 ? -1 : rows[runningRow].months.findLastIndex((m) => m !== null);
+
+  const isPartial = (rowIndex: number, month: number) =>
+    rowIndex === runningRow && month === partialMonth;
+
+  // The scale ignores the month in progress. On the second of August it holds
+  // two days, so it is always the smallest cell in the record, and anchoring
+  // the ramp on it squeezed every real month into the top half of the scale.
+  const observed = rows.flatMap((row, rowIndex) =>
+    row.months.filter((m, month): m is number => m !== null && !isPartial(rowIndex, month))
+  );
+  if (observed.length === 0) return null;
+
+  const low = Math.min(...observed);
+  const high = Math.max(...observed);
+
+  // Binned across the range actually observed, not from zero. Monthly volume
+  // over a decade varies by maybe half, so a scale anchored at zero would put
+  // every cell in the same shade and show nothing.
+  const level = (count: number): number => {
+    if (high === low) return 2;
+    return Math.min(4, Math.floor(((count - low) / (high - low)) * 4) + 1);
+  };
+
+  // The season row is drawn as bars rather than as more heat cells. Sharing
+  // the ramp but not the scale would invite reading a pale average cell
+  // against a dark year cell and concluding the average year is quieter than
+  // every real one; sharing the scale instead would flatten the season to two
+  // shades and say nothing. A different mark is the only honest option.
+  const seasonHigh = season.average.length > 0 ? Math.max(...season.average) : 1;
+
+  return (
+    <div className="heat-wrap">
+      <table className="heat">
+        <caption className="sr-only">
+          Antal händelser per månad och år, från {rows[0].year} till {rows[rows.length - 1].year}.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className="heat-corner">
+              <span className="sr-only">År</span>
+            </th>
+            {MONTH_ABBR.map((month, index) => (
+              <th key={month} scope="col" className="heat-month">
+                <abbr title={MONTH_NAMES[index]}>{month}</abbr>
+              </th>
+            ))}
+            <th scope="col" className="heat-total-head">
+              Totalt
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={row.year}>
+              <th scope="row" className="heat-year">
+                {row.year}
+              </th>
+              {row.months.map((count, month) => {
+                if (count === null) {
+                  return (
+                    <td key={month} className="heat-cell heat-cell--none">
+                      <span className="sr-only">
+                        {MONTH_NAMES[month]} {row.year}: utanför arkivet
+                      </span>
+                    </td>
+                  );
+                }
+                // The month in progress is hatched. Shaded like the rest it
+                // would read as a collapse every first of the month.
+                const partial = isPartial(rowIndex, month);
+                return (
+                  <td
+                    key={month}
+                    className={`heat-cell heat-cell--${level(count)}${partial ? ' heat-cell--partial' : ''}`}
+                    title={
+                      partial
+                        ? `${MONTH_NAMES[month]} ${row.year}: ${sv(count)} hittills, månaden pågår`
+                        : `${MONTH_NAMES[month]} ${row.year}: ${sv(count)} händelser`
+                    }
+                  >
+                    <span className="sr-only">
+                      {MONTH_NAMES[month]} {row.year}: {sv(count)}
+                      {partial ? ' hittills, månaden pågår' : ''}
+                    </span>
+                  </td>
+                );
+              })}
+              <td className="heat-total">{sv(row.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {/* The average year, along the bottom of the years it is drawn from.
+            Reading a column of the grid gives the same answer, but only if you
+            can hold ten cells in your head at once. */}
+        {season.years >= 2 && (
+          <tfoot>
+            <tr>
+              <th scope="row" className="heat-year heat-year--season">
+                Snitt
+              </th>
+              {season.average.map((count, month) => (
+                <td
+                  key={month}
+                  className="heat-season"
+                  title={`${MONTH_NAMES[month]}: ${sv(count)} i snitt`}
+                >
+                  <span
+                    className="heat-spark"
+                    style={{ height: `${(count / seasonHigh) * 100}%` }}
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">
+                    {MONTH_NAMES[month]} i snitt: {sv(count)}
+                  </span>
+                </td>
+              ))}
+              <td className="heat-total heat-total--season">{season.years} år</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+
+      <p className="heat-legend">
+        <span>{sv(low)}</span>
+        {[1, 2, 3, 4].map((step) => (
+          <span key={step} className={`heat-key heat-cell--${step}`} aria-hidden="true" />
+        ))}
+        <span>{sv(high)} per månad</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * One horizontal bar per year, split by type family.
+ *
+ * Volume alone cannot say whether a decade changed character. The families
+ * hold their order across every year, so a segment that widens or narrows is
+ * following the same thing down the chart; ranked per year they would swap
+ * places underneath the reader and the drift would be unreadable.
+ */
+function FamilyMix({ years }: { years: FamilyYear[] }) {
+  // Enough to name every segment wide enough to notice. Cut shorter, the
+  // reader is left with coloured bands at the end of each bar and no way to
+  // find out what they are.
+  const legend = years[years.length - 1].shares.slice(0, 10);
+
+  return (
+    <>
+      <ul className="mix">
+        {years.map((year) => (
+          <li key={year.year} className="mix-row">
+            <span className="mix-year">{year.year}</span>
+            <span className="mix-track">
+              {year.shares.map((share) => (
+                <span
+                  key={share.family}
+                  className="mix-seg"
+                  style={{
+                    width: `${share.share * 100}%`,
+                    background: TYPE_FAMILIES[share.family as TypeFamilyKey].color,
+                  }}
+                  title={`${year.year}, ${share.label}: ${sv(share.count)} (${Math.round(share.share * 100)} %)`}
+                />
+              ))}
+            </span>
+            <span className="mix-total">{sv(year.total)}</span>
+          </li>
+        ))}
+      </ul>
+      <ul className="mix-legend">
+        {legend.map((share) => (
+          <li key={share.family}>
+            <span
+              className="mix-key"
+              style={{ background: TYPE_FAMILIES[share.family as TypeFamilyKey].color }}
+              aria-hidden="true"
+            />
+            {share.label}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
+ * This year against the same stretch of last year.
+ *
+ * Stated as a change rather than as two numbers to subtract, and always with
+ * the date both sides are cut at: without that it reads as a full-year
+ * comparison, which in March would be wrong by a factor of four.
+ */
+function YearOnYear({ ytd }: { ytd: YearToDate }) {
+  const change = (ytd.count - ytd.previousCount) / ytd.previousCount;
+  const percent = Math.round(Math.abs(change) * 100);
+  // Under two percent on counts this size is noise, not a direction, and an
+  // arrow drawn on noise is a claim the data does not support.
+  const tone = percent < 2 ? 'flat' : change > 0 ? 'up' : 'down';
+  const [month, day] = ytd.throughDay.split('-');
+
+  return (
+    <div className="yoy">
+      <div className="yoy-side">
+        <span className="yoy-value">{sv(ytd.count)}</span>
+        <span className="yoy-label">
+          {ytd.year} till {Number(day)}/{Number(month)}
+        </span>
+      </div>
+      <div className={`yoy-change yoy-change--${tone}`}>
+        <span className="yoy-arrow" aria-hidden="true">
+          {tone === 'flat' ? '≈' : tone === 'up' ? '↑' : '↓'}
+        </span>
+        <span className="yoy-percent">
+          {tone === 'flat' ? 'oförändrat' : `${change > 0 ? '+' : '−'}${percent} %`}
+        </span>
+      </div>
+      <div className="yoy-side yoy-side--past">
+        <span className="yoy-value">{sv(ytd.previousCount)}</span>
+        <span className="yoy-label">{ytd.previousYear} samma period</span>
+      </div>
+    </div>
+  );
+}
+
 function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const mounted = useMounted();
   const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '–');
@@ -126,7 +384,6 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const maxWeekday = Math.max(...stats.weekdays, 1);
   const maxHourly = Math.max(...stats.hourly, 1);
   const maxYearly = Math.max(...stats.yearly.map((y) => y.count), 1);
-  const maxMonthly = Math.max(...stats.monthly.map((m) => m.count), 1);
 
   const peakHour = peakIndex(stats.hourly);
   const hourlyTotal = stats.hourly.reduce((a, b) => a + b, 0);
@@ -258,16 +515,97 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
         </div>
       </Block>
 
-      {/* Last, and framed as what the database holds rather than as analysis.
-          The year and month charts cover a decade of imported history, which
-          says something about the archive and very little about this week. */}
+      {/* The long view, which is where nearly all of the data is. It used to
+          be one block at the bottom carrying two sparklines: 300,000 rows over
+          a decade reduced to a footnote under three blocks about the last
+          month. */}
       <Block
-        title="Hela arkivet"
+        title="Månad för månad"
         lede={
           stats.oldestEvent
-            ? `Allt som är lagrat, från ${coverageDay(stats.oldestEvent)} och framåt.`
-            : 'Allt som är lagrat.'
+            ? `Varje månad sedan ${coverageDay(stats.oldestEvent)}. Läs neråt för trenden, i sidled för året.`
+            : 'Varje månad som finns lagrad.'
         }
+      >
+        {stats.monthGrid.length > 0 ? (
+          <div className="card">
+            <MonthHeatmap rows={stats.monthGrid} season={stats.season} />
+            {stats.season.years >= 2 && stats.season.busiestMonth !== null && (
+              <p className="chart-caption">
+                Över {stats.season.years} hela år är{' '}
+                <strong>{MONTH_NAMES[stats.season.busiestMonth]}</strong> den tyngsta månaden med{' '}
+                {sv(stats.season.average[stats.season.busiestMonth])} händelser i snitt, och{' '}
+                <strong>{MONTH_NAMES[stats.season.quietestMonth ?? 0]}</strong> den lugnaste med{' '}
+                {sv(stats.season.average[stats.season.quietestMonth ?? 0])}.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="stats-coverage">Ingen månad är komplett ännu.</p>
+        )}
+      </Block>
+
+      <Block
+        title="År för år"
+        lede="Om det blir fler eller färre över tid, och om det som händer är samma sorts händelser."
+      >
+        {stats.yearToDate && (
+          <div className="card">
+            <h3 className="card-title">I år mot i fjol</h3>
+            {/* A running year is always short next to finished ones, so the
+                year chart cannot answer this. Both sides are cut at the same
+                day of the year instead. */}
+            <YearOnYear ytd={stats.yearToDate} />
+          </div>
+        )}
+
+        {stats.yearly.length > 1 && (
+          <div className="card">
+            <h3 className="card-title">Händelser per år</h3>
+            <div className="chart">
+              {stats.yearly.map((year) => (
+                <div
+                  key={year.year}
+                  className="chart-col"
+                  title={`${year.year}: ${sv(year.count)} händelser`}
+                >
+                  {/* Ten bars have room for their own numbers on a desktop.
+                      A phone does not, and hides them: see chart-value--wide. */}
+                  <span className="chart-value chart-value--wide">{sv(year.count)}</span>
+                  <span className="chart-track">
+                    <span
+                      className={`chart-bar${year.year === thisYear ? ' chart-bar--partial' : ''}`}
+                      style={{ height: `${(year.count / maxYearly) * 100}%` }}
+                    />
+                  </span>
+                  <span className="chart-label">{year.year.slice(2)}</span>
+                </div>
+              ))}
+            </div>
+            {peakYear && (
+              <p className="chart-caption">
+                Störst helår: <strong>{peakYear.year}</strong> med {sv(peakYear.count)} händelser.
+                {runningYear ? ` ${thisYear} är inte slut och räknas inte med.` : ''}
+              </p>
+            )}
+          </div>
+        )}
+
+        {stats.familyByYear.length > 1 && (
+          <div className="card">
+            <h3 className="card-title">Vad händelserna handlar om, år för år</h3>
+            <FamilyMix years={stats.familyByYear} />
+            <p className="chart-caption">
+              Andel av varje års händelser. Staplarna är lika breda, så det är
+              sammansättningen som jämförs och inte mängden.
+            </p>
+          </div>
+        )}
+      </Block>
+
+      <Block
+        title="Hela arkivet"
+        lede="Vad databasen innehåller, och varifrån det kommer."
       >
         <div className="stats-grid stats-grid--four">
           <Stat value={sv(stats.total)} label="Händelser totalt" />
@@ -284,67 +622,17 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           )}
         </div>
 
-        {stats.monthly.some((month) => month.count > 0) && (
-          <div className="card">
-            <h3 className="card-title">Per månad, senaste 24 månaderna</h3>
-            <div className="chart chart--sm">
-              {stats.monthly.map((month) => (
-                <div
-                  key={month.month}
-                  className="chart-col"
-                  title={`${month.label} ${month.year}: ${sv(month.count)} händelser`}
-                >
-                  <span className="chart-track">
-                    <span
-                      className="chart-bar"
-                      style={{ height: `${(month.count / maxMonthly) * 100}%` }}
-                    />
-                  </span>
-                  {/* Only January carries a label, so the axis reads as years
-                      rather than as twenty-four crushed month abbreviations. */}
-                  <span className="chart-label">{month.label === 'jan' ? month.year : ''}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {stats.yearly.length > 1 && (
-          <div className="card">
-            <h3 className="card-title">Per år</h3>
-            <div className="chart chart--sm">
-              {stats.yearly.map((year) => (
-                <div
-                  key={year.year}
-                  className="chart-col"
-                  title={`${year.year}: ${sv(year.count)} händelser`}
-                >
-                  <span className="chart-track">
-                    <span
-                      className="chart-bar"
-                      style={{ height: `${(year.count / maxYearly) * 100}%` }}
-                    />
-                  </span>
-                  <span className="chart-label">{year.year.slice(2)}</span>
-                </div>
-              ))}
-            </div>
-            {peakYear && (
-              <p className="chart-caption">
-                Störst helår: <strong>{peakYear.year}</strong> med {sv(peakYear.count)} händelser.
-                {runningYear ? ` ${thisYear} har hittills ${sv(runningYear.count)}.` : ''}
-              </p>
-            )}
-          </div>
-        )}
-
         <p className="stats-coverage">
           {stats.archiveEvents > 0 ? (
             <>
               {sv(stats.archiveEvents)} av händelserna är importerade från Brottsplatskartan
               {stats.archiveCutoff ? ` fram till ${coverageDay(stats.archiveCutoff)}` : ''}, resten
               kommer från polisens egen händelseström. {sv(stats.uniqueLocations)} platser och{' '}
-              {sv(stats.uniqueTypes)} händelsetyper förekommer.
+              {sv(stats.uniqueTypes)} händelsetyper förekommer.{' '}
+              {/* The two sources timestamp differently, and on a page that now
+                  reads a decade it is worth saying so once. */}
+              De importerade händelserna är daterade när de publicerades, inte när de inträffade,
+              vilket kan flytta enstaka händelser till dygnet efter.
             </>
           ) : (
             <>

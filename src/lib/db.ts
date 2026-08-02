@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthlyStats, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot } from '@/types';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
 import { escapeLikeWildcards } from './utils';
 import { memoizeWithTtl } from './cache';
 
@@ -1149,6 +1149,14 @@ interface SourceStats {
    * and at roughly 3,600 buckets for a decade of history it is a small map.
    */
   allDays: Map<string, number>;
+  /**
+   * Year -> type -> count, over the whole source.
+   *
+   * A decade of composition in one grouped scan: ten years by sixty types is
+   * six hundred rows out, against the millions the same question would cost
+   * per year if it were asked one year at a time.
+   */
+  yearTypes: Map<string, Map<string, number>>;
   withGps: number;
   updated: number;
 }
@@ -1254,6 +1262,25 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     .prepare(`SELECT substr(${time}, 1, 10) AS bucket, COUNT(*) AS total ${base} GROUP BY bucket`)
     .all(...baseParams) as Array<{ bucket: string; total: number }>;
 
+  // Same trick as above: the year comes off the front of the ISO string rather
+  // than through a datetime parse, and the type stays the bare column so the
+  // index can answer it.
+  const yearTypeRows = pdo
+    .prepare(
+      `SELECT substr(${time}, 1, 4) AS year, ${source.typeLabel} AS label, COUNT(*) AS total ${base} GROUP BY year, label`
+    )
+    .all(...baseParams) as Array<{ year: string; label: string | null; total: number }>;
+  const yearTypes = new Map<string, Map<string, number>>();
+  for (const row of yearTypeRows) {
+    if (!row.label) continue;
+    let byType = yearTypes.get(row.year);
+    if (!byType) {
+      byType = new Map();
+      yearTypes.set(row.year, byType);
+    }
+    byType.set(row.label, (byType.get(row.label) ?? 0) + row.total);
+  }
+
   return {
     // The totals count every row: they answer "how much is stored". The rest
     // exclude summary posts, as the live feed's statistics always have.
@@ -1269,6 +1296,7 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     weekdays,
     daily: new Map(dailyRows.map(row => [row.bucket, row.total])),
     allDays: new Map(allDayRows.map(row => [row.bucket, row.total])),
+    yearTypes,
     withGps: scalars.withGps ?? 0,
     updated: scalars.updated ?? 0,
   };
@@ -1286,8 +1314,6 @@ function countLabels(counts: Map<string, number>): number {
   for (const label of counts.keys()) if (label !== '') total++;
   return total;
 }
-
-const MONTH_ABBR = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
 /**
  * Every year the data covers, oldest first, with the gaps filled in.
@@ -1314,26 +1340,120 @@ function yearlyFromDays(days: Map<string, number>): YearlyStats[] {
   return out;
 }
 
-/** The last `months` calendar months up to and including the current one. */
-function monthlyFromDays(days: Map<string, number>, now: Date, months: number): MonthlyStats[] {
+/**
+ * The whole record as one row per year and one cell per month.
+ *
+ * Everything here comes from the same `allDays` map the year and month charts
+ * already use, so a decade of extra reading costs no extra query. Months
+ * before the first recorded day and after the last are null rather than zero:
+ * an archive that starts in March 2016 has no January, and drawing it as an
+ * empty month says the opposite.
+ */
+function monthGridFromDays(days: Map<string, number>, now: Date): MonthGridRow[] {
+  if (days.size === 0) return [];
+
   const totals = new Map<string, number>();
   for (const [day, count] of days) {
     const month = day.slice(0, 7);
     totals.set(month, (totals.get(month) ?? 0) + count);
   }
 
-  const out: MonthlyStats[] = [];
-  for (let back = months - 1; back >= 0; back--) {
-    const at = new Date(now.getFullYear(), now.getMonth() - back, 1);
-    const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
-    out.push({
-      month: key,
-      label: MONTH_ABBR[at.getMonth()],
-      year: at.getFullYear(),
-      count: totals.get(key) ?? 0,
-    });
+  const keys = [...days.keys()].sort();
+  const firstDay = keys[0];
+  const lastDay = keys[keys.length - 1];
+  const firstYear = parseInt(firstDay.slice(0, 4), 10);
+  const lastYear = parseInt(lastDay.slice(0, 4), 10);
+  const firstMonth = parseInt(firstDay.slice(5, 7), 10) - 1;
+  const lastMonth = parseInt(lastDay.slice(5, 7), 10) - 1;
+  const runningYear = now.getFullYear();
+
+  const rows: MonthGridRow[] = [];
+  for (let year = firstYear; year <= lastYear; year++) {
+    const months: (number | null)[] = [];
+    let total = 0;
+    for (let month = 0; month < 12; month++) {
+      const beforeStart = year === firstYear && month < firstMonth;
+      const afterEnd = year === lastYear && month > lastMonth;
+      if (beforeStart || afterEnd) {
+        months.push(null);
+        continue;
+      }
+      const count = totals.get(`${year}-${String(month + 1).padStart(2, '0')}`) ?? 0;
+      months.push(count);
+      total += count;
+    }
+    rows.push({ year, months, total, running: year === runningYear });
   }
-  return out;
+  return rows;
+}
+
+/**
+ * The average shape of a year.
+ *
+ * Only complete years count. Including the running one would pull every month
+ * after today's toward zero and invent a collapse in the autumn, and including
+ * a part-year at the start of the archive would do the same to the spring.
+ */
+function seasonFromGrid(grid: MonthGridRow[], now: Date): SeasonProfile {
+  const complete = grid.filter(
+    (row) => !row.running && row.year !== now.getFullYear() && row.months.every((m) => m !== null)
+  );
+
+  if (complete.length === 0) {
+    return { average: [], years: 0, busiestMonth: null, quietestMonth: null };
+  }
+
+  const average = Array.from({ length: 12 }, (_, month) => {
+    const sum = complete.reduce((total, row) => total + (row.months[month] ?? 0), 0);
+    return Math.round(sum / complete.length);
+  });
+
+  let busiest = 0;
+  let quietest = 0;
+  average.forEach((value, month) => {
+    if (value > average[busiest]) busiest = month;
+    if (value < average[quietest]) quietest = month;
+  });
+
+  return {
+    average,
+    years: complete.length,
+    busiestMonth: busiest,
+    quietestMonth: quietest,
+  };
+}
+
+/**
+ * This year and last year, both counted through today's date.
+ *
+ * The comparison is only fair if both sides stop at the same day of the year,
+ * which is the whole reason a bare year chart cannot answer the question.
+ */
+function yearToDateFromDays(days: Map<string, number>, now: Date): YearToDate | null {
+  const year = now.getFullYear();
+  const previousYear = year - 1;
+  // MM-DD in UTC, matching how allDays is bucketed.
+  const throughDay = new Date(now.getTime()).toISOString().slice(5, 10);
+
+  let count = 0;
+  let previousCount = 0;
+  let sawPrevious = false;
+
+  for (const [day, total] of days) {
+    const dayYear = parseInt(day.slice(0, 4), 10);
+    const monthDay = day.slice(5, 10);
+    if (dayYear === year && monthDay <= throughDay) count += total;
+    if (dayYear === previousYear) {
+      sawPrevious = true;
+      if (monthDay <= throughDay) previousCount += total;
+    }
+  }
+
+  // With nothing recorded in the previous year there is nothing to compare to,
+  // and a "+100%" against zero would be noise dressed as a finding.
+  if (!sawPrevious || previousCount === 0) return null;
+
+  return { year, count, previousYear, previousCount, throughDay };
 }
 
 function busiestFromDays(days: Map<string, number>): DailyPeak | null {
@@ -1342,6 +1462,59 @@ function busiestFromDays(days: Map<string, number>): DailyPeak | null {
     if (!best || count > best.count) best = { date, count };
   }
   return best;
+}
+
+/**
+ * How the mix of incident types has moved across the years.
+ *
+ * Grouped by family rather than by type: sixty type names produce sixty
+ * near-identical slivers, and the families are the level the rest of the app
+ * already colours by. Only whole years are shown; a running year's mix is
+ * skewed by whatever season it has reached so far.
+ *
+ * The families are ranked once, over the whole record, so a family keeps the
+ * same position in every year's bar. Ranking per year would reorder the
+ * segments underneath the reader and make the drift impossible to follow,
+ * which is the one thing this chart exists to show.
+ */
+function familyMixByYear(yearTypes: Map<string, Map<string, number>>): FamilyYear[] {
+  const years = [...yearTypes.keys()].sort();
+  // Under two years there is no drift to look at.
+  if (years.length < 2) return [];
+
+  const overall = new Map<TypeFamilyKey, number>();
+  const byYear = new Map<string, Map<TypeFamilyKey, number>>();
+
+  for (const year of years) {
+    const families = new Map<TypeFamilyKey, number>();
+    for (const [type, count] of yearTypes.get(year) ?? []) {
+      const family = getTypeStyle(type).family;
+      families.set(family, (families.get(family) ?? 0) + count);
+      overall.set(family, (overall.get(family) ?? 0) + count);
+    }
+    byYear.set(year, families);
+  }
+
+  const ranked = [...overall.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([family]) => family);
+
+  return years.map((year) => {
+    const families = byYear.get(year) ?? new Map();
+    const total = [...families.values()].reduce((sum, count) => sum + count, 0);
+    const shares = ranked
+      .map((family) => {
+        const count = families.get(family) ?? 0;
+        return {
+          family: family as string,
+          label: TYPE_FAMILIES[family].label,
+          count,
+          share: total > 0 ? count / total : 0,
+        };
+      })
+      .filter((entry) => entry.count > 0);
+    return { year, total, shares };
+  });
 }
 
 function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
@@ -1391,6 +1564,8 @@ function computeStatsSummary(): Statistics {
   const weekdayData = [...live.weekdays];
   const dailyMap = new Map(live.daily);
   const allDays = new Map(live.allDays);
+  const yearTypes = new Map<string, Map<string, number>>();
+  for (const [year, byType] of live.yearTypes) yearTypes.set(year, new Map(byType));
 
   if (archive) {
     mergeCounts(typeCounts, archive.types);
@@ -1399,6 +1574,11 @@ function computeStatsSummary(): Statistics {
     for (let i = 0; i < 7; i++) weekdayData[i] += archive.weekdays[i];
     for (const [day, count] of archive.daily) dailyMap.set(day, (dailyMap.get(day) ?? 0) + count);
     mergeCounts(allDays, archive.allDays);
+    for (const [year, byType] of archive.yearTypes) {
+      const target = yearTypes.get(year);
+      if (target) mergeCounts(target, byType);
+      else yearTypes.set(year, new Map(byType));
+    }
   }
 
   // Convert to Monday-Sunday order (Swedish)
@@ -1432,6 +1612,7 @@ function computeStatsSummary(): Statistics {
   const updatedPercent = totalStored > 0 ? Math.round((updatedEvents / totalStored) * 100) : 0;
 
   const coverage = getArchiveCoverage();
+  const monthGrid = monthGridFromDays(allDays, now);
 
   return {
     total,
@@ -1446,7 +1627,10 @@ function computeStatsSummary(): Statistics {
     weekdays,
     daily,
     yearly: yearlyFromDays(allDays),
-    monthly: monthlyFromDays(allDays, now, 24),
+    monthGrid,
+    season: seasonFromGrid(monthGrid, now),
+    yearToDate: yearToDateFromDays(allDays, now),
+    familyByYear: familyMixByYear(yearTypes),
     busiestDay: busiestFromDays(allDays),
     coverageDays,
     gpsPercent,

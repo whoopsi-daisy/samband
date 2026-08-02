@@ -74,13 +74,54 @@ export interface YearlyStats {
   count: number;
 }
 
-export interface MonthlyStats {
-  /** "2026-07", for keys and tooltips. */
-  month: string;
-  /** "jul", for the axis. */
-  label: string;
+/**
+ * One year of the record as twelve cells.
+ *
+ * A decade of history drawn as a single row of 120 bars is a hairline per
+ * month, and it can only be read for trend. Laid out as a grid, one row per
+ * year, the same numbers also read down the columns, which is where the
+ * seasons are.
+ */
+export interface MonthGridRow {
+  year: number;
+  /** Twelve counts, January first. Null outside the record. */
+  months: (number | null)[];
+  total: number;
+  /** True for the year in progress: its later months are not missing, just unlived. */
+  running: boolean;
+}
+
+/** The shape of a year, averaged over the years that finished. */
+export interface SeasonProfile {
+  /** Mean count per calendar month, January first. Empty when nothing is complete. */
+  average: number[];
+  /** How many whole years the mean is over. Below two it is not a season. */
+  years: number;
+  busiestMonth: number | null;
+  quietestMonth: number | null;
+}
+
+/**
+ * This year against the same stretch of last year.
+ *
+ * A running year always looks small beside finished ones, which is why the
+ * year chart cannot answer "is it worse this year". Cutting both at the same
+ * day of the year can.
+ */
+export interface YearToDate {
   year: number;
   count: number;
+  previousYear: number;
+  previousCount: number;
+  /** The day both are counted through, as MM-DD. */
+  throughDay: string;
+}
+
+/** How one year's incidents split across the type families. */
+export interface FamilyYear {
+  year: string;
+  total: number;
+  shares: Array<{ family: string; label: string; count: number; share: number }>;
 }
 
 /** The single busiest calendar day in the record. */
@@ -103,8 +144,14 @@ export interface Statistics {
   daily: DailyStats[];
   /** Every year the dataset covers, oldest first. */
   yearly: YearlyStats[];
-  /** The last 24 calendar months, oldest first. */
-  monthly: MonthlyStats[];
+  /** The whole record as a year-by-month grid, oldest year first. */
+  monthGrid: MonthGridRow[];
+  /** The average shape of a year, over the years that finished. */
+  season: SeasonProfile;
+  /** This year against the same stretch of last year. Null with under two years. */
+  yearToDate: YearToDate | null;
+  /** Type-family mix per year, oldest first. Empty with under two years. */
+  familyByYear: FamilyYear[];
   /** The busiest single day on record, across both sources. */
   busiestDay: DailyPeak | null;
   /** Days between the oldest event and now, for "one every N minutes". */

@@ -2374,6 +2374,285 @@ main {
 /* Where the numbers come from: live feed, imported archive, or both. Without
    it, a database holding years of history reads the same as one holding a
    week. Sits with the meta text, not the numbers. */
+/* ── The decade grid ──────────────────────────────────────────
+   One row per year, one cell per month. A real table underneath: the colour
+   is the fast read, the numbers in the title and the screen-reader text are
+   the answer. Ten years drawn as a single strip of 120 bars is a hairline per
+   month and can only be read for trend; stacked, the same numbers also read
+   down the columns, which is where the seasons are. */
+
+.heat-wrap { overflow-x: auto; }
+
+.heat {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-month,
+.heat-total-head {
+  padding: 0 0 var(--space-1);
+  font-weight: var(--weight-semi);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.heat-month abbr { text-decoration: none; }
+.heat-total-head { text-align: right; }
+.heat-corner { width: 4ch; }
+
+.heat-year {
+  padding-right: var(--space-2);
+  text-align: right;
+  font-weight: var(--weight-semi);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.heat-year--season { color: var(--muted); font-weight: var(--weight-normal); }
+
+.heat-cell {
+  height: 22px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+}
+
+/* Five steps of one hue rather than a rainbow: the quantity is ordered, and
+   an ordered quantity on a multi-hue scale reads as categories. Mixed against
+   the page rather than set as fixed colours, so it holds in both themes. */
+.heat-cell--1 { background: color-mix(in srgb, var(--accent) 16%, var(--subtle)); }
+.heat-cell--2 { background: color-mix(in srgb, var(--accent) 38%, var(--subtle)); }
+.heat-cell--3 { background: color-mix(in srgb, var(--accent) 64%, var(--subtle)); }
+.heat-cell--4 { background: var(--accent); }
+
+/* Outside the record, which is not the same as a month with nothing in it. */
+.heat-cell--none {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* The month in progress, hatched over its own shade. Left plain it reads as a
+   collapse on the first of every month, which is the same trap the daily
+   chart's last bar has. */
+.heat-cell--partial {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    var(--surface) 3px 6px
+  );
+}
+
+.heat-total {
+  padding-left: var(--space-2);
+  text-align: right;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.heat-total--season { color: var(--muted); }
+
+/* The average year, drawn as bars rather than as more heat cells. On the same
+   ramp it would invite comparing a pale average against a dark year and
+   concluding the average is quieter than every real one; on the same scale it
+   would flatten to two shades and show no season at all. */
+.heat-season {
+  height: 32px;
+  vertical-align: bottom;
+  padding: 0;
+}
+
+.heat-spark {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.heat tfoot th,
+.heat tfoot td { border-top: 1px solid var(--border); padding-top: var(--space-1); }
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.heat-key {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.heat-legend > span:first-child { margin-right: var(--space-1); }
+.heat-legend > span:last-child { margin-left: var(--space-1); }
+
+/* ── This year against last ───────────────────────────────────
+   Two counts and the change between them. Stated as a direction, because two
+   six-figure numbers side by side are a subtraction the reader has to do. */
+
+.yoy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.yoy-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.yoy-side--past { text-align: right; }
+
+.yoy-value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.yoy-side--past .yoy-value { color: var(--muted); font-weight: var(--weight-semi); }
+
+.yoy-label {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.yoy-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semi);
+  white-space: nowrap;
+}
+
+/* More incidents is not good news, so up takes the alert tone and down the
+   calm one. The neutral case is deliberately grey: a direction drawn on a
+   two-percent difference would be a claim the counts do not support. */
+.yoy-change--up {
+  color: var(--alert);
+  background: color-mix(in srgb, var(--alert) 10%, transparent);
+}
+.yoy-change--down {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+.yoy-change--flat {
+  color: var(--muted);
+  background: var(--subtle);
+}
+
+.yoy-arrow { font-size: var(--text-lg); line-height: 1; }
+
+/* ── Composition per year ─────────────────────────────────────
+   Equal-width bars, so what is compared is the mix and not the volume. The
+   families keep their order across every year: ranked per year they would
+   swap places underneath the reader and the drift would be unreadable. */
+
+.mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mix-year {
+  width: 4ch;
+  flex-shrink: 0;
+  color: var(--fg-secondary);
+  font-weight: var(--weight-semi);
+}
+
+.mix-track {
+  display: flex;
+  flex: 1;
+  height: 16px;
+  min-width: 0;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--subtle);
+}
+
+.mix-seg { height: 100%; }
+
+.mix-total {
+  width: 7ch;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--muted);
+}
+
+.mix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.mix-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mix-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  /* The year and the total already sit outside the bar; on a narrow screen
+     they are what the row is read by, so the bar gives up the width. */
+  .mix-total { width: 5ch; }
+
+  /* Twelve months and a year label fit a phone; twelve months, a year label
+     and a totals column do not, and the grid was scrolling sideways with the
+     totals parked off-screen. The composition chart below carries the same
+     per-year totals in a layout that does fit, so this drops them. */
+  .heat {
+    min-width: 0;
+    border-spacing: 2px;
+    font-size: 10px;
+  }
+  .heat-total,
+  .heat-total-head { display: none; }
+  .heat-corner { width: 3ch; }
+  .heat-year { padding-right: var(--space-1); }
+  .heat-cell { height: 18px; }
+  .heat-season { height: 24px; }
+
+  /* Eleven six-figure numbers across 360px run into one smear. The counts are
+     in the composition chart directly below, one per row with room to be
+     read, so the bars keep the shape and give up the labels. */
+  .stats-block .chart-value--wide { display: none; }
+}
+
 .stats-coverage {
   margin-top: var(--space-3);
   font-size: var(--text-xs);

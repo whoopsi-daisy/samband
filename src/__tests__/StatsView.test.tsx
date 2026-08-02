@@ -35,9 +35,56 @@ function createStats(overrides: Partial<Statistics> = {}): Statistics {
       { year: String(thisYear - 1), count: 107 },
       { year: String(thisYear), count: 336 },
     ],
-    monthly: [
-      { month: '2026-06', label: 'jun', year: 2026, count: 20 },
-      { month: '2026-07', label: 'jul', year: 2026, count: 40 },
+    monthGrid: [
+      {
+        year: thisYear - 2,
+        months: [5, 4, 6, 8, 9, 12, 14, 11, 7, 6, 5, 3],
+        total: 90,
+        running: false,
+      },
+      {
+        year: thisYear - 1,
+        months: [6, 5, 7, 9, 11, 14, 16, 13, 9, 7, 6, 4],
+        total: 107,
+        running: false,
+      },
+      {
+        year: thisYear,
+        months: [30, 28, 34, 40, 44, 52, 58, 50, null, null, null, null],
+        total: 336,
+        running: true,
+      },
+    ],
+    season: {
+      average: [6, 5, 7, 9, 10, 13, 15, 12, 8, 7, 6, 4],
+      years: 2,
+      busiestMonth: 6,
+      quietestMonth: 11,
+    },
+    yearToDate: {
+      year: thisYear,
+      count: 336,
+      previousYear: thisYear - 1,
+      previousCount: 80,
+      throughDay: '08-02',
+    },
+    familyByYear: [
+      {
+        year: String(thisYear - 2),
+        total: 90,
+        shares: [
+          { family: 'traffic', label: 'Trafik', count: 50, share: 50 / 90 },
+          { family: 'theft', label: 'Stöld och inbrott', count: 40, share: 40 / 90 },
+        ],
+      },
+      {
+        year: String(thisYear - 1),
+        total: 107,
+        shares: [
+          { family: 'traffic', label: 'Trafik', count: 40, share: 40 / 107 },
+          { family: 'theft', label: 'Stöld och inbrott', count: 67, share: 67 / 107 },
+        ],
+      },
     ],
     busiestDay: { date: '2026-07-23', count: 41 },
     coverageDays: 3870,
@@ -59,7 +106,17 @@ describe('StatsView', () => {
     render(<StatsView stats={createStats()} />);
 
     const blocks = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(blocks).toEqual(['Den senaste tiden', 'När det händer', 'Vad och var', 'Hela arkivet']);
+    // Ordered from the last day out to the whole record. The two long-view
+    // blocks are where nearly all of the data is: a decade used to arrive as
+    // two sparklines at the bottom of the archive block.
+    expect(blocks).toEqual([
+      'Den senaste tiden',
+      'När det händer',
+      'Vad och var',
+      'Månad för månad',
+      'År för år',
+      'Hela arkivet',
+    ]);
   });
 
   it('keeps the chart titles a level below the block headings', () => {
