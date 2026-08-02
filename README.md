@@ -19,6 +19,186 @@ single container with a bind-mounted data directory.
 | **Brottsplatskartan archive** | Opt-in importer for ~333k historic events (2016→). Loads an NDJSON dump in under a minute, or walks the API over a few hours. Live progress on `/stats` |
 | **Archive in the UI** | Part of the dataset. Feed, map, search, filters and statistics read the imported events alongside the live feed; the live feed wins for the period it covers, the archive supplies everything before it |
 
+## How it works
+
+One Node process, one SQLite file, no queue and no scheduler. Everything below
+is driven by a request arriving.
+
+```mermaid
+flowchart TB
+    POL["polisen.se/api/events"]
+    BPK["Brottsplatskartan<br/>NDJSON dump or API walk"]
+    SR["vmaapi.sr.se · CAP v3"]
+
+    REFRESH["refreshEventsIfNeeded()"]
+    DB[("events.db<br/>bind-mounted")]
+    RSC["page.tsx · Server Component"]
+    API["/api/events · /api/map · /api/details"]
+    VMA["/api/vma"]
+    GATE["proxy.ts · Basic auth"]
+    OPS["/stats · /api/import"]
+
+    POL -->|"at most 1 fetch per 10 min"| REFRESH
+    REFRESH -->|"upsert on content hash"| DB
+    BPK -->|"opt-in, never automatic"| DB
+    SR -->|"60 s TTL, server-side only"| VMA
+
+    RSC -->|"every render checks the clock"| REFRESH
+    DB --> RSC
+    DB --> API
+    RSC --> HTML["SSR HTML · first 40 rows"]
+    API --> JSON["JSON"]
+    VMA --> JSON
+
+    GATE --> OPS
+    OPS --> DB
+```
+
+**Ingest is lazy.** There is no cron. `page.tsx` sets `revalidate = 600`, and
+each render calls `refreshEventsIfNeeded()`, which fetches only if the last
+successful fetch is older than 10 minutes. A database with fewer than 200 rows
+triggers a backfill over previous days instead of a single page. A counter caps
+the process at 1440 upstream calls per 24 hours, so a pathological revalidation
+loop cannot turn into a scrape.
+
+### Two sources, one timeline
+
+The subtle part. `events` holds the live feed; `bpk_events` holds the imported
+archive. They overlap in time, and an event present in both must not be counted
+twice or shown twice.
+
+The boundary is not configured, it is derived: **`MIN(event_time)` over the live
+table**. Live data wins for every period it covers, and the archive supplies
+everything strictly older.
+
+```text
+  2016                                          cutoff        now
+    |                                              |            |
+    +---------- bpk_events  SERVED ----------------+            |
+    |                                              +--- events -+
+    |                                              |   SERVED   |
+    |                                              +------------+
+    |                                              | bpk_events |
+    |                                              |  IGNORED   |
+    |                                              +------------+
+
+  cutoff = MIN(event_time) over `events`
+  not to scale: the archive spans ten years, the live feed about one week
+```
+
+| Row is | Comes from | Because |
+|---|---|---|
+| older than the cutoff | `bpk_events` | the live feed does not reach there |
+| at or after the cutoff | `events` | the live source is authoritative for its own window |
+| in `bpk_events` at or after the cutoff | nothing | it would be a duplicate of a live row |
+
+Queries `UNION ALL` the two tables through a column list that renames the
+archive's schema onto the live one. Archive rows surface with a **negated `id`**,
+which is what makes one integer identify a row from either table across the
+whole app, including `?handelse=-506277` links.
+
+```
+events        e.id, e.event_time, e.name, e.summary, e.type, e.location_name …
+bpk_events   -b.id, b.pubdate,   b.headline, b.description, b.title_type, b.title_location …
+              ▲
+              └ negative: the id space is shared, and the sign says which table
+```
+
+`hasArchiveEvents()` is checked first, so an install that never imported the
+archive runs single-table queries with no union at all.
+
+### Request paths
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant P as proxy.ts (Node runtime)
+    participant S as Server Component
+    participant A as /api/events
+    participant D as SQLite
+    participant U as polisen.se
+
+    B->>P: GET /?vy=lista&sok=brand
+    Note over P: matcher covers /stats and<br/>/api/import only, passes through
+    P->>S: render
+    S->>D: getLastFetchTime()
+    alt older than 10 min
+        S->>U: GET /api/events
+        U-->>S: events
+        S->>D: upsert by content hash
+    end
+    S->>D: getEventsFromDb(filters, 40, 0)
+    S-->>B: SSR HTML, first 40 rows
+
+    B->>A: scroll → GET /api/events?page=2
+    A->>D: same filters, offset 40
+    A-->>B: JSON
+    Note over B,D: paging is the client's job.<br/>the server never renders page 2
+```
+
+### Storage
+
+| Table | Rows | Written by | Read by |
+|---|---|---|---|
+| `events` | live feed, ~a week deep | `refreshEventsIfNeeded()` | feed, map, statistics |
+| `bpk_events` | ~333k, 2016 → | importer | same, below the cutoff |
+| `bpk_search` | FTS5 shadow of `bpk_events` | rebuilt on import | archive search |
+| `bpk_import_state` | exactly 1 | importer | `/stats`, resume on boot |
+| `fetch_log` | one row per upstream fetch | `refreshEventsIfNeeded()` | `/stats` |
+| `meta` | key/value | migrations | schema version, tokenizer |
+
+`bpk_search` uses the **trigram** tokenizer, not `unicode61`. Trigram matches
+substrings the way `LIKE '%…%'` does, so `guldsmed` finds `guldsmedsaffär`,
+which Swedish compounding makes necessary. It costs roughly 350 MB of index on
+a full archive against ~55 MB for `unicode61`; `BPK_SEARCH_TOKENIZER` switches
+it and the index rebuilds on next boot.
+
+Writes are idempotent. Live events upsert on a content hash, so a notice the
+police edit updates in place rather than duplicating. Nothing stores the fact
+that it was edited: the row is flagged as updated when `last_updated` and
+`publish_time` differ, which is derived at read time. Archive rows have no
+equivalent and are never flagged.
+
+### Caching
+
+Read-heavy aggregates are memoised in-process with a TTL, not in a cache server.
+
+| What | TTL | Why |
+|---|---|---|
+| archive cutoff, row count | 60 s | read on nearly every query |
+| map events | 60 s | one query serves every viewer |
+| statistics summary | 60 min | full-table aggregate over ~333k rows |
+| VMA alerts | 60 s | one upstream request per minute regardless of traffic |
+
+The VMA feed is fetched **server-side only**. That keeps the page's
+`connect-src` closed, serves every reader from one upstream request, and turns
+an outage at Sveriges Radio into a stated "we cannot reach it" rather than a
+failed request in every visitor's browser.
+
+### The import, and why it resumes
+
+`bpk_import_state` is a single row. The API walk records `last_page_done` after
+each page, so a container restart mid-import continues from the next page
+instead of starting over or double-importing.
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> running: POST /api/import/brottsplatskartan<br/>or BPK_IMPORT_ON_START
+    running --> running: page done → last_page_done++
+    running --> idle: finished, cancelled, or failed<br/>(last_error recorded)
+    note right of running
+        Restart mid-run resumes
+        from last_page_done + 1.
+        Progress streams over SSE.
+    end note
+```
+
+An NDJSON dump takes a different path: ~15,000 rows/second in one transaction,
+so a full archive lands in well under a minute against a few hours for the API
+walk.
+
 ## Quick start
 
 ```bash
@@ -102,7 +282,7 @@ of dump fields to columns: **[docs/import.md](docs/import.md)**.
 npm install
 npm run dev            # http://localhost:3000
 npm run lint
-npm test               # 179 tests
+npm test               # 315 tests across 28 suites
 npx tsc --noEmit
 npm run build          # production build
 ```
@@ -122,29 +302,37 @@ Releases are published by tagging; see **[docs/publishing.md](docs/publishing.md
 
 ```
 src/
-├── app/                     # Next.js App Router
-│   ├── page.tsx             # Feed (Server Component)
+├── proxy.ts                 # Basic auth gate for /stats and /api/import
+│                            #   (Node runtime; was middleware.ts before Next 16)
+├── app/
+│   ├── page.tsx             # Feed. revalidate = 600, triggers the upstream fetch
 │   ├── stats/               # Operational dashboard
 │   └── api/
-│       ├── events/          # GET  /api/events
-│       ├── details/         # GET  /api/details
-│       ├── health/          # GET  /api/health (container healthcheck)
-│       ├── map/             # GET  /api/map
+│       ├── events/          # paging past the first 40
+│       ├── details/         # full notice text, scraped or from the archive
+│       ├── map/             # markers for one time window
+│       ├── vma/             # Sveriges Radio CAP proxy, 60 s TTL
+│       ├── health/          # container healthcheck
 │       └── import/brottsplatskartan/
 │           ├── route.ts     # status / start / cancel
 │           └── stream/      # server-sent progress
-├── components/              # Feed, map, statistics, dashboard, ImportPanel
-├── hooks/
+├── components/              # EventList · EventMap · StatsView · VmaRibbon
+│                            #   VmaView · ImportPanel · OperationalDashboard
+├── hooks/                   # useMapEvents · useVma · useDarkTheme · useNow
 ├── lib/
-│   ├── db.ts                # SQLite: schema, migrations, queries
-│   ├── policeApi.ts         # polisen.se client
-│   ├── brottsplatskartan.ts # API-walking importer
-│   ├── brottsplatskartanNdjson.ts  # dump importer
-│   ├── brottsplatskartanRunner.ts  # the one in-flight import + live progress
+│   ├── db.ts                # schema, migrations, the two-table union, caches
+│   ├── policeApi.ts         # polisen.se client, backfill, fetch budget
+│   ├── vmaApi.ts            # CAP v3 parsing, live-alert rules
+│   ├── brottsplatskartan.ts        # API-walking importer (resumable)
+│   ├── brottsplatskartanNdjson.ts  # dump importer (~15k rows/s)
+│   ├── brottsplatskartanRunner.ts  # the one in-flight import + progress
+│   ├── brottsplatskartanDb.ts      # archive reads
 │   ├── importSource.ts      # where a dump may be read from
+│   ├── urlParams.ts         # the Swedish query vocabulary (vy, plats, typ…)
+│   ├── cache.ts             # memoizeWithTtl
 │   └── rateLimit.ts
-├── __tests__/
-└── types/
+├── __tests__/               # 315 tests, 28 suites
+└── types/                   # event shapes, the type→family→colour registry
 
 scripts/                     # export-db.sh, import-db.sh, import-brottsplatskartan.ts
 data/                        # bind-mounted: events.db, dumps (created at runtime)
