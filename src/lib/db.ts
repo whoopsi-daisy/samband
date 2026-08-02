@@ -78,6 +78,17 @@ function initializeDatabase(database: Database.Database): void {
     )
   `);
 
+  // The dashboard login, when it is not coming from the environment. One row,
+  // enforced by the CHECK rather than by whoever writes next. See adminAuth.ts.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS admin_user (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      username TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   runMigrations(database);
 }
 

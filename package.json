@@ -11,7 +11,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "import:bpk": "tsx scripts/import-brottsplatskartan.ts"
+    "import:bpk": "tsx scripts/import-brottsplatskartan.ts",
+    "admin:reset": "tsx scripts/reset-admin.ts"
   },
   "engines": {
     "node": ">=22.0.0"

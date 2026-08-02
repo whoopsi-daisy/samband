@@ -390,7 +390,9 @@ written and read while an import is in flight, and a completed import leaves the
 
 ## HTTP reference
 
-All four are behind `STATS_USER`/`STATS_PASSWORD` when those are set.
+All four are behind the same HTTP Basic login as `/stats`: either
+`STATS_USER`/`STATS_PASSWORD`, or the account chosen at `/stats/setup`. With
+neither, they answer `503` and point at the setup page.
 
 | Method | Path | Does |
 |--------|------|------|

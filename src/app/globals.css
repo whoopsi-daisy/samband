@@ -2860,6 +2860,112 @@ main {
 
 .ops-log-time { color: var(--muted); flex-shrink: 0; }
 
+/* ── First-run setup (/stats/setup) ───────────────────────────
+   One form, seen once per installation. It sits on its own rather than
+   inheriting the dashboard's density: nothing competes with it, so the measure
+   is short and the fields are full width. */
+
+.setup {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-8);
+}
+
+.setup-column {
+  width: 100%;
+  max-width: 30rem;
+}
+
+.setup-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-secondary);
+}
+
+.setup-brand svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.setup-panel {
+  padding: var(--space-6);
+}
+
+.setup-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-snug);
+  color: var(--fg);
+}
+
+.setup-lead {
+  margin-top: var(--space-2);
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.setup-field { margin-top: var(--space-5); }
+
+.setup-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  color: var(--fg);
+}
+
+.setup-input { width: 100%; }
+
+.setup-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.setup-hint--alert { color: var(--alert); }
+
+.setup .ops-alert { margin-top: var(--space-5); }
+
+.setup-submit {
+  width: 100%;
+  margin-top: var(--space-6);
+  text-decoration: none;
+}
+
+.setup-footnote {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* A filename or a variable name is one token. Letting it wrap puts a tinted
+   background around half a word at the end of a line and the other half at the
+   start of the next, which reads as two things. */
+.setup code {
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
 /* ── Responsive ───────────────────────────────────────────── */
 
 @media (max-width: 600px) {

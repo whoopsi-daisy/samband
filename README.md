@@ -35,7 +35,7 @@ flowchart TB
     RSC["page.tsx · Server Component"]
     API["/api/events · /api/map · /api/details"]
     VMA["/api/vma"]
-    GATE["proxy.ts · Basic auth"]
+    GATE["proxy.ts · Basic auth<br/>env pair or admin_user"]
     OPS["/stats · /api/import"]
 
     POL -->|"at most 1 fetch per 10 min"| REFRESH
@@ -137,6 +137,37 @@ sequenceDiagram
     Note over B,D: paging is the client's job.<br/>the server never renders page 2
 ```
 
+### Who gets into /stats
+
+`proxy.ts` runs before `/stats/:path*` and `/api/import/:path*`, and resolves
+one of four states per request:
+
+```mermaid
+flowchart LR
+    REQ["request to /stats<br/>or /api/import"] --> ENV{"STATS_USER and<br/>STATS_PASSWORD set?"}
+    ENV -->|yes| BASIC["Basic auth against the env pair"]
+    ENV -->|no| ROW{"admin_user row?"}
+    ROW -->|yes| HASH["Basic auth against a scrypt hash"]
+    ROW -->|no| PUB{"STATS_PUBLIC=true?"}
+    PUB -->|yes| OPEN["through, no login"]
+    PUB -->|no| SETUP["307 to /stats/setup<br/>503 for /api"]
+```
+
+The environment pair wins so that an install already deploying with it keeps
+working unchanged. With neither, the first start prints an installation key and
+`/stats/setup` exchanges it for a username and password. That key is what stops
+whoever finds the URL first from claiming the dashboard, and it, along with the
+setup page itself, is destroyed the moment the account exists.
+
+The gate needs the database on every gated request, which is why the auth check
+lives in `proxy.ts` rather than a Next 15 `middleware.ts`: middleware ran on the
+Edge runtime and could not load `better-sqlite3`.
+
+A forgotten password cannot be recovered, only replaced: `npm run admin:reset`
+deletes the row and the next start prints a new key. Setting the environment
+pair works too, since it outranks the row. Both need a shell on the host, which
+is the point.
+
 ### Storage
 
 | Table | Rows | Written by | Read by |
@@ -146,7 +177,8 @@ sequenceDiagram
 | `bpk_search` | FTS5 shadow of `bpk_events` | rebuilt on import | archive search |
 | `bpk_import_state` | exactly 1 | importer | `/stats`, resume on boot |
 | `fetch_log` | one row per upstream fetch | `refreshEventsIfNeeded()` | `/stats` |
-| `meta` | key/value | migrations | schema version, tokenizer |
+| `meta` | key/value | migrations, setup | schema version, tokenizer, installation key |
+| `admin_user` | at most 1 | `/stats/setup` | `proxy.ts`, on every gated request |
 
 `bpk_search` uses the **trigram** tokenizer, not `unicode61`. Trigram matches
 substrings the way `LIKE '%…%'` does, so `guldsmed` finds `guldsmedsaffär`,
@@ -211,8 +243,13 @@ docker compose up -d
 ```
 
 The app is on <http://localhost:3000>; `docker compose ps` should show
-`(healthy)` within 40 seconds. Edit `.env` to set a port, credentials for
-`/stats` (which stays closed until you do), or a pinned release.
+`(healthy)` within 40 seconds. Edit `.env` to set a port or pin a release.
+
+`/stats` needs a login before it will open. `docker compose logs` prints an
+installation key on the first start; paste it at `/stats/setup` and pick a
+username and password, which are stored as a scrypt hash. Setting
+`STATS_USER` and `STATS_PASSWORD` in `.env` instead fixes the login at deploy
+time and takes precedence.
 
 That is the whole deployment. Everything else: reverse proxies, updating,
 rollback, backups, migrating an existing install: is in
@@ -306,21 +343,26 @@ src/
 │                            #   (Node runtime; was middleware.ts before Next 16)
 ├── app/
 │   ├── page.tsx             # Feed. revalidate = 600, triggers the upstream fetch
-│   ├── stats/               # Operational dashboard
+│   ├── stats/
+│   │   ├── page.tsx         # Operational dashboard
+│   │   └── setup/           # first-run username and password
 │   └── api/
 │       ├── events/          # paging past the first 40
 │       ├── details/         # full notice text, scraped or from the archive
 │       ├── map/             # markers for one time window
 │       ├── vma/             # Sveriges Radio CAP proxy, 60 s TTL
 │       ├── health/          # container healthcheck
+│       ├── admin/setup/     # creates the account; guards itself, not gated
 │       └── import/brottsplatskartan/
 │           ├── route.ts     # status / start / cancel
 │           └── stream/      # server-sent progress
 ├── components/              # EventList · EventMap · StatsView · VmaRibbon
 │                            #   VmaView · ImportPanel · OperationalDashboard
+│                            #   AdminSetupForm
 ├── hooks/                   # useMapEvents · useVma · useDarkTheme · useNow
 ├── lib/
 │   ├── db.ts                # schema, migrations, the two-table union, caches
+│   ├── adminAuth.ts         # scrypt hashing, the installation key, precedence
 │   ├── policeApi.ts         # polisen.se client, backfill, fetch budget
 │   ├── vmaApi.ts            # CAP v3 parsing, live-alert rules
 │   ├── brottsplatskartan.ts        # API-walking importer (resumable)
@@ -331,10 +373,11 @@ src/
 │   ├── urlParams.ts         # the Swedish query vocabulary (vy, plats, typ…)
 │   ├── cache.ts             # memoizeWithTtl
 │   └── rateLimit.ts
-├── __tests__/               # 315 tests, 28 suites
+├── __tests__/               # 386 tests, 32 suites
 └── types/                   # event shapes, the type→family→colour registry
 
 scripts/                     # export-db.sh, import-db.sh, import-brottsplatskartan.ts
+                             #   reset-admin.ts
 data/                        # bind-mounted: events.db, dumps (created at runtime)
 docs/                        # deploy, import, publishing, reference
 ```
