@@ -498,20 +498,43 @@ export interface VmaAlert {
 }
 
 // Operational monitoring types
+
+/** One hour of the last 24, split by outcome so a failure is visible. */
+export interface HourlyFetches {
+  ok: number;
+  failed: number;
+}
+
+export interface FetchError {
+  fetchedAt: string;
+  /** Coarse bucket, for scanning a column of them. */
+  errorType: string;
+  /** What the upstream actually said. The page is behind a login. */
+  message: string | null;
+}
+
 export interface OperationalStats {
   totalFetches: number;
   successfulFetches: number;
   failedFetches: number;
   fetches24h: number;
+  successfulFetches24h: number;
+  failedFetches24h: number;
   fetches7d: number;
+  /** Over the whole log. Barely moves once a container has been up a while. */
   successRate: number;
+  /** Over 24 hours, which is the one that reacts to an outage in progress. */
+  successRate24h: number;
   avgFetchInterval: number;
   lastSuccessfulFetch: string | null;
   lastFailedFetch: string | null;
-  recentErrors: Array<{ fetched_at: string; error_type: string }>;
-  hourlyFetches: number[];
+  /** Minutes since the last fetch that worked. Null if none ever has. */
+  minutesSinceLastSuccess: number | null;
+  recentErrors: FetchError[];
+  hourlyFetches: HourlyFetches[];
   avgEventsPerFetch: number;
   eventsAddedToday: number;
+  /** Successful fetches in 24h against the 144 a 10-minute schedule expects. */
   uptimeScore: number;
 }
 
@@ -522,6 +545,7 @@ export interface FetchLogEntry {
   eventsNew: number;
   success: boolean;
   errorType: string | null;
+  errorMessage: string | null;
 }
 
 export interface DatabaseHealth {
@@ -534,9 +558,37 @@ export interface DatabaseHealth {
   oldestEvent: string | null;
   newestEvent: string | null;
   eventsByType: Array<{ type: string; count: number }>;
+  /** Age of the newest stored event. A quiet night raises it legitimately. */
   dataFreshnessMinutes: number;
   updatedEvents: number;
   updatedEventsPercent: number;
+}
+
+/**
+ * What the container is, as opposed to what it has fetched.
+ *
+ * Every field here answers a question that used to need a shell on the host:
+ * where the database actually is, how big it has grown, whether TZ survived
+ * the deploy, and whether the search index matches the setting it was built
+ * from.
+ */
+export interface SystemSnapshot {
+  dataDir: string;
+  databaseBytes: number;
+  /** The -wal sidecar. A large one means a checkpoint is overdue. */
+  walBytes: number;
+  timeZone: string;
+  /** The app parses Swedish wall-clock times; anything else shifts them. */
+  timeZoneCorrect: boolean;
+  nodeVersion: string;
+  processUptimeSeconds: number;
+  searchTokenizer: {
+    configured: string;
+    built: string | null;
+    /** False while a rebuild is still pending after the setting changed. */
+    matches: boolean;
+  };
+  archive: { events: number; cutoff: string | null };
 }
 
 // Brottsplatskartan import types

@@ -1,23 +1,31 @@
 import { Suspense } from 'react';
-import { getOperationalStats, getRecentFetchLogs, getDatabaseHealth, getStatsSummary } from '@/lib/db';
+import {
+  getOperationalStats,
+  getRecentFetchLogs,
+  getDatabaseHealth,
+  getSystemSnapshot,
+} from '@/lib/db';
+import { MAX_DAILY_FETCHES } from '@/lib/policeApi';
 import OperationalDashboard from '@/components/OperationalDashboard';
 
-// Disable caching for real-time stats
+// Never cached: the whole point of the page is what is true right now, and the
+// dashboard asks for a fresh render on a timer.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-async function StatsContent() {
+function StatsContent() {
   const operationalStats = getOperationalStats();
-  const fetchLogs = getRecentFetchLogs(25);
-  const databaseHealth = getDatabaseHealth();
-  const eventStats = getStatsSummary();
 
   return (
     <OperationalDashboard
       operationalStats={operationalStats}
-      fetchLogs={fetchLogs}
-      databaseHealth={databaseHealth}
-      eventStats={eventStats}
+      fetchLogs={getRecentFetchLogs(25)}
+      databaseHealth={getDatabaseHealth()}
+      system={getSystemSnapshot()}
+      // fetches24h is the same count the limiter checks before every upstream
+      // call, so the gauge cannot drift from what is actually enforced.
+      fetchBudget={{ used: operationalStats.fetches24h, limit: MAX_DAILY_FETCHES }}
+      generatedAt={new Date().toISOString()}
     />
   );
 }

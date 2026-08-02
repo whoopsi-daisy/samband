@@ -149,6 +149,7 @@
   --pill-accent-ink: color-mix(in srgb, var(--accent), #000 8%);
   --pill-muted-ink: color-mix(in srgb, var(--muted), #000 8%);
   --pill-alert-ink: color-mix(in srgb, var(--alert), #000 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #000 8%);
 
   /* Status hues. Three, each AA on --bg and on a 12% tint of itself. Used for
      live/error/stale signals, never decoratively.
@@ -222,6 +223,7 @@
   /* Plain --alert on its own 12% tint is 4.32:1 here: under AA for 11px
      badge text. The lightened ink clears it at 4.73:1. */
   --pill-alert-ink: color-mix(in srgb, var(--alert), #fff 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #fff 8%);
 
   --ok: #46c07d;
   --warn: #e8a94e;
@@ -402,6 +404,14 @@ main:focus { outline: none; }
   color: var(--pill-muted-ink);
   background: var(--subtle);
   border-color: var(--border);
+}
+
+/* Success. OK used to wear .badge--neutral, which is the same wash the
+   accent-adjacent chips use, so a healthy log column read as a row of links. */
+.badge--ok {
+  color: var(--pill-ok-ink);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
 }
 
 .badge--alert {
@@ -2583,6 +2593,8 @@ main {
 
 .info-value--muted { color: var(--muted); font-weight: var(--weight-normal); }
 .info-value--ok { color: var(--ok); }
+.info-value--warn { color: var(--warn); }
+.info-value--alert { color: var(--alert); }
 
 /* ── Footer ───────────────────────────────────────────────── */
 
@@ -2678,6 +2690,17 @@ main {
   padding: 0 var(--gutter) var(--space-12);
 }
 
+/* The global `main` caps itself at the 760px reading column and adds its own
+   gutter, which is right for an article and wrong here: the dashboard header
+   sat at 1088px while everything under it was squeezed to 728px and centred,
+   so the top of the page overhung the rest by 180px on each side. The
+   container already owns the width and the gutter. */
+.ops-container main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 .ops-header {
   padding: var(--space-5) 0 var(--space-4);
   border-bottom: 1px solid var(--border);
@@ -2689,18 +2712,260 @@ main {
   gap: var(--space-3);
 }
 
-.ops-title {
+/* The way back to the app, and the only branding on the page. It used to have
+   neither: you arrived by typing the URL and left the same way. */
+.ops-brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  color: var(--fg);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
 }
 
-.ops-title p {
-  font-size: var(--text-xs);
-  color: var(--muted);
+.ops-brand:hover { text-decoration: none; }
+.ops-brand:hover .ops-brand-page { color: var(--accent-strong); }
+
+.ops-brand svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ops-brand-sep { color: var(--border-strong); font-weight: var(--weight-normal); }
+.ops-brand-page { color: var(--fg-secondary); font-weight: var(--weight-semi); }
+
+.ops-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
 }
 
 .ops-timestamp {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  /* The label counts up between refreshes, so reserve the width it will grow
+     into rather than nudging the buttons sideways every fifteen seconds. */
+  min-width: 12ch;
+}
+
+.ops-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ops-toggle input { accent-color: var(--accent); }
+
+/* ── The verdict ──────────────────────────────────────────────
+   The page opens with a sentence, not with three percentages. Knowing that
+   "Drifttid 100 % / Lyckade 98,2 % / Datafärskhet 63m" means nothing is wrong
+   takes knowing what those look like when something is. */
+
+.ops-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.ops-verdict .dot { margin-top: 6px; flex-shrink: 0; }
+
+.ops-verdict--ok { border-left-color: var(--ok); }
+.ops-verdict--warn {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+}
+.ops-verdict--alert {
+  border-left-color: var(--alert);
+  background: color-mix(in srgb, var(--alert) 7%, var(--surface));
+}
+
+.ops-verdict-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-snug);
+  color: var(--fg);
+}
+
+.ops-verdict-detail {
+  margin-top: var(--space-1);
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+/* ── Metric tiles ─────────────────────────────────────────────
+   One shape for every headline number, always with what it is measured
+   against underneath. The old page reused the same tile for health
+   percentages, lifetime counters and table sizes, so nothing about a box told
+   you whether its number was good. */
+
+/* Four to a row, always, because every group here has exactly four. auto-fit
+   picked its own count from the available width and left a lone tile on a
+   second row at most desktop sizes, which is what made the sections look
+   ragged against each other. */
+.ops-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .ops-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .ops-metrics { grid-template-columns: 1fr; }
+}
+
+.ops-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.ops-metric-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.ops-metric-value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.ops-metric-note {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Tone rings the tile and colours the number. Only the ones that are not fine
+   get a colour, so a healthy page is quiet and a problem is the only thing
+   with a hue on it. */
+.ops-metric--warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--border));
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+}
+.ops-metric--warn .ops-metric-value { color: var(--warn); }
+
+.ops-metric--alert {
+  border-color: color-mix(in srgb, var(--alert) 40%, var(--border));
+  background: color-mix(in srgb, var(--alert) 7%, var(--surface));
+}
+.ops-metric--alert .ops-metric-value { color: var(--alert); }
+
+/* Deliberately no rule for the healthy case: a tile only takes on a colour
+   when it wants something. On a working system the whole grid is plain ink and
+   the verdict at the top carries the signal, so a single amber tile is the one
+   thing on the screen with a hue on it. */
+
+/* ── Fetch timeline ───────────────────────────────────────────
+   24 columns, each split by outcome. Counting attempts alone drew six
+   identical bars an hour whatever was happening; a failed pass is now the one
+   column that is not a plain full bar. */
+
+.ops-timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  /* Grows into whatever height the card beside it sets, rather than leaving a
+     third of the card empty under a 96px chart. */
+  flex: 1;
+  min-height: 96px;
+}
+
+.card--chart {
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-timeline-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 100%;
+}
+
+.ops-timeline-track {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  overflow: hidden;
+}
+
+.ops-timeline-bar { width: 100%; }
+.ops-timeline-bar--ok { background: var(--accent); }
+.ops-timeline-bar--failed { background: var(--alert); }
+
+.ops-timeline-hour {
+  margin-top: var(--space-1);
+  height: 1em;
+  font-size: var(--text-2xs);
+  line-height: 1;
+  color: var(--muted);
+  text-align: center;
+}
+
+.ops-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.ops-legend-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: var(--space-1);
+  display: inline-block;
+}
+
+.ops-legend-key--ok { background: var(--accent); }
+.ops-legend-key--failed { background: var(--alert); }
+.ops-legend-note { margin-left: auto; }
+
+.ops-outro {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
   font-size: var(--text-xs);
   color: var(--muted);
 }
@@ -2721,7 +2986,15 @@ main {
   color: var(--muted);
 }
 
-.ops-table-wrap { overflow-x: auto; }
+/* The log used to run to 25 full-height rows and take a third of the page,
+   most of it identical OK lines. It keeps all 25, inside a window: the header
+   is already sticky, so scrolling it reads like a terminal rather than
+   pushing the database section below three screens of nothing happening. */
+.ops-table-wrap {
+  overflow-x: auto;
+  max-height: 22rem;
+  overflow-y: auto;
+}
 
 .ops-table {
   width: 100%;
@@ -2753,6 +3026,29 @@ main {
 .ops-table tr:last-child td { border-bottom: none; }
 .ops-table-time { color: var(--muted); }
 
+/* Counts line up on the decimal so a column of them can be read down. */
+.ops-table-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* The reason to open the table at all, so it is tinted rather than filed in a
+   separate list built from the same rows. */
+.ops-table-row--failed td { background: color-mix(in srgb, var(--alert) 6%, transparent); }
+
+/* What the upstream actually said. Allowed to be long and to be cut: the full
+   text is in the title, and the column must not push the counts off screen. */
+.ops-table-message {
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.ops-table-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--muted);
+}
+
 .ops-note {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
@@ -2760,32 +3056,6 @@ main {
   color: var(--muted);
 }
 
-.ops-error-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.ops-error-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--alert) 25%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--alert) 8%, transparent);
-  font-size: var(--text-xs);
-}
-
-.ops-error-time { color: var(--muted); flex-shrink: 0; }
-.ops-error-type { font-weight: var(--weight-semi); overflow-wrap: anywhere; }
-
-.ops-footer {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-  font-size: var(--text-2xs);
-  color: var(--muted);
-}
 
 .ops-controls {
   display: flex;
@@ -2803,6 +3073,20 @@ main {
 .ops-row .field { flex: 1; min-width: 180px; }
 
 .ops-hint { font-size: var(--text-2xs); color: var(--muted); }
+
+.ops-hint--alert {
+  margin-top: var(--space-2);
+  color: var(--alert);
+  line-height: var(--leading-normal);
+}
+
+.info-value code {
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
 
 .ops-alert {
   padding: var(--space-2) var(--space-3);
