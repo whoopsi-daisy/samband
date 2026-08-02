@@ -61,7 +61,10 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   stats: {
     title: 'Statistik',
-    lede: 'Vad som händer, när det händer och var. Räknat på allt som finns lagrat.',
+    // No lede: every block on this view opens with its own, and a page-level
+    // one on top of "Den senaste tiden" said the same thing twice before the
+    // reader reached a single number.
+    lede: '',
   },
 };
 
@@ -209,7 +212,7 @@ function ClientAppContent({
       <main id="main-content" tabIndex={-1}>
         <div className="view-header">
           <h1>{intro.title}</h1>
-          <p>{intro.lede}</p>
+          {intro.lede && <p>{intro.lede}</p>}
         </div>
 
         {/* The map reads the same filters as the list, so the controls belong
@@ -246,6 +249,7 @@ function ClientAppContent({
           error={map.error}
           onRetry={map.retry}
           onShowList={showList}
+          isFiltered={Boolean(filters.location || filters.type || filters.search)}
         />
 
         {currentView === 'vma' && (

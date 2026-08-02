@@ -19,6 +19,8 @@ interface EventMapProps {
   onRetry?: () => void;
   /** Take the reader to the feed, keeping their filters. */
   onShowList?: () => void;
+  /** Whether a place, type or search is set, so the empty state can say why. */
+  isFiltered?: boolean;
 }
 
 /**
@@ -125,6 +127,7 @@ function EventMapInner({
   error = false,
   onRetry,
   onShowList,
+  isFiltered = false,
 }: EventMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
@@ -164,6 +167,12 @@ function EventMapInner({
         zoom: 5,
         zoomControl: true,
         attributionControl: false,
+        // Leaflet's default is whole zoom steps, and fitBounds always rounds
+        // down to fit. Sweden's markers need about z5.5 in this canvas, so
+        // every fit landed on z5 and drew the country at two thirds of the
+        // size it had room for, ringed by empty map. Quarter steps take that
+        // back without letting tiles scale far enough to go soft.
+        zoomSnap: 0.25,
       });
 
       const tileLayer = L.tileLayer(basemapUrl(isDarkRef.current), {
@@ -274,6 +283,12 @@ function EventMapInner({
     if (!hasFittedBoundsRef.current && groups.length > 0) {
       const bounds = layer.getBounds();
       if (bounds.isValid()) {
+        // Measure the container first. Leaflet caches the map size, and the
+        // invalidateSize calls that correct it run on timers after init, so a
+        // fit that happened before them framed the markers against whatever
+        // size Leaflet had recorded at startup. The looser the fit, the more
+        // empty canvas around a country that is mostly empty canvas already.
+        map.invalidateSize({ animate: false });
         map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
         hasFittedBoundsRef.current = true;
       }
@@ -361,10 +376,16 @@ function EventMapInner({
               whether it was the period or the filter. */}
           {!loading && !error && groups.length === 0 && (
             <div className="map-overlay" role="status">
+              {/* "i det du filtrerat på" was unconditional, so an unfiltered
+                  map with a quiet night told the reader to check a filter they
+                  had never set. */}
               <span className="map-overlay-text">
+                {isFiltered
+                  ? `Inget ${activeWindow.phrase} matchar det du filtrerat på.`
+                  : `Inga händelser med koordinater ${activeWindow.phrase}.`}{' '}
                 {windowDays < 30
-                  ? `Inget hände ${activeWindow.phrase} i det du filtrerat på. Prova en längre period, eller sök i listan.`
-                  : 'Inget hände den senaste månaden i det du filtrerat på. Äldre händelser finns i listan.'}
+                  ? 'Prova en längre period, eller sök i listan.'
+                  : 'Äldre händelser finns i listan.'}
               </span>
               {onShowList && (
                 <button type="button" className="btn-quiet" onClick={onShowList}>
@@ -382,6 +403,13 @@ function EventMapInner({
             {groups.length > 0 && groups.length < mappable
               ? `, på ${groups.length.toLocaleString('sv-SE')} platser`
               : ''}
+          </span>
+          {/* One clause, in the band that already says what is drawn. The
+              second sentence explained that stacked incidents share a point,
+              which the count beside it ("86 händelser, på 15 platser") says
+              on its own. */}
+          <span className="map-hint">
+            Punkten sitter där anmälan skrevs, inte nödvändigtvis där något hände.
           </span>
         </p>
 
@@ -405,10 +433,6 @@ function EventMapInner({
           </div>
         )}
 
-        <p className="map-hint">
-          Punkten sitter där anmälan skrevs, vilket inte alltid är exakt där något hände. Flera
-          händelser på samma adress visas som en punkt.
-        </p>
       </div>
     </div>
   );

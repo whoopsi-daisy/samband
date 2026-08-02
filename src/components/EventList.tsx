@@ -536,15 +536,13 @@ export default function EventList({
                 )}
               </button>
             )}
-            {/* The remaining count used to sit in the button's own label, which
-                read as an invitation to reach the end of the archive forty rows
-                at a time. With an import loaded that is thousands of taps. Say
-                how much there is, and point at the way that actually reaches
-                it. */}
+            {/* Just the way out. This used to open with the number of matching
+                events, which on an unfiltered feed is the size of the whole
+                archive: a six-figure count nobody asked for, sitting where the
+                reader is looking for what to do next. */}
             {total > events.length + PAGE_SIZE && (
               <p className="load-more-hint">
-                {total.toLocaleString('sv-SE')} händelser matchar. Sök eller filtrera för att nå
-                längre bak i arkivet.
+                Sök eller filtrera för att nå längre bak i arkivet.
               </p>
             )}
           </>

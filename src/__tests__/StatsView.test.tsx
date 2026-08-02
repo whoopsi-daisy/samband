@@ -165,9 +165,30 @@ describe('StatsView', () => {
     expect(recent).toBeLessThan(archive);
   });
 
-  it('says where the numbers come from when an archive is loaded', () => {
+  // The archive is dated by publication, not by occurrence, which is the one
+  // thing on this page a reader cannot work out from the charts. The counting
+  // that used to open this paragraph was inventory: three numbers to read past
+  // before reaching the part that changes how the charts should be read.
+  it('keeps the caveat about the archive and drops the inventory', () => {
     render(<StatsView stats={createStats()} />);
-    expect(screen.getByText(/importerade från Brottsplatskartan/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/daterade när de publicerades/i)).toBeInTheDocument();
+    expect(screen.queryByText(/importerade från Brottsplatskartan/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/händelsetyper förekommer/i)).not.toBeInTheDocument();
+  });
+
+  // How many notices are stored is not what anyone came for, and an exact
+  // six-figure number invites being quoted as if it were a measurement.
+  it('states the grand total as a floor, not a count', () => {
+    render(<StatsView stats={createStats({ total: 337174 })} />);
+
+    expect(screen.getByText('300 000+')).toBeInTheDocument();
+    expect(screen.queryByText('337 174')).not.toBeInTheDocument();
+  });
+
+  it('still counts exactly on a small database', () => {
+    render(<StatsView stats={createStats({ total: 412 })} />);
+    expect(screen.getByText('412')).toBeInTheDocument();
   });
 
   it('says so when there is no archive at all', () => {

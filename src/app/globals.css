@@ -1908,8 +1908,13 @@ main {
   z-index: 0;
 }
 
+/* Sweden is about twice as tall as it is wide, so a taller box renders the
+   same bounds larger: at 648px the markers use 90% of the canvas height
+   against 67% at 600px with whole-step zoom. Capped rather than left to grow,
+   because every pixel past this pushes the count and the key further below the
+   fold. Most of the framing came from zoomSnap in EventMap, not from here. */
 .map-canvas {
-  height: min(68vh, 600px);
+  height: min(72vh, 680px);
   width: 100%;
   background: var(--subtle);
 }
@@ -1978,13 +1983,13 @@ main {
   font-weight: var(--weight-semi);
 }
 
+/* Folded into the status band rather than given a border and a band of its
+   own. Three stacked strips under the map (count, legend, caveat) was more
+   chrome than the thing it was explaining. */
 .map-hint {
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  font-size: var(--text-xs);
+  flex-basis: 100%;
+  margin-top: var(--space-1);
   line-height: var(--leading-normal);
-  color: var(--muted);
 }
 
 /* Key for the marker colours. The map has always been colour-coded by incident

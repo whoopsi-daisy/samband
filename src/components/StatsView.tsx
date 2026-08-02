@@ -32,6 +32,21 @@ function formatDay(iso: string): string {
 const sv = (value: number) => value.toLocaleString('sv-SE');
 
 /**
+ * A total as a floor rather than a count.
+ *
+ * How many notices are stored is not something a reader came for, and an exact
+ * six-figure number invites being quoted as if it meant something: it moves
+ * every ten minutes, and it counts what happens to have been imported rather
+ * than what happened. Rounded down with a "+", it says the size of the thing
+ * and stops claiming more than that. Nothing computed from it changes.
+ */
+function approxTotal(value: number): string {
+  if (value < 1000) return sv(value);
+  const step = value >= 100_000 ? 100_000 : value >= 10_000 ? 10_000 : 1_000;
+  return `${sv(Math.floor(value / step) * step)}+`;
+}
+
+/**
  * One question the page answers, with the charts that answer it.
  *
  * The page used to be a wall: nine tiles, then six charts, in no order beyond
@@ -608,7 +623,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
         lede="Vad databasen innehåller, och varifrån det kommer."
       >
         <div className="stats-grid stats-grid--four">
-          <Stat value={sv(stats.total)} label="Händelser totalt" />
+          <Stat value={approxTotal(stats.total)} label="Händelser totalt" />
           <Stat value={coverage.value} label={coverage.label} />
           <Stat value={sv(stats.avgPerDay)} label="Snitt per dygn" />
           {stats.busiestDay ? (
@@ -622,26 +637,21 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           )}
         </div>
 
-        <p className="stats-coverage">
-          {stats.archiveEvents > 0 ? (
-            <>
-              {sv(stats.archiveEvents)} av händelserna är importerade från Brottsplatskartan
-              {stats.archiveCutoff ? ` fram till ${coverageDay(stats.archiveCutoff)}` : ''}, resten
-              kommer från polisens egen händelseström. {sv(stats.uniqueLocations)} platser och{' '}
-              {sv(stats.uniqueTypes)} händelsetyper förekommer.{' '}
-              {/* The two sources timestamp differently, and on a page that now
-                  reads a decade it is worth saying so once. */}
-              De importerade händelserna är daterade när de publicerades, inte när de inträffade,
-              vilket kan flytta enstaka händelser till dygnet efter.
-            </>
-          ) : (
-            <>
-              Endast polisens egen händelseström. Inget arkiv är importerat.{' '}
-              {sv(stats.uniqueLocations)} platser och {sv(stats.uniqueTypes)} händelsetyper
-              förekommer.
-            </>
-          )}
-        </p>
+        {/* The one thing here a reader cannot work out from the charts. The
+            paragraph used to open by counting the archive and the distinct
+            places and types, which is inventory: three numbers to read past
+            before reaching the caveat that actually changes how the charts
+            should be read. */}
+        {stats.archiveEvents > 0 ? (
+          <p className="stats-coverage">
+            De importerade händelserna är daterade när de publicerades, inte när de inträffade,
+            vilket kan flytta enstaka händelser till dygnet efter.
+          </p>
+        ) : (
+          <p className="stats-coverage">
+            Endast polisens egen händelseström. Inget arkiv är importerat.
+          </p>
+        )}
       </Block>
     </>
   );
