@@ -53,7 +53,7 @@ afterEach(() => {
 describe('the year-by-month grid', () => {
   it('gives every year twelve cells, oldest first', () => {
     let id = 1;
-    id = fill(id, `${thisYear - 2}-03-10`, 5, ['Stöld']);
+    id = fill(id, `${thisYear - 2}-01-10`, 5, ['Stöld']);
     id = fill(id, `${thisYear - 1}-07-10`, 8, ['Stöld']);
     fill(id, `${thisYear}-01-10`, 3, ['Stöld']);
     db.invalidateAggregateCaches();
@@ -63,6 +63,47 @@ describe('the year-by-month grid', () => {
     expect(grid[1].months).toHaveLength(12);
     expect(grid[1].months[6]).toBe(8); // July
     expect(grid[1].total).toBe(8);
+  });
+
+  // An archive that opens in March puts a row at the top of the grid that is
+  // short for a reason that has nothing to do with how much happened, and it
+  // is the row the eye lands on first.
+  it('drops a first year the record does not cover from January', () => {
+    let id = 1;
+    id = fill(id, `${thisYear - 2}-08-10`, 5, ['Stöld']);
+    id = fill(id, `${thisYear - 1}-07-10`, 8, ['Stöld']);
+    fill(id, `${thisYear}-01-10`, 3, ['Stöld']);
+    db.invalidateAggregateCaches();
+
+    const grid = db.getStatsSummary().monthGrid;
+    expect(grid.map((row) => row.year)).toEqual([thisYear - 1, thisYear]);
+  });
+
+  // The year in progress has the same shape at the other end, and stays: it is
+  // the current one, and it is marked rather than hidden.
+  it('keeps the running year even though it is short', () => {
+    const id = fill(1, `${thisYear - 1}-01-10`, 4, ['Stöld']);
+    fill(id, `${thisYear}-01-10`, 3, ['Stöld']);
+    db.invalidateAggregateCaches();
+
+    const grid = db.getStatsSummary().monthGrid;
+    expect(grid[grid.length - 1].year).toBe(thisYear);
+    expect(grid[grid.length - 1].running).toBe(true);
+  });
+
+  // Below twenty pixels a cell stops being readable, and a decade is already
+  // more history than any question on this page reaches for.
+  it('shows at most ten years', () => {
+    let id = 1;
+    for (let back = 14; back >= 0; back--) {
+      id = fill(id, `${thisYear - back}-01-10`, 2, ['Stöld']);
+    }
+    db.invalidateAggregateCaches();
+
+    const grid = db.getStatsSummary().monthGrid;
+    expect(grid).toHaveLength(10);
+    expect(grid[grid.length - 1].year).toBe(thisYear);
+    expect(grid[0].year).toBe(thisYear - 9);
   });
 
   // An archive that starts in March has no January, and a zero there would

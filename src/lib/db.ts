@@ -1349,6 +1349,8 @@ function yearlyFromDays(days: Map<string, number>): YearlyStats[] {
  * an archive that starts in March 2016 has no January, and drawing it as an
  * empty month says the opposite.
  */
+const MAX_GRID_YEARS = 10;
+
 function monthGridFromDays(days: Map<string, number>, now: Date): MonthGridRow[] {
   if (days.size === 0) return [];
 
@@ -1384,7 +1386,17 @@ function monthGridFromDays(days: Map<string, number>, now: Date): MonthGridRow[]
     }
     rows.push({ year, months, total, running: year === runningYear });
   }
-  return rows;
+
+  // The first year of an archive usually starts partway through, and a row
+  // that begins in July sits at the top of the grid reading as a quiet year.
+  // The year in progress has the same problem at the other end, but it is the
+  // current one and belongs on the chart; this one is only history the source
+  // happens not to have.
+  if (rows.length > 1 && rows[0].months[0] === null) rows.shift();
+
+  // Ten rows is as much as the grid can carry before the cells go under 20px,
+  // and a decade is already more history than any question here reaches for.
+  return rows.slice(-MAX_GRID_YEARS);
 }
 
 /**
