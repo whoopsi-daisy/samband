@@ -1591,49 +1591,56 @@ main {
    walked toward black (or, in dark, toward white) until it clears 4.5:1 on that
    wash: the family colours were chosen as solid map markers and their
    luminance ranges from #991b1b to #f59e0b, so one shared mix ratio would leave
-   half of them unreadable. Every value below was computed against its own tint
-   and the surface it sits on, and the lowest in the set is 4.50:1. */
+   half of them unreadable.
+
+   Each ink is computed against the WORST of the surfaces a row can present,
+   not against its resting one. A row is also hovered, and the open one is
+   raised, and the deep-linked one carries the accent wash; each of those is
+   lighter than --surface, which thins the tint and drops the contrast. Tuned
+   to --surface alone, every family in the set landed between 3.87:1 and 4.45:1
+   the moment a card was moused over or opened. Lowest in the set now: 4.60:1,
+   on all four surfaces, in both themes. */
 .event-type { --tag-tint: 10%; }
 [data-theme="dark"] .event-type { --tag-tint: 20%; }
 
-.event-type[data-family="death"]        { --tag: #991b1b; --tag-ink: #ca2424; }
-.event-type[data-family="sexual"]       { --tag: #9f1239; --tag-ink: #c8204f; }
-.event-type[data-family="weapons"]      { --tag: #b91c1c; --tag-ink: #cc2121; }
-.event-type[data-family="violence"]     { --tag: #f43f5e; --tag-ink: #d02240; }
-.event-type[data-family="harassment"]   { --tag: #ec4899; --tag-ink: #ca2174; }
-.event-type[data-family="fire"]         { --tag: #ef4444; --tag-ink: #d02222; }
-.event-type[data-family="robbery"]      { --tag: #f59e0b; --tag-ink: #936518; }
-.event-type[data-family="theft"]        { --tag: #c2410c; --tag-ink: #b4491d; }
-.event-type[data-family="damage"]       { --tag: #a16207; --tag-ink: #936118; }
-.event-type[data-family="traffic"]      { --tag: #3b82f6; --tag-ink: #2367d7; }
-.event-type[data-family="intoxication"] { --tag: #0891b2; --tag-ink: #17768c; }
-.event-type[data-family="drugs"]        { --tag: #10b981; --tag-ink: #147d5a; }
+.event-type[data-family="death"]        { --tag: #991b1b; --tag-ink: #b82121; }
+.event-type[data-family="sexual"]       { --tag: #9f1239; --tag-ink: #b61e48; }
+.event-type[data-family="weapons"]      { --tag: #b91c1c; --tag-ink: #ba1e1e; }
+.event-type[data-family="violence"]     { --tag: #f43f5e; --tag-ink: #bd1f3a; }
+.event-type[data-family="harassment"]   { --tag: #ec4899; --tag-ink: #b81e6a; }
+.event-type[data-family="fire"]         { --tag: #ef4444; --tag-ink: #bf1f1f; }
+.event-type[data-family="robbery"]      { --tag: #f59e0b; --tag-ink: #885e16; }
+.event-type[data-family="theft"]        { --tag: #c2410c; --tag-ink: #a4431b; }
+.event-type[data-family="damage"]       { --tag: #a16207; --tag-ink: #865816; }
+.event-type[data-family="traffic"]      { --tag: #3b82f6; --tag-ink: #205fc5; }
+.event-type[data-family="intoxication"] { --tag: #0891b2; --tag-ink: #156c81; }
+.event-type[data-family="drugs"]        { --tag: #10b981; --tag-ink: #137252; }
 .event-type[data-family="fraud"]        { --tag: #8b5cf6; --tag-ink: #5c24db; }
-.event-type[data-family="environment"]  { --tag: #65a30d; --tag-ink: #4f7914; }
-.event-type[data-family="rescue"]       { --tag: #14b8a6; --tag-ink: #147b70; }
+.event-type[data-family="environment"]  { --tag: #65a30d; --tag-ink: #486e12; }
+.event-type[data-family="rescue"]       { --tag: #14b8a6; --tag-ink: #127066; }
 .event-type[data-family="police"]       { --tag: #6366f1; --tag-ink: #2428db; }
-.event-type[data-family="other"]        { --tag: #64748b; --tag-ink: #5e6d83; }
-.event-type[data-family="unknown"]      { --tag: #94a3b8; --tag-ink: #5d708b; }
+.event-type[data-family="other"]        { --tag: #64748b; --tag-ink: #556377; }
+.event-type[data-family="unknown"]      { --tag: #94a3b8; --tag-ink: #54667f; }
 
 /* Dark keeps the same hue and walks the ink the other way. */
-[data-theme="dark"] .event-type[data-family="death"]        { --tag-ink: #db6666; }
-[data-theme="dark"] .event-type[data-family="sexual"]       { --tag-ink: #da6283; }
-[data-theme="dark"] .event-type[data-family="weapons"]      { --tag-ink: #dc6868; }
-[data-theme="dark"] .event-type[data-family="violence"]     { --tag-ink: #df7587; }
-[data-theme="dark"] .event-type[data-family="harassment"]   { --tag-ink: #df75a9; }
-[data-theme="dark"] .event-type[data-family="fire"]         { --tag-ink: #df7777; }
-[data-theme="dark"] .event-type[data-family="robbery"]      { --tag-ink: #d09839; }
-[data-theme="dark"] .event-type[data-family="theft"]        { --tag-ink: #d67851; }
-[data-theme="dark"] .event-type[data-family="damage"]       { --tag-ink: #cf8e30; }
-[data-theme="dark"] .event-type[data-family="traffic"]      { --tag-ink: #709ade; }
-[data-theme="dark"] .event-type[data-family="intoxication"] { --tag-ink: #30b0cf; }
+[data-theme="dark"] .event-type[data-family="death"]        { --tag-ink: #df7777; }
+[data-theme="dark"] .event-type[data-family="sexual"]       { --tag-ink: #df7592; }
+[data-theme="dark"] .event-type[data-family="weapons"]      { --tag-ink: #e07b7b; }
+[data-theme="dark"] .event-type[data-family="violence"]     { --tag-ink: #e38999; }
+[data-theme="dark"] .event-type[data-family="harassment"]   { --tag-ink: #e389b6; }
+[data-theme="dark"] .event-type[data-family="fire"]         { --tag-ink: #e38989; }
+[data-theme="dark"] .event-type[data-family="robbery"]      { --tag-ink: #d9aa5c; }
+[data-theme="dark"] .event-type[data-family="theft"]        { --tag-ink: #dc8a68; }
+[data-theme="dark"] .event-type[data-family="damage"]       { --tag-ink: #d2963f; }
+[data-theme="dark"] .event-type[data-family="traffic"]      { --tag-ink: #85a9e2; }
+[data-theme="dark"] .event-type[data-family="intoxication"] { --tag-ink: #3db5d1; }
 [data-theme="dark"] .event-type[data-family="drugs"]        { --tag-ink: #30cf9a; }
-[data-theme="dark"] .event-type[data-family="fraud"]        { --tag-ink: #a387e3; }
+[data-theme="dark"] .event-type[data-family="fraud"]        { --tag-ink: #b098e7; }
 [data-theme="dark"] .event-type[data-family="environment"]  { --tag-ink: #8dcf30; }
 [data-theme="dark"] .event-type[data-family="rescue"]       { --tag-ink: #30cfbd; }
-[data-theme="dark"] .event-type[data-family="police"]       { --tag-ink: #8d8fe4; }
-[data-theme="dark"] .event-type[data-family="other"]        { --tag-ink: #8a97ab; }
-[data-theme="dark"] .event-type[data-family="unknown"]      { --tag-ink: #94a3b8; }
+[data-theme="dark"] .event-type[data-family="police"]       { --tag-ink: #9c9de8; }
+[data-theme="dark"] .event-type[data-family="other"]        { --tag-ink: #99a4b5; }
+[data-theme="dark"] .event-type[data-family="unknown"]      { --tag-ink: #a5b1c3; }
 
 /* A fixed advance, so the type words line up in a column down the list however
    wide the glyph the font happens to pick. */
