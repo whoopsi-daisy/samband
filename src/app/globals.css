@@ -862,6 +862,13 @@ main {
 
 .view-header { margin-bottom: var(--space-4); }
 
+/* Level with the wordmark, not above it.
+   At 22px against the brand's 18px, whichever view you happened to be on was
+   the largest thing on the screen, and "Senaste händelserna" outranked the name
+   of the product. Both are set at --text-lg now: the title still leads the
+   column against a 13px lede and 15px rows, and it no longer wins the page. */
+.view-header h1 { font-size: var(--text-lg); }
+
 /* A sentence, so it is set at reading size rather than at caption size, and it
    runs to the width of the column it sits under.
 
@@ -2985,14 +2992,27 @@ main {
       calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-6));
   }
 
-  /* Tighten the block above the first card. Measured at 375x667, 44% of the
-     screen was chrome before any incident: the title and its sentence do not
-     need desktop leading on a screen where every line they take is a line of
-     the feed the reader cannot see. The wording is unchanged; only the space
-     around it is. The lede stays at 13px: it is a sentence, and shaving it to
-     12 would buy about two pixels a line at the cost of reading it. */
-  h1 { font-size: var(--text-lg); }
-  .view-header { margin-bottom: var(--space-3); }
+  /* The title block goes away, and stays in the accessibility tree.
+     A phone gets the bottom nav, whose active tab already names the view:
+     "Lista" at the bottom and "Senaste händelserna" at the top are the same
+     word twice, and the lede under it explains that tapping a card opens it,
+     which the chevron on every card says without spending a line. Together
+     they were 67px, and the first incident started a third of the way down
+     the screen on a page whose whole job is the incidents.
+
+     Hidden rather than dropped: it is still the document's h1, and it is how
+     a screen reader user knows which view they landed on, since they have no
+     highlighted tab to look at. */
+  .view-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 
   .site-footer {
     padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-4));
