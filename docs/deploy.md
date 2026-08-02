@@ -47,8 +47,36 @@ sudo chown -R 1001:1001 data
 
 ## 3. Configure
 
-Edit `.env`. Every value has a working default, so an empty file starts fine:
-except `/stats`, which answers `503` until you give it credentials:
+Edit `.env`. Every value has a working default, so an empty file starts fine.
+
+The one thing that needs a decision is the login for `/stats`, which shows
+fetch logs, error history and database internals, and whose import API can
+start or cancel a run lasting hours. There are two ways to give it one.
+
+**Pick it in the browser** (nothing to put in `.env`). The first start prints
+an installation key:
+
+```
+┌ Sambandscentralen ───────────────────────────────────────────────┐
+│ No admin account yet. To use /stats, open /stats/setup           │
+│ and paste this installation key:                                 │
+│                                                                  │
+│     EysCkrng9PXidItIU1NjqLqX-9muOtXb                             │
+...
+```
+
+Open `/stats/setup`, paste it, and choose a username and password. The
+password is stored as a scrypt hash, so it is never in a compose file, a
+dashboard, or your shell history. The key is also written to
+`data/admin-setup-token.txt`, and both it and the setup page disappear once
+the account exists. `npm run admin:reset` on the host starts the whole thing
+over, which is the way back in if the password is lost.
+
+The key exists because whoever opens that page first would otherwise own the
+dashboard. On a network nothing else can reach while you set it up,
+`ADMIN_SETUP_OPEN=true` drops it.
+
+**Or fix it at deploy time**, which is what an automated deployment wants:
 
 ```bash
 STATS_USER=admin
@@ -56,11 +84,12 @@ STATS_PASSWORD=change-me
 chmod 600 .env
 ```
 
-`/stats` shows fetch logs, error history and database internals, and the
-import API behind it can start or cancel a run lasting hours. It used to be
-reachable without a login whenever these were unset, which is what an
-untouched `.env` gives you, so the default is now closed. If you genuinely
-want it open (a private network, say), ask for that explicitly with
+These take precedence over an account created in the browser, so an existing
+install that already sets them keeps working untouched.
+
+Either way there is a login. `/stats` used to be reachable without one
+whenever these were unset, which is what an untouched `.env` gives you. If you
+genuinely want it open (a private network, say), ask for that explicitly with
 `STATS_PUBLIC=true` rather than by leaving the fields blank.
 
 Full list: [`.env.example`](../.env.example). Do not change `TZ`: the app
@@ -242,11 +271,14 @@ docker run -d \
   --init \
   -p 3000:3000 \
   -e TZ=Europe/Stockholm \
-  -e STATS_USER=admin \
-  -e STATS_PASSWORD=change-me \
   -v /opt/samband/data:/app/data \
   ghcr.io/whoopsi-daisy/samband:latest
+
+docker logs samband   # the installation key for /stats/setup
 ```
+
+Add `-e STATS_USER=admin -e STATS_PASSWORD=change-me` instead if you would
+rather set the login here than pick it in the browser.
 
 The healthcheck is baked into the image, so `docker ps` shows `(healthy)` here
 too.
@@ -312,7 +344,9 @@ container**: that file is your rollback.
 |---------|---------------|
 | Container is `Up` but never `(healthy)` | `/api/health` is failing. `docker compose logs` |
 | `SQLITE_CANTOPEN` / `attempt to write a readonly database` | The container now takes ownership of its data directory at boot, so this should be gone. If it survives (read-only mount, NFS, `user:` set in compose), the log names the directory, the uid and the fix: `sudo chown -R 1001:1001 data` |
-| `/stats` returns 503 "Systemstatus är avstängd" | `STATS_USER`/`STATS_PASSWORD` are unset. Set them, or `STATS_PUBLIC=true` to leave it open on purpose |
+| `/stats` redirects to `/stats/setup` | No login exists yet. Paste the installation key from the startup log, or set `STATS_USER`/`STATS_PASSWORD` |
+| `/stats/setup` refuses the key | It is per installation and per database. Read the current one from `data/admin-setup-token.txt`, not from an older log |
+| Lost the `/stats` password | `npm run admin:reset` on the host, or `docker compose exec samband npm run admin:reset`. The next start prints a new key |
 | Event times are 1–2 hours off | `TZ` is not `Europe/Stockholm` |
 | Feed is empty on a fresh install | Backfill has not finished; wait a minute and check `/stats` |
 | Every visitor shares one rate limit | `RATE_LIMIT_PROXY_HOPS` is wrong for your proxy chain |

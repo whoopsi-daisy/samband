@@ -29,11 +29,15 @@ services:
       # Reverse-proxy hops in front of the app; the client IP for rate limiting
       # is read this many entries from the right of X-Forwarded-For.
       RATE_LIMIT_PROXY_HOPS: ${RATE_LIMIT_PROXY_HOPS:-1}
-      # HTTP Basic auth for the /stats dashboard and the import API. With both
-      # unset those routes answer 503; set STATS_PUBLIC=true to deliberately
-      # leave them open instead.
+      # The login for /stats and the import API. Leave both unset and the first
+      # start prints an installation key to the log: open /stats/setup, paste
+      # it, and choose a username and password there. Setting them here fixes
+      # the login at deploy time instead, and takes precedence.
       STATS_USER: ${STATS_USER:-}
       STATS_PASSWORD: ${STATS_PASSWORD:-}
+      # ADMIN_SETUP_OPEN=true drops the installation key; STATS_PUBLIC=true
+      # drops the login entirely.
+      ADMIN_SETUP_OPEN: ${ADMIN_SETUP_OPEN:-}
       STATS_PUBLIC: ${STATS_PUBLIC:-}
       # Optional import on startup:
       #   ndjson      - load BPK_IMPORT_SOURCE once, then keep it current
