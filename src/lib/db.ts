@@ -735,6 +735,23 @@ interface SqlFragment {
  */
 const SUMMARY_TYPE_PATTERN = '%Sammanfattning%';
 
+/**
+ * The press desk's nightly boilerplate.
+ *
+ * "Efter klockan 22:00 finns ingen presstalesperson i tjänst. Frågor från media
+ * besvaras av vakthavande befäl i mån av tid." Word for word the same text,
+ * filed once per region, every night around 21:50. It reports no incident, it
+ * is addressed to journalists rather than to the public, and seven copies of it
+ * arrive together at the top of the feed each evening and push the day's actual
+ * events down the page.
+ *
+ * Matched on the phrase rather than on the type, because "Övrigt" also carries
+ * real notices and dropping the whole type would take those with it. Nothing is
+ * deleted: the rows stay in the database and in the statistics, they are only
+ * kept out of the feed and the map.
+ */
+const PRESS_DESK_PATTERN = '%presstalesperson%';
+
 interface QueryOptions {
   /** Drop the police's scheduled summary posts from the result. */
   excludeSummaries?: boolean;
@@ -753,6 +770,11 @@ function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFr
     sql += " AND COALESCE(e.type, '') NOT LIKE ?";
     params.push(SUMMARY_TYPE_PATTERN);
   }
+
+  // Unconditional, and applied here rather than at a call site so the feed and
+  // the count that pages it can never disagree about how many rows there are.
+  sql += " AND COALESCE(e.summary, '') NOT LIKE ?";
+  params.push(PRESS_DESK_PATTERN);
 
   if (filters.location) {
     sql += ' AND e.location_name = ?';
@@ -807,6 +829,10 @@ function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): Sq
     sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
     params.push(SUMMARY_TYPE_PATTERN);
   }
+
+  // The archive carries the same boilerplate under its own column name.
+  sql += " AND COALESCE(b.description, '') NOT LIKE ?";
+  params.push(PRESS_DESK_PATTERN);
 
   if (filters.location) {
     sql += ` AND ${ARCHIVE_LOCATION} = ?`;
