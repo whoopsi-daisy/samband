@@ -20,6 +20,9 @@ const nextConfig = {
   transpilePackages: ['leaflet'],
   // Allow Turbopack (default in Next.js 16) with empty config
   turbopack: {},
+  // Next sends `X-Powered-By: Next.js` on every response by default, which
+  // names the framework to anyone scanning for one. It buys nothing.
+  poweredByHeader: false,
   // Security headers
   async headers() {
     // React's development build and the dev server's HMR client both use
@@ -42,6 +45,36 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Nothing here asks for a camera, a microphone, a location or a
+          // payment handler, and the browser default is to allow the page to
+          // request them. Denying them outright means an injected script
+          // cannot prompt for one in the site's name.
+          {
+            key: 'Permissions-Policy',
+            value: [
+              'accelerometer=()',
+              'camera=()',
+              'display-capture=()',
+              'geolocation=()',
+              'gyroscope=()',
+              'magnetometer=()',
+              'microphone=()',
+              'payment=()',
+              'usb=()',
+            ].join(', '),
+          },
+          // Only in production, and only meaningful over TLS: browsers ignore
+          // it on a plain-HTTP origin, so it costs a local `npm start`
+          // nothing. A reverse proxy that already sets this wins, since it
+          // terminates TLS and answers the first request on the domain.
+          ...(isProduction
+            ? [
+                {
+                  key: 'Strict-Transport-Security',
+                  value: 'max-age=31536000; includeSubDomains',
+                },
+              ]
+            : []),
           {
             key: 'Content-Security-Policy',
             value: [
