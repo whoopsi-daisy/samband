@@ -39,6 +39,39 @@ export const COUNTIES = [
 
 export type County = (typeof COUNTIES)[number];
 
+/**
+ * Sweden's official county codes, which are the first two digits of every
+ * municipality code. Not a sequence: 02, 11, 15 and 16 were counties that have
+ * since been merged away, and their numbers were not reused.
+ *
+ * This is what joins the map geometry to the counted data. The geometry names
+ * its features by code rather than by name, which is the right way round: a
+ * code is stable and a name is a spelling.
+ */
+export const COUNTY_BY_CODE: Record<string, County> = {
+  '01': 'Stockholms län',
+  '03': 'Uppsala län',
+  '04': 'Södermanlands län',
+  '05': 'Östergötlands län',
+  '06': 'Jönköpings län',
+  '07': 'Kronobergs län',
+  '08': 'Kalmar län',
+  '09': 'Gotlands län',
+  '10': 'Blekinge län',
+  '12': 'Skåne län',
+  '13': 'Hallands län',
+  '14': 'Västra Götalands län',
+  '17': 'Värmlands län',
+  '18': 'Örebro län',
+  '19': 'Västmanlands län',
+  '20': 'Dalarnas län',
+  '21': 'Gävleborgs län',
+  '22': 'Västernorrlands län',
+  '23': 'Jämtlands län',
+  '24': 'Västerbottens län',
+  '25': 'Norrbottens län',
+};
+
 /** Every municipality, by the county it sits in. */
 export const MUNICIPALITIES: Record<County, string[]> = {
   'Stockholms län': [

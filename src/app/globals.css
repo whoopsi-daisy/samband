@@ -3095,6 +3095,189 @@ main {
   text-align: right;
 }
 
+/* ── Sverige, länsvis ─────────────────────────────────────────
+   A choropleth: twenty-one paths, no basemap, no map library.
+
+   The ramp is one hue, light to dark, derived from --accent rather than
+   borrowed: the darkest step IS --accent, and the three above it are the same
+   OKLCH hue at rising lightness and falling chroma, so a pale county is the
+   same blue as a dark one rather than drifting to grey. Four steps, not five or
+   six, because four is what let every adjacent pair stay ~10 apart in OKLab —
+   at six the palest two were 6.6 apart, which is inside the range where a
+   reader cannot tell two neighbouring counties apart.
+
+   Dark mode is selected, not flipped. An inverted light ramp puts its dark end
+   against a dark surface, where the low bin disappears; these steps climb away
+   from the dark card instead. Both sets clear 2:1 against their own surface at
+   the pale end, so no county can dissolve into the card it sits on — Gotland is
+   an island with no neighbours to give it an edge. */
+:root {
+  --choro-0: #8fb7ea;
+  --choro-1: #6899d6;
+  --choro-2: #407ac2;
+  --choro-3: #0d5cad;
+}
+
+[data-theme="dark"] {
+  --choro-0: #365780;
+  --choro-1: #4476b3;
+  --choro-2: #5c96df;
+  --choro-3: #82b9fe;
+}
+
+.county-map {
+  margin: 0 0 var(--space-5);
+}
+
+/* Map on the left, everything that explains it on the right. Stacked, the
+   block ran to most of a screen before the table it introduces; side by side it
+   uses the width the card already has and the legend sits at eye level with the
+   shading it describes. */
+.county-map-figure {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-6);
+}
+
+.county-map-svg,
+.county-map-placeholder {
+  width: 100%;
+  height: auto;
+}
+
+/* Holds the space the map will take, so nothing below jumps down the page when
+   the geometry lands. */
+.county-map-placeholder {
+  aspect-ratio: 320 / 723.5;
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+
+.county-shape {
+  /* The surface between fills, so two counties in the same bin still read as
+     two counties. A darker outline would fight the ramp for attention. */
+  stroke: var(--surface);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  transition: fill var(--t-fast) var(--ease);
+}
+
+/* A county the breakdown has no row for. Should not happen, but a hole drawn
+   as a hole is better than one silently painted as the lowest bin. */
+.county-shape--none {
+  fill: var(--subtle);
+}
+
+.county-shape--hover {
+  stroke: var(--fg);
+  stroke-width: 1.4;
+}
+
+.county-map-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Optically level with the top of the country rather than with the top of the
+     viewbox, which carries the padding and a slice of empty Baltic. */
+  padding-top: var(--space-2);
+}
+
+/* Fixed height, so hovering does not shuffle the legend under it. */
+.county-map-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 3.25rem;
+  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.county-map-readout-name {
+  font-weight: var(--weight-semi);
+  font-size: var(--text-base);
+  color: var(--fg);
+}
+
+.county-map-readout-value {
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.county-map-readout-hint {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  max-width: 22ch;
+  line-height: var(--leading-normal);
+}
+
+.county-map-legend-label {
+  display: block;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* One per row rather than wrapped inline: the four ranges then read as a scale
+   from pale to dark, which is what they are. */
+.county-map-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.county-map-step {
+  display: grid;
+  grid-template-columns: 14px auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.county-map-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
+}
+
+.county-map-note {
+  max-width: 34ch;
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* The map is an overview and the table below is the data. On a phone there is
+   no second column to put the key in, and a full-height Sweden would push the
+   table most of a screen down, so both shrink. */
+@media (max-width: 640px) {
+  .county-map-figure {
+    grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .county-map-readout {
+    min-height: 2.75rem;
+    margin-bottom: var(--space-4);
+  }
+
+  .county-map-note {
+    max-width: none;
+    margin-top: var(--space-4);
+  }
+}
+
 /* ── Län för län ──────────────────────────────────────────────
    A real table, not a list of buttons: these rows are read against each other
    down four columns, which is what a table is for, and unlike the top lists

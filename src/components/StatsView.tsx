@@ -13,6 +13,7 @@ import {
   getTypeStyle,
 } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
+import CountyMap from './CountyMap';
 
 interface StatsViewProps {
   stats: Statistics;
@@ -656,6 +657,10 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           lede="Var i landet notiserna skrivs, och åt vilket håll det har gått det senaste året."
         >
           <div className="card">
+            {/* The overview first, then the numbers. The map answers "where in
+                the country" at a glance and answers nothing precisely; the
+                table under it is where every value actually lives. */}
+            <CountyMap regions={stats.regions} />
             <RegionTable regions={stats.regions} />
             <p className="chart-caption">
               Andelen är av de {sv(stats.regions.placed)} notiser som går att placera i ett län.
