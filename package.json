@@ -13,7 +13,7 @@
     "test:coverage": "jest --coverage",
     "import:bpk": "tsx scripts/import-brottsplatskartan.ts",
     "admin:reset": "tsx scripts/reset-admin.ts",
-    "build:geo": "tsx scripts/build-county-paths.ts"
+    "build:geo": "tsx scripts/build-county-paths.ts && tsx scripts/build-municipality-centroids.ts"
   },
   "engines": {
     "node": ">=22.0.0"

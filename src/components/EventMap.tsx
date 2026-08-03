@@ -384,7 +384,22 @@ function EventMapInner({
         // size Leaflet had recorded at startup. The looser the fit, the more
         // empty canvas around a country that is mostly empty canvas already.
         map.invalidateSize({ animate: false });
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+        /*
+         * Sweden is roughly 1,570 km tall and 500 km wide and this canvas is
+         * wider than it is tall, so a country-wide fit is always decided by the
+         * height and the spare width fills with sea. That is not something
+         * padding can fix, and it is the same on any map of Sweden in a
+         * landscape frame; the deployed map only looked so empty because there
+         * were twenty-one dots in it.
+         *
+         * What padding can do is stop giving away vertical room, which is the
+         * axis that sets the zoom. The horizontal figure is nearly free.
+         */
+        map.fitBounds(bounds, {
+          paddingTopLeft: [8, 32],
+          paddingBottomRight: [8, 32],
+          maxZoom: 11,
+        });
         hasFittedBoundsRef.current = true;
       }
     }

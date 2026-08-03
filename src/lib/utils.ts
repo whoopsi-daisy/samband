@@ -1,4 +1,5 @@
 import { EventWithMetadata, FormattedEvent, getTypeStyle } from '@/types';
+import { MUNICIPALITY_CENTROIDS } from './municipalityCentroids';
 
 // Which Swedish calendar day an instant falls on, as "YYYY-MM-DD".
 //
@@ -124,6 +125,40 @@ export function placeFromTitle(title: string, location: string): string {
   return place;
 }
 
+/**
+ * Where to draw a notice, which is not always where polisen.se said.
+ *
+ * The feed sets `location.name` to a county and `location.gps` to that county's
+ * centre for a large share of its notices. Twenty-one counties means twenty-one
+ * coordinates: a month of national notices drew 380 incidents as 21 dots, each
+ * sitting in the middle of a county, most of them nowhere near anything that
+ * happened. A map that cannot say which town is not a map.
+ *
+ * The notice's own title is finer, and the app already recovers the
+ * municipality from it for the feed rows. Where it has one, and where the
+ * location field is only a county, the municipality's centre is used instead:
+ * twenty times tighter, and the same thing Brottsplatskartan did to produce the
+ * archive's coordinates, so the two sources finally agree.
+ *
+ * Deliberately conservative. It only ever replaces a county centre, never a
+ * position the feed gave at municipal level or finer, and only with a
+ * municipality this app can name. Anything it cannot improve it leaves alone.
+ *
+ * The honest limit: the centre used is the municipality's polygon centroid, not
+ * the town of the same name. For a compact southern kommun those are within a
+ * few kilometres; for a large northern one they are not. It remains an order of
+ * magnitude better than a county centre, and the map already says the point is
+ * where the report was written rather than where something happened.
+ */
+export function positionFor(location: string, place: string, gps: string): string {
+  if (!place || !isCounty(location)) return gps;
+
+  const centroid = MUNICIPALITY_CENTROIDS.get(place.toLowerCase().replace(/\s+/g, ' ').trim());
+  if (!centroid) return gps;
+
+  return `${centroid[0]},${centroid[1]}`;
+}
+
 export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
   const now = new Date();
   const eventTime = event.event_time || event.datetime || now.toISOString();
@@ -143,6 +178,7 @@ export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
 
   const name = event.name || '';
   const location = event.location?.name || '';
+  const place = placeFromTitle(name, location);
 
   return {
     id: event.id ?? null,
@@ -152,8 +188,8 @@ export function formatEventForUi(event: EventWithMetadata): FormattedEvent {
     url: event.url || '',
     type,
     location,
-    place: placeFromTitle(name, location),
-    gps: event.location?.gps || '',
+    place,
+    gps: positionFor(location, place, event.location?.gps || ''),
     color: style.color,
     emoji: style.emoji,
     date: {
