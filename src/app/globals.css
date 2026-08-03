@@ -2090,7 +2090,7 @@ main {
    at a mark before they look at a colour, so this comes first. */
 .map-key-marks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: var(--space-2) var(--space-5);
   margin: 0;
   padding: 0;
@@ -2129,6 +2129,16 @@ main {
   width: 22px;
   height: 22px;
   box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+/* The merged-positions sample carries the same faint outer ring the map draws
+   on a cluster, which is what tells it apart from a single busy place. */
+.map-key-sample--cluster {
+  width: 22px;
+  height: 22px;
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 0 4px color-mix(in srgb, var(--muted) 35%, transparent);
 }
 
 /* The live ring, at rest. No animation: it is a still sample of a thing, and a
@@ -2206,40 +2216,26 @@ main {
   text-wrap: pretty;
 }
 
-/* ── Grouped markers ──────────────────────────────────────────
-   A position holding several incidents is drawn as its count. The fill and the
-   ink are computed per family in markerInk.ts, because the eighteen family
-   colours run from near-black red to a pale slate and no single ink clears AA
-   on all of them. */
-.map-cluster-icon { background: none; border: none; }
+/* ── Map pins ─────────────────────────────────────────────────
+   One kind of mark for every position, whether it holds one incident or a
+   hundred, and the same mark again for a cluster of positions that merely
+   overlap on screen. Singles used to be SVG circles, which markercluster
+   cannot take and which never accepted keyboard focus.
 
-/* Two positions sixty kilometres apart are a few pixels apart at country zoom,
-   so markers overlap and the one underneath cannot be clicked where it is
-   covered. WCAG 2.5.8 exempts exactly this (a marker's size and position on a
-   map are the information), and the answer for a pointer is to zoom in.
-   A keyboard has no such move, so a focused marker comes to the front: Leaflet
-   sets the stacking order per latitude on the element itself, which is why this
-   has to out-shout an inline style. */
-.map-cluster-icon:focus-visible {
-  z-index: 1000 !important;
-  outline: none;
-}
+   Fill and ink are computed per family in markerInk.ts, because the eighteen
+   family colours run from near-black red to a pale slate and no single ink
+   clears AA on all of them. */
+.map-pin-icon { background: none; border: none; }
 
-.map-cluster-icon:focus-visible .map-cluster {
-  box-shadow:
-    0 0 0 2px var(--bg),
-    0 0 0 5px var(--accent);
-}
-
-.map-cluster {
+.map-pin {
   display: grid;
   place-items: center;
-  width: var(--cluster-size);
-  height: var(--cluster-size);
+  width: var(--pin-size);
+  height: var(--pin-size);
   border-radius: var(--radius-full);
-  background: var(--cluster-fill);
-  color: var(--cluster-ink);
-  /* White, not the theme background: the ring separates the bubble from the
+  background: var(--pin-fill);
+  color: var(--pin-ink);
+  /* White, not the theme background: the ring separates the pin from the
      basemap, and the basemap is light in both themes' terms here. */
   box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.35);
   font-size: 11px;
@@ -2248,11 +2244,49 @@ main {
   line-height: 1;
 }
 
-.map-cluster--recent {
+/* A single incident is a dot rather than a full-size bubble: it carries no
+   number, so it needs no room for one. The hit area stays the icon's own
+   28px, which is what WCAG 2.5.8 measures. */
+.map-pin:not(.map-pin--many) {
+  width: 13px;
+  height: 13px;
+  justify-self: center;
+  align-self: center;
+  margin: auto;
+}
+
+/* Merged positions, as opposed to one position holding several incidents.
+   Faintly ringed so the two are not quite the same mark: this one splits if
+   you zoom in, and the other never will. */
+.map-pin--cluster {
+  box-shadow:
+    0 0 0 1.5px #fff,
+    0 0 0 4px color-mix(in srgb, var(--pin-fill) 30%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.map-pin--recent {
   box-shadow:
     0 0 0 2.5px #fff,
-    0 0 0 8px color-mix(in srgb, var(--cluster-fill) 22%, transparent),
+    0 0 0 8px color-mix(in srgb, var(--pin-fill) 22%, transparent),
     0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+/* markercluster ships its own green/yellow/red icons and a wrapper with a
+   background. On this map colour already means the kind of incident, and a
+   second meaning for it would make both unreadable. */
+.marker-cluster,
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background: none !important;
+}
+
+.marker-cluster div {
+  background: none !important;
+  margin: 0 !important;
+  width: auto !important;
+  height: auto !important;
 }
 
 /* Named for what it is. This was .timeline-range, left over from the scrubber
