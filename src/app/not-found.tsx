@@ -52,7 +52,7 @@ export default function NotFound() {
       <h1 className="lost-title">Ingen träff</h1>
       <p className="lost-text">
         Vi har svept av området och hittar ingen sida på{' '}
-        <code className="lost-path">{pathname}</code>. Ingen anmälan har upprättats.
+        <code className="lost-path">{pathname}</code>.
       </p>
 
       <div className="lost-actions">
@@ -68,7 +68,7 @@ export default function NotFound() {
           actually be in danger; on a mistyped URL it is a serious number used
           as a punchline. */}
       <p className="lost-note">
-        Om du kom hit från en länk inne i appen är det vårt fel, inte ditt. Gå tillbaka, eller
+        Om du kom hit från en så är det vårt fel, inte ditt. Gå tillbaka, eller
         börja om från flödet.
       </p>
     </main>
