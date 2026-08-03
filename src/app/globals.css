@@ -247,6 +247,67 @@ html {
 
 [data-theme="dark"] { color-scheme: dark; }
 
+/* The same palette, for a browser that never ran the bootstrap.
+ *
+ * The theme lives in an attribute written before first paint by an inline
+ * script. That is the only thing that knew about it, so anything that stopped
+ * the script running left a reader who asked their system for dark with a page
+ * of white: a blocked script under a strict CSP, JavaScript turned off, and,
+ * as it turned out, the statically prerendered 404, where React reconciles
+ * <html> during hydration and drops the attribute again a frame after it was
+ * set.
+ *
+ * :not([data-theme]) so that an explicit choice still wins in both directions.
+ * The values are duplicated from the block above, which is a thing that drifts,
+ * so themeFallback.test.ts asserts the two are identical.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+  --bg: #0e1218;
+  --fg: #e7ecf2;
+  --fg-secondary: #b7c1cd; /* 8.6:1 on --surface */
+  --muted: #8e9bab;        /* 5.5:1 on --surface */
+  --subtle: #151b23;
+  --border: #262e3a;
+  --border-strong: #3d4757;
+  /* 3.9:1 on --surface, 4.6:1 on --bg: the same headroom as the light theme.
+     Measured against --surface-raised, the lightest thing a control ever sits
+     on here, it still clears 3:1. */
+  --border-control: #788493;
+
+  --surface: #181e27;
+  --surface-hover: #1f2733;
+  /* Dark raises by lightening too, so "open" reads the same way in both themes. */
+  --surface-raised: #222b37;
+
+  /* On dark, elevation reads mostly from the lighter surface; keep shadows
+     present but subtle so edges still gain depth. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.40), 0 12px 32px rgba(0, 0, 0, 0.50);
+
+  /* Lightened to mirror the light theme's headroom, and given the same lift in
+     chroma so the accent reads as the same colour in both themes. */
+  --accent: #58a9ee;
+  --accent-strong: #80c0f5;
+
+  /* Dark flips the contrast direction: pill ink must be LIGHTER than its tint,
+     so mix toward white. */
+  --pill-accent-ink: color-mix(in srgb, var(--accent), #fff 8%);
+  --pill-muted-ink: color-mix(in srgb, var(--muted), #fff 8%);
+  /* Plain --alert on its own 12% tint is 4.32:1 here: under AA for 11px
+     badge text. The lightened ink clears it at 4.73:1. */
+  --pill-alert-ink: color-mix(in srgb, var(--alert), #fff 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #fff 8%);
+
+  --ok: #46c07d;
+  --warn: #e8a94e;
+  --alert: #f07b73;
+  }
+
+  :root:not([data-theme]) { color-scheme: dark; }
+}
+
+
 body {
   font-family: var(--font-sans);
   font-size: var(--text-body);
@@ -3643,6 +3704,261 @@ main {
   .top-track { display: none; }
 }
 
+/* ── 404 ──────────────────────────────────────────────────────
+   A dispatch centre that cannot find something sweeps the area and reports
+   back. Three rings, a beam going round, and returns that light as it passes:
+   none of them the page being looked for. All CSS over one small SVG, because
+   the 404 is the page that has to render when something has already failed. */
+
+.lost {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--space-8) var(--gutter) var(--space-12);
+  text-align: center;
+}
+
+.lost-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+  color: var(--fg);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
+}
+
+.lost-brand:hover { text-decoration: none; }
+
+.lost-brand svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--accent);
+}
+
+.lost-scope {
+  /* The radius is needed by the returns inside, so the size is a property
+     rather than a literal: one number places the frame and everything on it. */
+  --scope: min(260px, 62vw);
+  position: relative;
+  width: var(--scope);
+  aspect-ratio: 1;
+  margin: 0 auto var(--space-6);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.lost-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+/* The beam. A conic gradient turning inside the round frame costs one
+   composited property and no repaint of anything under it. */
+.lost-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--accent) 55%, transparent) 0deg,
+    color-mix(in srgb, var(--accent) 12%, transparent) 26deg,
+    transparent 62deg,
+    transparent 360deg
+  );
+  animation: lost-sweep 4s linear infinite;
+}
+
+@keyframes lost-sweep {
+  to { transform: rotate(360deg); }
+}
+
+/* A return sits at a bearing and lights when the beam reaches it, so its delay
+   is that bearing as a fraction of one turn. Pushed out from the centre along
+   its own bearing: no counter-rotation needed, a turned circle is a circle. */
+.lost-blip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  transform: rotate(var(--bearing)) translateY(calc(var(--scope) * -0.31));
+  opacity: 0;
+  animation: lost-blip 4s linear infinite;
+  animation-delay: var(--reach);
+}
+
+@keyframes lost-blip {
+  0% { opacity: 0.95; }
+  55% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.lost-centre {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+.lost-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.lost-title {
+  margin-top: var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+}
+
+.lost-text {
+  margin-top: var(--space-3);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.lost-path {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.lost-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.lost-actions .btn,
+.lost-actions .btn-quiet { text-decoration: none; }
+
+.lost-note {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ── Radio check ──────────────────────────────────────────────
+   Sits in a corner, takes no focus and closes itself. Someone who opened the
+   app to find out whether their street is on fire must not have to dismiss a
+   novelty first. */
+
+.radio {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  z-index: 400;
+  width: min(21rem, calc(100vw - var(--space-8)));
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  animation: radio-in var(--t-base) var(--ease);
+}
+
+@keyframes radio-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.radio-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.radio-beacon {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  animation: radio-beacon 1.6s ease-out infinite;
+}
+
+@keyframes radio-beacon {
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--ok) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 0%, transparent); }
+}
+
+.radio-log {
+  margin-top: var(--space-3);
+  min-height: 6.4em;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-secondary);
+}
+
+.radio-log p:last-child { color: var(--fg); }
+
+.radio-close {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.radio-close:hover { color: var(--accent-strong); }
+
+@media (max-width: 600px) {
+  /* Clear of the bottom navigation, which owns that edge on a phone. */
+  .radio {
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-3));
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+  }
+}
+
 /* ── Motion + print ───────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -3652,6 +3968,13 @@ main {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* The rule above ends every animation on its last frame, and the returns on
+     the 404's scope end theirs at zero. Without this the scope loses the one
+     thing that makes it a scope, so it becomes a still picture instead: beam
+     parked, returns lit. */
+  .lost-blip { opacity: 0.7; }
+  .lost-sweep { opacity: 0.6; }
 }
 
 @media print {
