@@ -411,6 +411,20 @@ function EventMapInner({
           <span className="map-hint">
             Punkten sitter där anmälan skrevs, inte nödvändigtvis där något hände.
           </span>
+          {/* ODbL requires the credit to be shown, and CARTO's terms say the
+              same about the tiles. Leaflet's own control is switched off, so
+              the string it was given was set and never rendered: attribution
+              that exists only in a constructor argument is not attribution. */}
+          <span className="map-attribution">
+            Kartdata{' '}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
+              © OpenStreetMap
+            </a>
+            , kartbilder{' '}
+            <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">
+              © CARTO
+            </a>
+          </span>
         </p>
 
         {legend.rows.length > 0 && (

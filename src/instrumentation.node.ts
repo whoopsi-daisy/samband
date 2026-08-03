@@ -11,14 +11,27 @@ import { pruneFetchLog, warmAggregateCaches } from '@/lib/db';
 import { getBpkImportState } from '@/lib/brottsplatskartanDb';
 import { reconcileImportState, startImport } from '@/lib/brottsplatskartanRunner';
 import { getEnvCredentials, getSetupToken, hasStoredAdmin, isSetupOpen } from '@/lib/adminAuth';
+import { isSiteUrlConfigured, siteUrl } from '@/lib/site';
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min: matches the API cache window
 const FETCH_LOG_RETENTION_DAYS = 30;
 
 export function start(): void {
+  checkSiteUrl();
   announceAdminSetup();
   startRefreshScheduler();
   startBrottsplatskartanImport();
+}
+
+// Share cards, the canonical link, robots.txt and the sitemap all have to name
+// a host, and only this variable knows it. Wrong, it is invisible from inside
+// the app and only shows up when somebody posts a link somewhere public.
+function checkSiteUrl(): void {
+  if (isSiteUrlConfigured()) return;
+  console.warn(
+    `[site] SITE_URL is not set; using ${siteUrl()} for share images, ` +
+      'the canonical link and the sitemap. Set it to this deployment\'s own address.'
+  );
 }
 
 // Print the installation key at boot, when there is still no way to log in to

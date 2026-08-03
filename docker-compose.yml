@@ -26,6 +26,9 @@ services:
       # them back, so the container clock must be Swedish. Overriding this
       # silently shifts every stored and displayed event time.
       TZ: ${TZ:-Europe/Stockholm}
+      # The address this deployment answers on, for share images, the canonical
+      # link, robots.txt and the sitemap. Nothing inside the container knows it.
+      SITE_URL: ${SITE_URL:-}
       # Reverse-proxy hops in front of the app; the client IP for rate limiting
       # is read this many entries from the right of X-Forwarded-For.
       RATE_LIMIT_PROXY_HOPS: ${RATE_LIMIT_PROXY_HOPS:-1}
