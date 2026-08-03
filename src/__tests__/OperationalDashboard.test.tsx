@@ -59,7 +59,14 @@ const system = (overrides: Partial<SystemSnapshot> = {}): SystemSnapshot => ({
   nodeVersion: 'v22.22.2',
   processUptimeSeconds: 7200,
   searchTokenizer: { configured: 'trigram', built: 'trigram', matches: true },
-  archive: { events: 333012, cutoff: '2026-07-26T00:00:00.000Z' },
+  archive: {
+    events: 333012,
+    stored: 333012,
+    cutoff: '2026-07-26T00:00:00.000Z',
+    oldest: '2016-01-04T00:00:00.000Z',
+    newest: '2026-07-25T00:00:00.000Z',
+    liveOldest: '2026-07-26T00:00:00.000Z',
+  },
   ...overrides,
 });
 

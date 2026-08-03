@@ -1951,8 +1951,39 @@ export function getSystemSnapshot(): SystemSnapshot {
       // does mean search is answering with the old tokenizer until then.
       matches: builtTokenizer === null || builtTokenizer === configuredTokenizer,
     },
-    archive: getArchiveCoverage(),
+    archive: archiveDiagnostics(),
   };
+}
+
+/**
+ * What was imported against what is shown.
+ *
+ * The cutoff is MIN(event_time) over the live table, and the archive is served
+ * strictly below it. That is right while the live table holds a continuous
+ * recent stretch, and badly wrong the moment one row in it is much older than
+ * the rest: a single notice dated three years back moves the boundary three
+ * years back, and every archive row above it stops being counted. Nothing said
+ * so, so a finished import could leave the statistics looking untouched.
+ *
+ * Stored against shown makes it a number on a screen instead of a mystery.
+ */
+function archiveDiagnostics(): SystemSnapshot['archive'] {
+  const pdo = getDatabase();
+  const coverage = getArchiveCoverage();
+  const stored = getArchiveRowCount();
+
+  const span = stored
+    ? (pdo.prepare('SELECT MIN(pubdate) AS oldest, MAX(pubdate) AS newest FROM bpk_events').get() as {
+        oldest: string | null;
+        newest: string | null;
+      })
+    : { oldest: null, newest: null };
+
+  const liveOldest = (pdo.prepare('SELECT MIN(event_time) AS oldest FROM events').get() as {
+    oldest: string | null;
+  }).oldest;
+
+  return { ...coverage, stored, oldest: span.oldest, newest: span.newest, liveOldest };
 }
 
 // Get database health metrics

@@ -182,7 +182,59 @@ describe('the system snapshot', () => {
 
   it('reports an empty archive as empty rather than as a missing cutoff', () => {
     const snapshot = db.getSystemSnapshot();
-    expect(snapshot.archive).toEqual({ events: 0, cutoff: null });
+    expect(snapshot.archive).toEqual({
+      events: 0,
+      stored: 0,
+      cutoff: null,
+      oldest: null,
+      newest: null,
+      liveOldest: null,
+    });
+  });
+
+  // The archive is served strictly below the cutoff, and the cutoff is the
+  // oldest live event. One stale notice in the live table therefore drags the
+  // boundary back and silently drops everything above it: a finished import
+  // that leaves the statistics looking untouched. Stored against shown is the
+  // only place that becomes visible.
+  it('separates what was imported from what is actually served', () => {
+    const raw = db.getDatabase();
+    const insert = raw.prepare(
+      `INSERT INTO bpk_events (id, pubdate, pubdate_unix, title_type, title_location,
+       headline, description, content, location_string, county, lat, lng,
+       external_source_link, permalink, imported_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    const add = (id: number, iso: string) =>
+      insert.run(id, iso, 0, 'Stöld', 'Lund', 'Stöld, Lund', 'x', 'x', 'Lund', 'Skåne',
+        55.7, 13.19, '', '', new Date().toISOString());
+
+    add(1, '2019-05-01T10:00:00.000Z');
+    add(2, '2024-05-01T10:00:00.000Z');
+    add(3, '2025-05-01T10:00:00.000Z');
+
+    // One live row from 2020 puts the cutoff there, hiding the two after it.
+    raw
+      .prepare(
+        `INSERT INTO events (id, datetime, event_time, publish_time, last_updated, name,
+         summary, url, type, location_name, location_gps, raw_data, fetched_at, content_hash)
+         VALUES (9001, ?, ?, ?, ?, 'Stöld, Lund', 'x', '/e/1/', 'Stöld', 'Lund', '', '{}', ?, 'h')`
+      )
+      .run(
+        '2020-01-01T10:00:00.000Z',
+        '2020-01-01T10:00:00.000Z',
+        '2020-01-01T10:00:00.000Z',
+        '2020-01-01T10:00:00.000Z',
+        new Date().toISOString()
+      );
+    db.invalidateAggregateCaches();
+
+    const { archive } = db.getSystemSnapshot();
+    expect(archive.stored).toBe(3);
+    expect(archive.events).toBe(1);
+    expect(archive.oldest).toBe('2019-05-01T10:00:00.000Z');
+    expect(archive.newest).toBe('2025-05-01T10:00:00.000Z');
+    expect(archive.liveOldest).toContain('2020-01-01');
   });
 });
 

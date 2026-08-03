@@ -16,7 +16,7 @@ const MIN_PASSWORD_LENGTH = 12;
  */
 function SetupShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="ops-container setup">
+    <main className="ops-container setup" id="main-content">
       <div className="setup-column">
         <p className="setup-brand">
           <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" aria-hidden="true">
@@ -28,7 +28,7 @@ function SetupShell({ children }: { children: React.ReactNode }) {
         </p>
         {children}
       </div>
-    </div>
+    </main>
   );
 }
 
