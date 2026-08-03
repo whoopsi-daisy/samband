@@ -2044,45 +2044,216 @@ main {
   font-weight: var(--weight-semi);
 }
 
-/* Folded into the status band rather than given a border and a band of its
-   own. Three stacked strips under the map (count, legend, caveat) was more
-   chrome than the thing it was explaining. */
-.map-hint {
+/* What the window holds but the map cannot draw. Its own line, because it is a
+   caveat on the number beside it rather than part of it. */
+.map-status-missing {
   flex-basis: 100%;
-  margin-top: var(--space-1);
   line-height: var(--leading-normal);
 }
 
-/* Key for the marker colours. The map has always been colour-coded by incident
-   type with nothing anywhere saying so. */
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  padding: var(--space-3) var(--space-4);
+/* ── The map key ──────────────────────────────────────────────
+   One block under the canvas that says how to read what is on it: what a mark
+   is, what a number on it means, and what the colours are.
+
+   This was a row of colour chips laid out with flex-wrap, and the ask was that
+   it looked messy and unsymmetric, which it was: every chip was as wide as its
+   own label, so "Rån (4)" and "Sexualbrott och frihetsbrott (11)" sat in the
+   same row with the dots at four unrelated x-positions and the counts at
+   sixteen. A grid fixes exactly that. The rows line up because the columns are
+   declared once, not derived from eighteen different strings. */
+.map-key {
+  padding: var(--space-4);
   border-top: 1px solid var(--border);
   background: var(--bg);
-}
-
-.map-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--fg-secondary);
 }
 
+.map-key-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+
+.map-key-subtitle {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* What the marks themselves mean. Reading order matters here: a reader looks
+   at a mark before they look at a colour, so this comes first. */
+.map-key-marks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.map-key-mark {
+  display: grid;
+  /* A fixed first column, so the three samples sit on one vertical line even
+     though they are three different sizes. */
+  grid-template-columns: 26px 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  line-height: var(--leading-normal);
+}
+
+.map-key-sample {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-key-sample--single {
+  width: 11px;
+  height: 11px;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+.map-key-sample--group {
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+/* The live ring, at rest. No animation: it is a still sample of a thing, and a
+   pulsing dot in a key draws the eye away from the map it explains. */
+.map-key-sample--recent {
+  width: 11px;
+  height: 11px;
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 0 5px color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+/* Three declared columns: swatch, name, count. The count column is fixed and
+   right-aligned with tabular figures, so the numbers form a column of their own
+   rather than landing wherever each label happened to end. */
+.map-key-colors {
+  display: grid;
+  /* Capped rather than 1fr. Stretched across a desktop card the tracks grew to
+     700px each, which put six hundred pixels of nothing between "Rån" and the
+     number belonging to it: the counts lined up beautifully and had visibly
+     stopped belonging to their labels. */
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 18rem));
+  justify-content: start;
+  gap: var(--space-1) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.map-key-color {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 22px;
+}
+
 /* The ring is load-bearing, not decoration: the palette runs to a pale yellow
    that would otherwise vanish against the light theme's background. */
-.map-legend-dot {
-  width: 10px;
-  height: 10px;
-  flex-shrink: 0;
+.map-key-dot {
+  width: 11px;
+  height: 11px;
   border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
-.map-legend-count { color: var(--muted); }
+.map-key-dot--rest {
+  background: transparent;
+  border-style: dashed;
+}
+
+.map-key-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-key-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.map-key-color--rest .map-key-name { color: var(--muted); }
+
+.map-key-note {
+  max-width: 68ch;
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ── Grouped markers ──────────────────────────────────────────
+   A position holding several incidents is drawn as its count. The fill and the
+   ink are computed per family in markerInk.ts, because the eighteen family
+   colours run from near-black red to a pale slate and no single ink clears AA
+   on all of them. */
+.map-cluster-icon { background: none; border: none; }
+
+/* Two positions sixty kilometres apart are a few pixels apart at country zoom,
+   so markers overlap and the one underneath cannot be clicked where it is
+   covered. WCAG 2.5.8 exempts exactly this (a marker's size and position on a
+   map are the information), and the answer for a pointer is to zoom in.
+   A keyboard has no such move, so a focused marker comes to the front: Leaflet
+   sets the stacking order per latitude on the element itself, which is why this
+   has to out-shout an inline style. */
+.map-cluster-icon:focus-visible {
+  z-index: 1000 !important;
+  outline: none;
+}
+
+.map-cluster-icon:focus-visible .map-cluster {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 5px var(--accent);
+}
+
+.map-cluster {
+  display: grid;
+  place-items: center;
+  width: var(--cluster-size);
+  height: var(--cluster-size);
+  border-radius: var(--radius-full);
+  background: var(--cluster-fill);
+  color: var(--cluster-ink);
+  /* White, not the theme background: the ring separates the bubble from the
+     basemap, and the basemap is light in both themes' terms here. */
+  box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.35);
+  font-size: 11px;
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.map-cluster--recent {
+  box-shadow:
+    0 0 0 2.5px #fff,
+    0 0 0 8px color-mix(in srgb, var(--cluster-fill) 22%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.35);
+}
 
 /* Named for what it is. This was .timeline-range, left over from the scrubber
    these replaced, and it carried no horizontal padding: at 375px the three
@@ -2124,13 +2295,26 @@ main {
    instead (see basemapUrl in EventMap): this inverted a basemap that was
    already dark, so dark mode produced a glowing white map. */
 
+/* The credit, in the map's own bottom corner, which is where a reader of any
+   other map looks for it and where it costs the page nothing. Quiet, but not
+   hidden: ODbL and CARTO both require it to be legible, so it keeps a solid
+   backing rather than being washed into the tiles. */
 .leaflet-control-attribution {
-  background: color-mix(in srgb, var(--bg) 88%, transparent) !important;
+  padding: 1px 6px !important;
+  background: color-mix(in srgb, var(--bg) 82%, transparent) !important;
   color: var(--muted) !important;
-  font-size: var(--text-2xs) !important;
+  font-size: 10px !important;
+  line-height: 1.5 !important;
+  border-radius: var(--radius-sm) 0 0 0;
 }
 
-.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-control-attribution a {
+  color: var(--fg-secondary) !important;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--fg-secondary) 40%, transparent);
+}
+
+.leaflet-control-attribution a:hover { color: var(--fg) !important; }
 .leaflet-control-attribution svg { display: none; }
 
 .leaflet-bar a {
@@ -2239,8 +2423,6 @@ main {
   font-size: var(--text-2xs) !important;
   color: var(--muted) !important;
 }
-
-.map-legend-item--rest { color: var(--muted); }
 
 .popup-links {
   display: flex;
@@ -2913,6 +3095,110 @@ main {
   text-align: right;
 }
 
+/* ── Län för län ──────────────────────────────────────────────
+   A real table, not a list of buttons: these rows are read against each other
+   down four columns, which is what a table is for, and unlike the top lists
+   they are not filters. A county name filters nothing, because the notices
+   underneath are labelled with municipalities. */
+.region-scroll {
+  /* The trend column is the first thing to go on a narrow phone, and a table
+     that scrolls inside its own box beats one that pushes the page sideways. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.region-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.region-table th,
+.region-table td {
+  padding: var(--space-2);
+  text-align: left;
+  font-weight: var(--weight-normal);
+  vertical-align: middle;
+}
+
+.region-table thead th {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.region-table tbody tr + tr th,
+.region-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+/* Name over its own bar, so the county column carries the shape of the
+   distribution without spending a column on it. */
+.region-table tbody th {
+  min-width: 11rem;
+}
+
+.region-name {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.region-track {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.region-bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.region-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* No moral colour. More notices in a county is not self-evidently worse, and a
+   red arrow on Skåne would be the page drawing a conclusion the data does not
+   support. Weight separates the movement from the flat rows; hue does not. */
+.region-up,
+.region-down {
+  font-weight: var(--weight-medium);
+  color: var(--fg);
+}
+
+.region-flat { color: var(--muted); }
+
+/* At 360px the four columns are about 90px wider than the card. Rather than
+   leave the trend to be discovered by sideways-scrolling a table with no
+   affordance saying it scrolls, the county column gives the width up: the names
+   are the one column that can wrap. */
+@media (max-width: 480px) {
+  .region-table { font-size: var(--text-xs); }
+
+  .region-table th,
+  .region-table td {
+    padding: var(--space-2) var(--space-1);
+  }
+
+  .region-table tbody th {
+    min-width: 6.5rem;
+  }
+
+  .region-name { text-wrap: balance; }
+}
+
 /* Label / value rows, shared by the ops info panels. */
 .info-list { display: flex; flex-direction: column; }
 
@@ -2950,10 +3236,19 @@ main {
   border-top: 1px solid var(--border);
   font-size: var(--text-xs);
   color: var(--muted);
+  /* Centred and stacked. Spread across a row, two unrelated things sat at
+     opposite ends of a very wide rule with nothing between them. */
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.footer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* Each part stays whole: the timestamp and the shortcut hint wrap as units
@@ -3780,15 +4075,6 @@ main {
 
 /* Attribution and the unofficial-service line, in the footer of every view. */
 .footer-about a { color: inherit; }
-
-.map-attribution {
-  flex-basis: 100%;
-  margin-top: var(--space-1);
-  font-size: var(--text-2xs);
-  color: var(--muted);
-}
-
-.map-attribution a { color: inherit; }
 
 /* ── 404 ──────────────────────────────────────────────────────
    A dispatch centre that cannot find something sweeps the area and reports

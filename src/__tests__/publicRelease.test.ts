@@ -61,41 +61,34 @@ describe('robots.txt', () => {
     expect(robots.sitemap).toBe('https://samband.example.se/sitemap.xml');
   });
 
+  // The /om page was removed, and a sitemap that still advertises it hands
+  // every crawler a 404 as if it were content.
   it('lists the pages that exist and nothing else', async () => {
     const sitemap = (await import('@/app/sitemap')).default();
-    expect(sitemap.map((entry) => entry.url)).toEqual([
-      'https://samband.example.se',
-      'https://samband.example.se/om',
-    ]);
+    expect(sitemap.map((entry) => entry.url)).toEqual(['https://samband.example.se']);
+  });
+
+  it('does not point anywhere the app no longer serves', () => {
+    expect(fs.existsSync(path.join(process.cwd(), 'src/app/om'))).toBe(false);
+
+    for (const file of ['src/components/Footer.tsx', 'src/components/Header.tsx']) {
+      expect(read(file)).not.toMatch(/href=["']\/om["']/);
+    }
   });
 });
 
 describe('what the site says about itself', () => {
-  const about = read('src/app/om/page.tsx');
-  const footer = read('src/components/Footer.tsx');
-
-  // A feed of police notices, named after a dispatch centre, behind a mark of
-  // concentric rings, can be read as something the police run.
-  it('states plainly that it is not the police', () => {
-    expect(about).toMatch(/inte Polisen/i);
-    expect(about).toMatch(/utan\s+koppling till Polismyndigheten/i);
-  });
-
-  it('says so on every view, not only on the page nobody opens', () => {
-    expect(footer).toMatch(/Inofficiell tjänst/i);
-    expect(footer).toContain('/om');
-  });
-
-  it('names every source it republishes', () => {
-    for (const source of ['polisen.se', 'brottsplatskartan', 'sverigesradio', 'openstreetmap', 'carto']) {
-      expect(about.toLowerCase()).toContain(source);
-    }
+  // Every source is credited where it is used rather than on one page about
+  // the site: the police link sits on the notice it came from, Sveriges Radio
+  // under the warnings it issued, and the map's tiles in the map's corner.
+  it('names its sources at the point of use', () => {
+    expect(read('src/components/EventMap.tsx').toLowerCase()).toContain('openstreetmap');
+    expect(read('src/components/EventMap.tsx').toLowerCase()).toContain('carto');
+    expect(read('src/components/VmaView.tsx').toLowerCase()).toContain('sveriges radio');
+    expect(read('src/components/EventCard.tsx').toLowerCase()).toContain('polisen.se');
   });
 
   it('answers the tracking question, which the code can back up', () => {
-    expect(about).toMatch(/inga kakor/i);
-
-    // The claim above is only true while it is true.
     const sources = ['src/components', 'src/app', 'src/hooks', 'src/lib']
       .flatMap((dir) => fs.readdirSync(path.join(process.cwd(), dir), { recursive: true }) as string[])
       .filter((file) => /\.(ts|tsx)$/.test(file));
@@ -121,13 +114,27 @@ describe('map attribution', () => {
   const map = read('src/components/EventMap.tsx');
 
   // ODbL requires the credit to be shown, and CARTO's terms say the same about
-  // the tiles. Leaflet's own control is switched off here, so the string given
-  // to the tile layer was set and never rendered.
+  // the tiles. It has been wrong in both directions: first switched off, so the
+  // string handed to the tile layer was set and never rendered, then a band of
+  // body text under the canvas, which was the largest thing in the block that
+  // explains the map. Leaflet's own corner control is the answer to both.
   it('is rendered, not just handed to Leaflet', () => {
-    expect(map).toContain('attributionControl: false');
-    expect(map).toContain('map-attribution');
+    expect(map).toContain('attributionControl: true');
     expect(map).toContain('openstreetmap.org/copyright');
     expect(map).toContain('carto.com/attributions');
+  });
+
+  // Both layers need it: the fallback swaps the whole tile source when CARTO
+  // fails, and an OSM layer with no credit is the same licence breach.
+  it('is set on the fallback tile layer too', () => {
+    expect(map).toContain('attribution: CARTO_CREDIT');
+    expect(map).toContain('attribution: OSM_CREDIT');
+  });
+
+  it('is not hidden by the stylesheet', () => {
+    const css = read('src/app/globals.css');
+    const block = css.slice(css.indexOf('.leaflet-control-attribution {'));
+    expect(block.slice(0, block.indexOf('}'))).not.toMatch(/display:\s*none/);
   });
 });
 

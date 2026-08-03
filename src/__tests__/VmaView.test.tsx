@@ -30,7 +30,6 @@ const view = (props: Partial<React.ComponentProps<typeof VmaView>> = {}) =>
       live={[]}
       failed={false}
       loading={false}
-      checkedAt={null}
       onRetry={jest.fn()}
       {...props}
     />

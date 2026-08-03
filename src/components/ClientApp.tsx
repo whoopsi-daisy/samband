@@ -260,7 +260,6 @@ function ClientAppContent({
             live={vma.live}
             failed={vma.failed}
             loading={vma.loading}
-            checkedAt={vma.checkedAt}
             onRetry={vma.refresh}
           />
         )}

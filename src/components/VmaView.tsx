@@ -9,7 +9,6 @@ interface VmaViewProps {
   live: VmaAlert[];
   failed: boolean;
   loading: boolean;
-  checkedAt: string | null;
   onRetry: () => void;
 }
 
@@ -112,8 +111,7 @@ function AlertCard({ alert, live }: { alert: VmaAlert; live: boolean }) {
   );
 }
 
-function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewProps) {
-  const mounted = useMounted();
+function VmaView({ alerts, live, failed, loading, onRetry }: VmaViewProps) {
   const liveIds = new Set(live.map((a) => a.id));
   const others = alerts.filter((a) => !liveIds.has(a.id));
 
@@ -212,7 +210,6 @@ function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewP
           krisinformation.se
         </a>
         . Ring 112 vid akut fara.
-        {mounted && checkedAt ? ` Senast kontrollerat ${formatTime(checkedAt)}.` : ''}
       </p>
     </section>
   );

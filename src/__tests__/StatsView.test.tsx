@@ -19,6 +19,15 @@ function createStats(overrides: Partial<Statistics> = {}): Statistics {
       { label: 'Stockholm', total: 291 },
       { label: 'Ljungby', total: 269 },
     ],
+    regions: {
+      rows: [
+        { county: 'Stockholms län', total: 291, share: 0.52, recent: 140, previous: 120, change: 0.1667 },
+        { county: 'Kronobergs län', total: 269, share: 0.48, recent: 130, previous: 150, change: -0.1333 },
+      ],
+      unplaced: 875,
+      placed: 560,
+      trendFrom: '2025-08',
+    },
     hourly: Array.from({ length: 24 }, (_, i) => (i === 2 ? 9 : 1)),
     weekdays: [40, 40, 44, 41, 40, 40, 41],
     daily: [
@@ -110,12 +119,13 @@ describe('StatsView', () => {
     // blocks are where nearly all of the data is: a decade used to arrive as
     // two sparklines at the bottom of the archive block.
     expect(blocks).toEqual([
-      'Den senaste tiden',
+      'Sverige den senaste tiden',
       'När det händer',
       'Vad och var',
+      'Län för län',
       'Månad för månad',
       'År för år',
-      'Hela arkivet',
+      'Om siffrorna',
     ]);
   });
 
@@ -160,9 +170,9 @@ describe('StatsView', () => {
     render(<StatsView stats={createStats()} />);
 
     const headings = screen.getAllByRole('heading', { level: 2 });
-    const recent = headings.findIndex((h) => h.textContent === 'Den senaste tiden');
-    const archive = headings.findIndex((h) => h.textContent === 'Hela arkivet');
-    expect(recent).toBeLessThan(archive);
+    const recent = headings.findIndex((h) => h.textContent === 'Sverige den senaste tiden');
+    const years = headings.findIndex((h) => h.textContent === 'År för år');
+    expect(recent).toBeLessThan(years);
   });
 
   // The archive is dated by publication, not by occurrence, which is the one
@@ -173,8 +183,81 @@ describe('StatsView', () => {
     render(<StatsView stats={createStats()} />);
 
     expect(screen.getByText(/daterade när de publicerades/i)).toBeInTheDocument();
+    expect(screen.getByText(/En notis är inte samma sak som ett brott/i)).toBeInTheDocument();
     expect(screen.queryByText(/importerade från Brottsplatskartan/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/händelsetyper förekommer/i)).not.toBeInTheDocument();
+  });
+
+  // "Vanligaste platser" answers "is my own town in here". It cannot answer
+  // "what does Sweden look like", because its rows are a mix of municipalities,
+  // counties and districts with no shared denominator.
+  describe('län för län', () => {
+    it('names every county and how much of the record it holds', () => {
+      render(<StatsView stats={createStats()} />);
+
+      // Without "län": the column is headed with it, and repeating it on
+      // twenty-one rows is a column of the same word.
+      expect(screen.getByRole('rowheader', { name: /Stockholms/ })).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: /Kronobergs/ })).toBeInTheDocument();
+      expect(screen.getByText('52,0 %')).toBeInTheDocument();
+    });
+
+    it('shows which way each county has gone against the year before', () => {
+      render(<StatsView stats={createStats()} />);
+
+      expect(screen.getByText('+17 %')).toBeInTheDocument();
+      expect(screen.getByText('−13 %')).toBeInTheDocument();
+    });
+
+    // Shares that do not say what they are shares of are the easiest number on
+    // a page to quote wrongly.
+    it('says what the shares are shares of', () => {
+      render(<StatsView stats={createStats()} />);
+
+      expect(screen.getByText(/560 notiser som går att placera/)).toBeInTheDocument();
+      expect(screen.getByText(/875 till saknar en plats/)).toBeInTheDocument();
+    });
+
+    // A county row cannot filter the feed: the notices under it are labelled
+    // with municipalities, so the filter would return a fraction of what the
+    // row had just counted.
+    it('does not present the rows as filters', () => {
+      render(<StatsView stats={createStats()} />);
+
+      const table = document.querySelector('.region-table');
+      expect(table).not.toBeNull();
+      expect(table?.querySelectorAll('button')).toHaveLength(0);
+    });
+
+    it('stays away with nothing to break down', () => {
+      render(
+        <StatsView
+          stats={createStats({ regions: { rows: [], unplaced: 0, placed: 0, trendFrom: null } })}
+        />
+      );
+
+      expect(screen.queryByRole('heading', { level: 2, name: 'Län för län' })).not.toBeInTheDocument();
+    });
+
+    it('drops the trend column when there is no earlier year to compare', () => {
+      render(
+        <StatsView
+          stats={createStats({
+            regions: {
+              rows: [
+                { county: 'Skåne län', total: 40, share: 0.7, recent: 40, previous: 0, change: null },
+                { county: 'Hallands län', total: 17, share: 0.3, recent: 17, previous: 0, change: null },
+              ],
+              unplaced: 0,
+              placed: 57,
+              trendFrom: null,
+            },
+          })}
+        />
+      );
+
+      expect(screen.queryByRole('columnheader', { name: /mot i fjol/i })).not.toBeInTheDocument();
+    });
   });
 
   // How many notices are stored is not what anyone came for, and an exact
@@ -182,24 +265,29 @@ describe('StatsView', () => {
   it('states the grand total as a floor, not a count', () => {
     render(<StatsView stats={createStats({ total: 337174 })} />);
 
-    expect(screen.getByText('300 000+')).toBeInTheDocument();
-    expect(screen.queryByText('337 174')).not.toBeInTheDocument();
+    expect(screen.getByText(/300 000\+ stycken/)).toBeInTheDocument();
+    expect(screen.queryByText(/337 174/)).not.toBeInTheDocument();
   });
 
   it('still counts exactly on a small database', () => {
     render(<StatsView stats={createStats({ total: 412 })} />);
-    expect(screen.getByText('412')).toBeInTheDocument();
+    expect(screen.getByText(/412 stycken/)).toBeInTheDocument();
   });
 
-  it('says so when there is no archive at all', () => {
+  // The page used to announce that no archive had been imported, which is a
+  // fact about the operator's database and means nothing to a reader.
+  it('says nothing about what has or has not been imported', () => {
     render(<StatsView stats={createStats({ archiveEvents: 0, archiveCutoff: null })} />);
-    expect(screen.getByText(/Inget arkiv är importerat/i)).toBeInTheDocument();
+
+    expect(screen.queryByText(/arkiv/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/importerad/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/databas/i)).not.toBeInTheDocument();
   });
 
   it('renders without a busiest day or a yearly series', () => {
     render(<StatsView stats={createStats({ busiestDay: null, yearly: [] })} />);
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Hela arkivet' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Om siffrorna' })).toBeInTheDocument();
     expect(screen.queryByText(/störst helår/i)).not.toBeInTheDocument();
   });
 });

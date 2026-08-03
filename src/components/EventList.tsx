@@ -542,7 +542,9 @@ export default function EventList({
                 reader is looking for what to do next. */}
             {total > events.length + PAGE_SIZE && (
               <p className="load-more-hint">
-                Sök eller filtrera för att nå längre bak i arkivet.
+                {/* "längre bak i arkivet" named the operator's storage. What
+                    the reader is actually reaching for is an older date. */}
+                Sök eller filtrera för att nå längre tillbaka i tiden.
               </p>
             )}
           </>
