@@ -2,8 +2,20 @@
 
 import { useEffect, useRef, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+// Type-only. @types/leaflet.markercluster augments the 'leaflet' module, and
+// the augmentation is only visible in a file that imports that module by name;
+// this one otherwise only reaches Leaflet through a dynamic import.
+import type { MarkerClusterGroup } from 'leaflet';
 import { FormattedEvent, TYPE_FAMILIES, TypeFamilyKey, getTypeStyle } from '@/types';
 import { markerInk } from '@/lib/markerInk';
+import {
+  MarkerGroup,
+  bubbleSize,
+  familyOfGroup,
+  groupByPosition,
+  summariseCluster,
+} from '@/lib/markerGroups';
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
@@ -66,70 +78,6 @@ const RECENT_MS = 60 * 60 * 1000;
 /** Families listed in the key before the rest are folded into one row. */
 const LEGEND_ROWS = 6;
 
-/**
- * How wide the bubble is for a given pile of incidents.
- *
- * Wide enough for the number it has to hold, and no wider: sizing continuously
- * by count made the difference between two incidents and three a couple of
- * pixels nobody could read, while a busy city centre grew a disc that covered
- * the towns around it.
- */
-function clusterSize(count: number): number {
-  // 28 rather than 24 at the bottom. Twenty-four is exactly the WCAG 2.5.8
-  // minimum, which leaves no headroom at all: two positions a few kilometres
-  // apart overlap slightly at country zoom, and a bubble clipped by one pixel
-  // is under the minimum. Four pixels of margin costs nothing and takes the
-  // common case out of the failure.
-  if (count < 10) return 28;
-  if (count < 100) return 34;
-  return 42;
-}
-
-/**
- * Incidents sharing one position, as one marker.
- *
- * This used to fan co-located markers out around a circle so they could all be
- * seen, displacing them by up to eight kilometres. On a map of where crimes
- * happened that is not a rendering detail, it is a false statement: the police
- * file a great many notices against a municipal or county centroid, so the pile
- * being spread out was a pile of incidents that never happened at any of the
- * places they were then drawn.
- *
- * One marker per position, carrying however many incidents are actually there,
- * says the true thing and is quieter besides.
- */
-interface MarkerGroup {
-  lat: number;
-  lng: number;
-  events: FormattedEvent[];
-  newest: number;
-}
-
-function groupByPosition(events: FormattedEvent[]): MarkerGroup[] {
-  const groups = new Map<string, MarkerGroup>();
-
-  for (const e of events) {
-    if (!e.gps) continue;
-    const [lat, lng] = e.gps.split(',').map(Number);
-    if (isNaN(lat) || isNaN(lng)) continue;
-
-    // Rounded to about ten metres, so two notices filed at the same spot with
-    // different float noise still count as the same spot.
-    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-    const ts = new Date(e.date?.iso || e.datetime).getTime();
-    const group = groups.get(key);
-    if (group) {
-      group.events.push(e);
-      if (ts > group.newest) group.newest = ts;
-    } else {
-      groups.set(key, { lat, lng, events: [e], newest: isNaN(ts) ? 0 : ts });
-    }
-  }
-
-  // Newest last, so the freshest markers are drawn on top of older ones.
-  return [...groups.values()].sort((a, b) => a.newest - b.newest);
-}
-
 // Escape HTML to prevent XSS in Leaflet popups
 function escapeHtml(str: string): string {
   return str
@@ -169,7 +117,7 @@ function EventMapInner({
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const markersLayerRef = useRef<L.FeatureGroup | null>(null);
+  const markersLayerRef = useRef<MarkerClusterGroup | null>(null);
   const leafletRef = useRef<typeof import('leaflet') | null>(null);
   const hasFittedBoundsRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
@@ -202,6 +150,9 @@ function EventMapInner({
 
     (async () => {
       const L = (await import('leaflet')).default;
+      // Registers L.markerClusterGroup on the namespace above; it has no export
+      // of its own and must land before the layer is created.
+      await import('leaflet.markercluster');
       if (cancelled) return;
       leafletRef.current = L;
 
@@ -290,84 +241,107 @@ function EventMapInner({
     if (!L || !map || !mapReady) return;
 
     if (markersLayerRef.current) markersLayerRef.current.clearLayers();
-    else markersLayerRef.current = L.featureGroup().addTo(map);
+    else {
+      /*
+       * Markers that merely overlap on screen are merged into one, and split
+       * again as the reader zooms in.
+       *
+       * Grouping by position (above) is about incidents genuinely filed at the
+       * same coordinate. This is a different problem: once the feed stopped
+       * collapsing to twenty-one county centres it started resolving to a
+       * hundred and fifty-eight municipalities, and at country zoom the whole of
+       * Götaland became a pile of discs covering each other, with the ones
+       * underneath neither readable nor clickable.
+       *
+       * leaflet.markercluster rather than a hand-rolled pixel grid: it already
+       * knows how to re-cluster on every zoom, spiderfy points that are exactly
+       * coincident, and keep the layer in step with additions. Its default
+       * green-yellow-red icons are replaced below, because on this map colour
+       * already means the kind of incident and a second meaning for it would
+       * make both unreadable.
+       */
+      markersLayerRef.current = L.markerClusterGroup({
+        // The default 80px merges towns that are perfectly distinguishable.
+        // A bubble is 28-50px across, so this merges about what actually
+        // overlaps and no more.
+        maxClusterRadius: 46,
+        // The convex hull drawn over a cluster's members on hover is a lot of
+        // ink to say something the reader is about to see by zooming.
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        zoomToBoundsOnClick: true,
+        // Leaflet's own reduced-motion story is nothing, so this is it.
+        animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        iconCreateFunction: (cluster) => {
+          const children = cluster.getAllChildMarkers() as Array<
+            L.Marker & { sambandGroup?: MarkerGroup }
+          >;
+          const contained = children
+            .map((child) => child.sambandGroup)
+            .filter((group): group is MarkerGroup => group !== undefined);
+
+          const summary = summariseCluster(contained, Date.now(), RECENT_MS);
+          const size = bubbleSize(summary.count);
+          const { fill, ink } = markerInk(TYPE_FAMILIES[summary.family].color);
+          const label = summary.count.toLocaleString('sv-SE');
+
+          return L.divIcon({
+            className: 'map-pin-icon',
+            html:
+              `<span class="map-pin map-pin--many map-pin--cluster` +
+              `${summary.recent ? ' map-pin--recent' : ''}" ` +
+              `style="--pin-fill:${fill};--pin-ink:${ink};--pin-size:${size}px">` +
+              `${escapeHtml(label)}</span>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+          });
+        },
+      }).addTo(map);
+    }
 
     const layer = markersLayerRef.current;
     const now = Date.now();
 
     for (const group of groups) {
-      const newest = group.events.reduce((best, e) => {
-        const ts = new Date(e.date?.iso || e.datetime).getTime();
-        return isNaN(ts) || ts < best.ts ? best : { event: e, ts };
-      }, { event: group.events[0], ts: -Infinity });
-
-      const style = getTypeStyle(newest.event.type);
+      const family = familyOfGroup(group);
+      const style = TYPE_FAMILIES[family];
       const isRecent = now - group.newest < RECENT_MS;
       const count = group.events.length;
+      const size = bubbleSize(count);
+      const { fill, ink } = markerInk(style.color);
+      const label = count > 1 ? count.toLocaleString('sv-SE') : '';
+      const name =
+        count > 1
+          ? `${count.toLocaleString('sv-SE')} händelser, ${placeLabel(group.events[0])}`
+          : `${group.events[0].type}, ${placeLabel(group.events[0])}`;
 
       /*
-       * A pile of incidents is drawn as its own count.
+       * Every position is a divIcon, single incidents included.
        *
-       * It used to be a slightly larger dot, which is a difference of two or
-       * three pixels: nothing on the map said whether a point was one notice or
-       * ninety, and the police file a great many of them against the same
-       * municipal position, so most of what looked like single incidents were
-       * not. Printing the number is what makes the map answer "how much is
-       * happening here" instead of "is anything at all".
+       * Singles used to be SVG circles, which markercluster does not accept and
+       * which never took keyboard focus: half the map's contents were
+       * unreachable without a pointer. One kind of mark for both also means the
+       * recent ring is a box-shadow rather than a second overlay layer, so
+       * nothing has to be kept in step with anything.
        */
-      if (count > 1) {
-        const size = clusterSize(count);
-        const { fill, ink } = markerInk(style.color);
-        const label = count.toLocaleString('sv-SE');
-        const marker = L.marker([group.lat, group.lng], {
-          icon: L.divIcon({
-            className: 'map-cluster-icon',
-            html:
-              `<span class="map-cluster${isRecent ? ' map-cluster--recent' : ''}" ` +
-              `style="--cluster-fill:${fill};--cluster-ink:${ink};--cluster-size:${size}px">` +
-              `${escapeHtml(label)}</span>`,
-            iconSize: [size, size],
-            iconAnchor: [size / 2, size / 2],
-          }),
-          // Markers built from a divIcon take keyboard focus, which the SVG
-          // circles never did: the map's contents were unreachable without a
-          // pointer. The title is what a screen reader announces on arrival.
-          title: `${label} händelser, ${placeLabel(newest.event)}`,
-          alt: `${label} händelser, ${placeLabel(newest.event)}`,
-          riseOnHover: true,
-        });
-
-        marker.bindPopup(buildPopup(group, now), { maxWidth: 300 });
-        layer.addLayer(marker);
-        continue;
-      }
-
-      // A single incident stays an SVG dot. Cheap, and there are thousands of
-      // them over a month-long window.
-      const radius = 7;
-
-      if (isRecent) {
-        layer.addLayer(
-          L.circleMarker([group.lat, group.lng], {
-            radius: radius + 6,
-            fillColor: style.color,
-            color: style.color,
-            weight: 1,
-            opacity: 0.3,
-            fillOpacity: 0.08,
-            className: 'pulse-marker',
-          })
-        );
-      }
-
-      const marker = L.circleMarker([group.lat, group.lng], {
-        radius,
-        fillColor: style.color,
-        color: '#fff',
-        weight: isRecent ? 2.5 : 1.5,
-        opacity: 1,
-        fillOpacity: 0.9,
+      const marker = L.marker([group.lat, group.lng], {
+        icon: L.divIcon({
+          className: 'map-pin-icon',
+          html:
+            `<span class="map-pin${count > 1 ? ' map-pin--many' : ''}` +
+            `${isRecent ? ' map-pin--recent' : ''}" ` +
+            `style="--pin-fill:${fill};--pin-ink:${ink};--pin-size:${size}px">` +
+            `${escapeHtml(label)}</span>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        }),
+        title: name,
+        alt: name,
+        riseOnHover: true,
       });
+
+      // What the cluster icon reads to work out its own colour and count.
+      (marker as L.Marker & { sambandGroup?: MarkerGroup }).sambandGroup = group;
 
       marker.bindPopup(buildPopup(group, now), { maxWidth: 300 });
       layer.addLayer(marker);
@@ -542,6 +516,15 @@ function EventMapInner({
                 7
               </span>
               <span>Antal på samma plats</span>
+            </li>
+            {/* The one mark whose meaning changes when you zoom, so it says so:
+                a reader who does not know these split apart reads a busy south
+                as one enormous incident. */}
+            <li className="map-key-mark">
+              <span className="map-key-sample map-key-sample--cluster" aria-hidden="true">
+                24
+              </span>
+              <span>Flera platser, zooma för att dela upp</span>
             </li>
             <li className="map-key-mark">
               <span className="map-key-sample map-key-sample--recent" aria-hidden="true" />
