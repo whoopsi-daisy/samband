@@ -743,6 +743,16 @@ interface SqlFragment {
  * whichever county desk wrote it. The statistics have always left them out.
  * The map has the same reason to, and a sharper one: a marker for it lands on
  * a county centroid that no incident actually happened at.
+ *
+ * The feed used to be the exception, which made the app say two things at
+ * once: these are not events anywhere a number is computed, and they are the
+ * top seven rows of the list every morning, one per county, all filed within a
+ * minute of each other. Excluded everywhere now, and unconditionally rather
+ * than through a flag, so the query that pages the feed and the count that
+ * sizes it cannot disagree about how many rows exist.
+ *
+ * They are filtered from the views, not deleted: a ?handelse= link to one
+ * still resolves, because getEventById does not go through here.
  */
 const SUMMARY_TYPE_PATTERN = '%Sammanfattning%';
 
@@ -763,12 +773,7 @@ const SUMMARY_TYPE_PATTERN = '%Sammanfattning%';
  */
 const PRESS_DESK_PATTERN = '%presstalesperson%';
 
-interface QueryOptions {
-  /** Drop the police's scheduled summary posts from the result. */
-  excludeSummaries?: boolean;
-}
-
-function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
+function liveFilterSql(filters: EventFilters): SqlFragment {
   const params: (string | number)[] = [];
   let sql = '';
 
@@ -777,13 +782,12 @@ function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFr
     params.push(filters.since);
   }
 
-  if (options.excludeSummaries) {
-    sql += " AND COALESCE(e.type, '') NOT LIKE ?";
-    params.push(SUMMARY_TYPE_PATTERN);
-  }
+  // Both unconditional, and applied here rather than at a call site so the
+  // feed and the count that pages it can never disagree about how many rows
+  // there are.
+  sql += " AND COALESCE(e.type, '') NOT LIKE ?";
+  params.push(SUMMARY_TYPE_PATTERN);
 
-  // Unconditional, and applied here rather than at a call site so the feed and
-  // the count that pages it can never disagree about how many rows there are.
   sql += " AND COALESCE(e.summary, '') NOT LIKE ?";
   params.push(PRESS_DESK_PATTERN);
 
@@ -827,7 +831,7 @@ function toSearchMatch(search: string): string | null {
 
 // The same filters against the archive's own column names, plus the cutoff
 // that keeps the two sources from overlapping.
-function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
+function archiveFilterSql(filters: EventFilters): SqlFragment {
   const params: (string | number)[] = [getArchiveCutoff()];
   let sql = ' AND b.pubdate < ?';
 
@@ -836,10 +840,8 @@ function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): Sq
     params.push(filters.since);
   }
 
-  if (options.excludeSummaries) {
-    sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
-    params.push(SUMMARY_TYPE_PATTERN);
-  }
+  sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
+  params.push(SUMMARY_TYPE_PATTERN);
 
   // The archive carries the same boilerplate under its own column name.
   sql += " AND COALESCE(b.description, '') NOT LIKE ?";
@@ -936,11 +938,10 @@ export function getEventById(id: number): EventWithMetadata | null {
 export function getEventsFromDb(
   filters: EventFilters = {},
   limit = 500,
-  offset = 0,
-  options: QueryOptions = {}
+  offset = 0
 ): EventWithMetadata[] {
   const pdo = getDatabase();
-  const live = liveFilterSql(filters, options);
+  const live = liveFilterSql(filters);
 
   if (!hasArchiveEvents()) {
     const rows = pdo
@@ -952,7 +953,7 @@ export function getEventsFromDb(
     return rows.map(rowToEvent);
   }
 
-  const archive = archiveFilterSql(filters, options);
+  const archive = archiveFilterSql(filters);
 
   // Each arm is limited to what the requested window could possibly need
   // before the union is sorted, so neither side is materialised in full.
@@ -995,7 +996,7 @@ const MAP_CACHE_TTL_MS = 60_000;
 
 const getMapEventRows = memoizeWithTtl(
   (filters: EventFilters, since: string): EventWithMetadata[] =>
-    getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
+    getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0),
   MAP_CACHE_TTL_MS,
   (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
 );

@@ -288,13 +288,21 @@ function MonthHeatmap({ rows, season }: { rows: MonthGridRow[]; season: SeasonPr
         )}
       </table>
 
-      <p className="heat-legend">
-        <span>{sv(low)}</span>
-        {[1, 2, 3, 4].map((step) => (
-          <span key={step} className={`heat-key heat-cell--${step}`} aria-hidden="true" />
-        ))}
-        <span>{sv(high)} per månad</span>
-      </p>
+      {/* With one month on record the range collapses, and the scale read
+          "327 [][][][] 327 per månad": a ramp between a number and itself. */}
+      {high > low ? (
+        <p className="heat-legend">
+          <span>{sv(low)}</span>
+          {[1, 2, 3, 4].map((step) => (
+            <span key={step} className={`heat-key heat-cell--${step}`} aria-hidden="true" />
+          ))}
+          <span>{sv(high)} per månad</span>
+        </p>
+      ) : (
+        <p className="heat-legend">
+          <span>{sv(high)} händelser</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -417,6 +425,20 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const runningYear = stats.yearly.find((year) => year.year === thisYear) ?? null;
   const coverage = coverageSpan(stats.coverageDays);
 
+  // A grid needs either more than one year to read down, or a single year with
+  // enough of it lived to read across. Below that it is the same few months
+  // the daily and weekly charts above already cover, drawn as mostly blanks.
+  const monthsWithData = stats.monthGrid.reduce(
+    (total, row) => total + row.months.filter((count) => count !== null && count > 0).length,
+    0
+  );
+  const hasMonthGrid = stats.monthGrid.length > 1 || monthsWithData >= 6;
+
+  // Each of the three cards here needs at least two years of one kind or
+  // another. With none of them the block was a heading and a lede over nothing.
+  const hasYearView =
+    stats.yearToDate !== null || stats.yearly.length > 1 || stats.familyByYear.length > 1;
+
   return (
     <>
       <Block
@@ -530,19 +552,21 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
         </div>
       </Block>
 
-      {/* The long view, which is where nearly all of the data is. It used to
-          be one block at the bottom carrying two sparklines: 300,000 rows over
-          a decade reduced to a footnote under three blocks about the last
-          month. */}
-      <Block
-        title="Månad för månad"
-        lede={
-          stats.oldestEvent
-            ? `Varje månad sedan ${coverageDay(stats.oldestEvent)}. Läs neråt för trenden, i sidled för året.`
-            : 'Varje månad som finns lagrad.'
-        }
-      >
-        {stats.monthGrid.length > 0 ? (
+      {/* The long view, which is where nearly all of the data is once an
+          archive is loaded. On an install without one it is where none of it
+          is, so both blocks stay away rather than standing as headings over an
+          empty card: a database nine days deep has nothing to say about
+          seasons or years, and a grid of eleven blank months saying so is
+          worse than not asking. */}
+      {hasMonthGrid && (
+        <Block
+          title="Månad för månad"
+          lede={
+            stats.oldestEvent
+              ? `Varje månad sedan ${coverageDay(stats.oldestEvent)}. Läs neråt för trenden, i sidled för året.`
+              : 'Varje månad som finns lagrad.'
+          }
+        >
           <div className="card">
             <MonthHeatmap rows={stats.monthGrid} season={stats.season} />
             {stats.season.years >= 2 && stats.season.busiestMonth !== null && (
@@ -555,11 +579,10 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
               </p>
             )}
           </div>
-        ) : (
-          <p className="stats-coverage">Ingen månad är komplett ännu.</p>
-        )}
-      </Block>
+        </Block>
+      )}
 
+      {hasYearView && (
       <Block
         title="År för år"
         lede="Om det blir fler eller färre över tid, och om det som händer är samma sorts händelser."
@@ -617,6 +640,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
           </div>
         )}
       </Block>
+      )}
 
       <Block
         title="Hela arkivet"
