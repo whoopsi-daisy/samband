@@ -182,6 +182,15 @@ export default function OperationalDashboard({
   }, []);
 
   const verdict = assessSystem(operationalStats);
+
+  // Imported rows the cutoff is keeping out of every view.
+  const hiddenArchive = Math.max(0, system.archive.stored - system.archive.events);
+  const archiveTone: Tone =
+    system.archive.stored === 0
+      ? 'neutral'
+      : hiddenArchive > system.archive.stored * 0.1
+        ? 'warn'
+        : 'neutral';
   const ageTone = fetchAgeTone(operationalStats.minutesSinceLastSuccess);
 
   // Timezone- and clock-dependent strings differ between the server render and
@@ -218,7 +227,7 @@ export default function OperationalDashboard({
         </div>
       </header>
 
-      <main>
+      <main id="main-content">
         <section className={`ops-verdict ops-verdict--${verdict.tone}`}>
           <span className={`dot dot--${verdict.tone === 'neutral' ? 'warn' : verdict.tone}`} />
           <div>
@@ -359,14 +368,26 @@ export default function OperationalDashboard({
               value={formatNumber(databaseHealth.totalEvents)}
               note="från polisen.se, ungefär en vecka djupt"
             />
+            {/* Stored against shown. The archive is served strictly below the
+                cutoff, and the cutoff is the oldest live event, so one stale
+                notice in the live table hides everything above it. A finished
+                import could leave the statistics looking untouched with nothing
+                anywhere saying why. */}
             <Metric
               label="Arkivhändelser"
-              value={formatNumber(system.archive.events)}
-              note={
-                system.archive.cutoff
-                  ? `serveras före ${local(() => formatDay(system.archive.cutoff), '–')}`
-                  : 'ingen import gjord'
+              value={
+                system.archive.stored > 0
+                  ? `${formatNumber(system.archive.events)} / ${formatNumber(system.archive.stored)}`
+                  : '0'
               }
+              note={
+                system.archive.stored === 0
+                  ? 'ingen import gjord'
+                  : hiddenArchive > 0
+                    ? `${formatNumber(hiddenArchive)} rader ligger ovanför brytpunkten och visas inte`
+                    : 'hela arkivet visas'
+              }
+              tone={archiveTone}
             />
             <Metric
               label="Databasfil"
@@ -407,7 +428,26 @@ export default function OperationalDashboard({
                       ? local(() => formatDay(system.archive.cutoff), '–')
                       : 'inget arkiv'
                   }
+                  tone={archiveTone}
                 />
+                {system.archive.stored > 0 && (
+                  <Row
+                    label="Arkivets egen period"
+                    value={local(
+                      () =>
+                        `${formatDay(system.archive.oldest)} – ${formatDay(system.archive.newest)}`,
+                      '–'
+                    )}
+                  />
+                )}
+                {hiddenArchive > 0 && (
+                  <p className="ops-hint ops-hint--alert">
+                    Brytpunkten är den äldsta live-händelsen, och arkivet visas bara under den.
+                    En enda gammal notis i live-tabellen drar alltså gränsen bakåt och gömmer
+                    resten. Äldsta live-händelse:{' '}
+                    {local(() => formatDay(system.archive.liveOldest), '–')}.
+                  </p>
+                )}
                 <Row
                   label="Uppdaterade i efterhand"
                   value={`${formatNumber(databaseHealth.updatedEvents)} (${databaseHealth.updatedEventsPercent} %)`}

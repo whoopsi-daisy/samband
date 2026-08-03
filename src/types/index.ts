@@ -635,7 +635,21 @@ export interface SystemSnapshot {
     /** False while a rebuild is still pending after the setting changed. */
     matches: boolean;
   };
-  archive: { events: number; cutoff: string | null };
+  archive: {
+    /** Rows the app actually serves: those below the cutoff. */
+    events: number;
+    /** Rows in the table. Far above `events` means most of the import is hidden. */
+    stored: number;
+    cutoff: string | null;
+    /** The archive's own span, which is not the same as what is shown. */
+    oldest: string | null;
+    newest: string | null;
+    /**
+     * Oldest live event. The cutoff is this, so a single stale row here drags
+     * the boundary back years and hides everything above it.
+     */
+    liveOldest: string | null;
+  };
 }
 
 // Brottsplatskartan import types

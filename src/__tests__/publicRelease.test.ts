@@ -156,6 +156,39 @@ describe('the pages that catch a failure', () => {
   });
 });
 
+describe('the installable app', () => {
+  const manifest = JSON.parse(read('public/manifest.json'));
+
+  // Chrome shows the richer install prompt only when screenshots are present
+  // with a form_factor. Without them, installing is a bare name and icon.
+  it('carries screenshots for both form factors', () => {
+    const factors = manifest.screenshots.map((s: { form_factor: string }) => s.form_factor);
+    expect(factors).toContain('narrow');
+    expect(factors).toContain('wide');
+
+    for (const shot of manifest.screenshots) {
+      const png = fs.readFileSync(path.join(process.cwd(), 'public', shot.src));
+      const [w, h] = shot.sizes.split('x').map(Number);
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([w, h]);
+    }
+  });
+
+  it('has an icon Android can mask without clipping the mark', () => {
+    const purposes = manifest.icons.map((i: { purpose: string }) => i.purpose);
+    expect(purposes).toContain('maskable');
+  });
+
+  // In standalone mode Android paints the title bar with theme_color, so a
+  // different value here means installing the app changes its own chrome.
+  it('paints its chrome the same colour the page does', () => {
+    const css = read('src/app/globals.css');
+    const bg = css.match(/--bg:\s*(#[0-9a-f]{6})/i)?.[1];
+    expect(bg).toBeTruthy();
+    expect(manifest.theme_color.toLowerCase()).toBe(bg!.toLowerCase());
+    expect(manifest.background_color.toLowerCase()).toBe(bg!.toLowerCase());
+  });
+});
+
 describe('the share image', () => {
   it('is the shape link previews lay out for', () => {
     const file = path.join(process.cwd(), 'public/og.png');
