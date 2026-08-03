@@ -12,6 +12,7 @@ import VmaView from './VmaView';
 import VmaRibbon from './VmaRibbon';
 import Footer from './Footer';
 import ScrollToTop from './ScrollToTop';
+import RadioCheck from './RadioCheck';
 import MapModal from './MapModal';
 import ErrorBoundary from './ErrorBoundary';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -207,6 +208,7 @@ function ClientAppContent({
       {/* Above the header, so it is the first thing on the page whatever view
           the reader is on and wherever they navigate next. */}
       <VmaRibbon alerts={vma.live} onOpen={showVma} />
+      <RadioCheck />
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
