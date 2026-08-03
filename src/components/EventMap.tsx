@@ -3,6 +3,7 @@
 import { useEffect, useRef, useMemo, useState, memo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { FormattedEvent, TYPE_FAMILIES, TypeFamilyKey, getTypeStyle } from '@/types';
+import { markerInk } from '@/lib/markerInk';
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
@@ -47,11 +48,42 @@ const WINDOWS: { days: number; label: string; phrase: string }[] = [
 const basemapUrl = (dark: boolean) =>
   `https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`;
 
+/**
+ * The credit shown in the map's own corner.
+ *
+ * ODbL requires OpenStreetMap to be named wherever its data is shown, and
+ * CARTO's terms say the same about the rendered tiles. Kept short, because a
+ * corner control is read at a glance and the licence links carry the detail.
+ */
+const OSM_CREDIT =
+  '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">&copy; OpenStreetMap</a>';
+const CARTO_CREDIT =
+  `${OSM_CREDIT} &middot; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>`;
+
 /** Incidents this fresh get a ring, whatever window is selected. */
 const RECENT_MS = 60 * 60 * 1000;
 
 /** Families listed in the key before the rest are folded into one row. */
 const LEGEND_ROWS = 6;
+
+/**
+ * How wide the bubble is for a given pile of incidents.
+ *
+ * Wide enough for the number it has to hold, and no wider: sizing continuously
+ * by count made the difference between two incidents and three a couple of
+ * pixels nobody could read, while a busy city centre grew a disc that covered
+ * the towns around it.
+ */
+function clusterSize(count: number): number {
+  // 28 rather than 24 at the bottom. Twenty-four is exactly the WCAG 2.5.8
+  // minimum, which leaves no headroom at all: two positions a few kilometres
+  // apart overlap slightly at country zoom, and a bubble clipped by one pixel
+  // is under the minimum. Four pixels of margin costs nothing and takes the
+  // common case out of the failure.
+  if (count < 10) return 28;
+  if (count < 100) return 34;
+  return 42;
+}
 
 /**
  * Incidents sharing one position, as one marker.
@@ -108,6 +140,11 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** How a position is named, taken from one of the incidents filed at it. */
+function placeLabel(event: FormattedEvent): string {
+  return event.place ? `${event.place}, ${event.location}` : event.location || 'Okänd plats';
+}
+
 function relativeTime(ageMs: number): string {
   const minutes = Math.floor(ageMs / 60_000);
   if (minutes < 2) return 'Just nu';
@@ -145,6 +182,16 @@ function EventMapInner({
 
   const groups = useMemo(() => groupByPosition(events), [events]);
   const mappable = useMemo(() => events.filter((e) => e.gps).length, [events]);
+  /*
+   * Notices in this period that carry no position at all.
+   *
+   * The map has large empty stretches, and until now nothing on the page said
+   * why: a reader in one of them reasonably reads blank as "nothing happened
+   * here". Some of it is real (most of Sweden has very few people in it), but
+   * part of it is that a share of the feed arrives with no coordinates and
+   * simply cannot be drawn. That share is a fact the map can state.
+   */
+  const missing = events.length - mappable;
   const activeWindow = WINDOWS.find((w) => w.days === windowDays) ?? WINDOWS[0];
 
   // --- Build the map once, when the view is first opened ---
@@ -166,7 +213,13 @@ function EventMapInner({
         center: [62.5, 17.5],
         zoom: 5,
         zoomControl: true,
-        attributionControl: false,
+        // Leaflet's own control, in the map's corner, is where the credit
+        // belongs: it is a fact about the tiles rather than about the page, and
+        // as a band of body text under the canvas it was the largest thing in
+        // the block that explains the map. Switched off, the string handed to
+        // the tile layer was never rendered at all, which ODbL and CARTO's
+        // terms both require it to be.
+        attributionControl: true,
         // Leaflet's default is whole zoom steps, and fitBounds always rounds
         // down to fit. Sweden's markers need about z5.5 in this canvas, so
         // every fit landed on z5 and drew the country at two thirds of the
@@ -175,8 +228,12 @@ function EventMapInner({
         zoomSnap: 0.25,
       });
 
+      // No "Leaflet" prefix: the library is not a data source, and the strip is
+      // narrow enough on a phone without it.
+      map.attributionControl.setPrefix(false);
+
       const tileLayer = L.tileLayer(basemapUrl(isDarkRef.current), {
-        attribution: '&copy; OpenStreetMap',
+        attribution: CARTO_CREDIT,
         maxZoom: 18,
       }).addTo(map);
       baseLayerRef.current = tileLayer;
@@ -190,7 +247,7 @@ function EventMapInner({
         // swap and the layer stays as it is.
         baseLayerRef.current = null;
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap',
+          attribution: OSM_CREDIT,
           maxZoom: 19,
         }).addTo(map);
       });
@@ -246,10 +303,48 @@ function EventMapInner({
 
       const style = getTypeStyle(newest.event.type);
       const isRecent = now - group.newest < RECENT_MS;
-      // One size for a single incident and a slightly larger one where several
-      // share a spot. Nothing here encodes age in size: over a month that made
-      // every marker the same anyway, and it was one more thing to explain.
-      const radius = group.events.length > 1 ? 8 + Math.min(group.events.length, 12) * 0.5 : 7;
+      const count = group.events.length;
+
+      /*
+       * A pile of incidents is drawn as its own count.
+       *
+       * It used to be a slightly larger dot, which is a difference of two or
+       * three pixels: nothing on the map said whether a point was one notice or
+       * ninety, and the police file a great many of them against the same
+       * municipal position, so most of what looked like single incidents were
+       * not. Printing the number is what makes the map answer "how much is
+       * happening here" instead of "is anything at all".
+       */
+      if (count > 1) {
+        const size = clusterSize(count);
+        const { fill, ink } = markerInk(style.color);
+        const label = count.toLocaleString('sv-SE');
+        const marker = L.marker([group.lat, group.lng], {
+          icon: L.divIcon({
+            className: 'map-cluster-icon',
+            html:
+              `<span class="map-cluster${isRecent ? ' map-cluster--recent' : ''}" ` +
+              `style="--cluster-fill:${fill};--cluster-ink:${ink};--cluster-size:${size}px">` +
+              `${escapeHtml(label)}</span>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+          }),
+          // Markers built from a divIcon take keyboard focus, which the SVG
+          // circles never did: the map's contents were unreachable without a
+          // pointer. The title is what a screen reader announces on arrival.
+          title: `${label} händelser, ${placeLabel(newest.event)}`,
+          alt: `${label} händelser, ${placeLabel(newest.event)}`,
+          riseOnHover: true,
+        });
+
+        marker.bindPopup(buildPopup(group, now), { maxWidth: 300 });
+        layer.addLayer(marker);
+        continue;
+      }
+
+      // A single incident stays an SVG dot. Cheap, and there are thousands of
+      // them over a month-long window.
+      const radius = 7;
 
       if (isRecent) {
         layer.addLayer(
@@ -404,49 +499,72 @@ function EventMapInner({
               ? `, på ${groups.length.toLocaleString('sv-SE')} platser`
               : ''}
           </span>
-          {/* One clause, in the band that already says what is drawn. The
-              second sentence explained that stacked incidents share a point,
-              which the count beside it ("86 händelser, på 15 platser") says
-              on its own. */}
-          <span className="map-hint">
-            Punkten sitter där anmälan skrevs, inte nödvändigtvis där något hände.
-          </span>
-          {/* ODbL requires the credit to be shown, and CARTO's terms say the
-              same about the tiles. Leaflet's own control is switched off, so
-              the string it was given was set and never rendered: attribution
-              that exists only in a constructor argument is not attribution. */}
-          <span className="map-attribution">
-            Kartdata{' '}
-            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
-              © OpenStreetMap
-            </a>
-            , kartbilder{' '}
-            <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">
-              © CARTO
-            </a>
-          </span>
+          {/* Why parts of the country are blank. Only when there is something
+              to account for: on a quiet day the whole window is drawable and
+              the line would be noise. */}
+          {missing > 0 && (
+            <span className="map-status-missing">
+              {missing.toLocaleString('sv-SE')} till saknar plats och kan inte ritas ut
+            </span>
+          )}
         </p>
 
-        {legend.rows.length > 0 && (
-          <div className="map-legend" aria-label="Färgförklaring">
-            {legend.rows.map((item) => (
-              <span className="map-legend-item" key={item.key}>
-                <span
-                  className="map-legend-dot"
-                  style={{ background: item.color }}
-                  aria-hidden="true"
-                />
-                {item.label} <span className="map-legend-count">({item.count})</span>
-              </span>
-            ))}
-            {legend.rest > 0 && (
-              <span className="map-legend-item map-legend-item--rest">
-                Övriga <span className="map-legend-count">({legend.rest})</span>
-              </span>
-            )}
-          </div>
-        )}
+        {/* One key rather than three strips. The colours had a row of their own
+            with nothing above it saying what a colour was, and nothing anywhere
+            explaining the numbers, the ring or where a point actually sits. */}
+        <div className="map-key">
+          <h2 className="map-key-title">Så läser du kartan</h2>
 
+          <ul className="map-key-marks">
+            {/* Short enough that the three sit on one row rather than two and a
+                half. A key is glanced at beside its sample, not read. */}
+            <li className="map-key-mark">
+              <span className="map-key-sample map-key-sample--single" aria-hidden="true" />
+              <span>En anmälan</span>
+            </li>
+            <li className="map-key-mark">
+              <span className="map-key-sample map-key-sample--group" aria-hidden="true">
+                7
+              </span>
+              <span>Antal på samma plats</span>
+            </li>
+            <li className="map-key-mark">
+              <span className="map-key-sample map-key-sample--recent" aria-hidden="true" />
+              <span>Inom senaste timmen</span>
+            </li>
+          </ul>
+
+          {legend.rows.length > 0 && (
+            <>
+              <h3 className="map-key-subtitle">Färgen visar typ av händelse</h3>
+              <ul className="map-key-colors">
+                {legend.rows.map((item) => (
+                  <li className="map-key-color" key={item.key}>
+                    <span
+                      className="map-key-dot"
+                      style={{ background: item.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="map-key-name">{item.label}</span>
+                    <span className="map-key-count">{item.count.toLocaleString('sv-SE')}</span>
+                  </li>
+                ))}
+                {legend.rest > 0 && (
+                  <li className="map-key-color map-key-color--rest">
+                    <span className="map-key-dot map-key-dot--rest" aria-hidden="true" />
+                    <span className="map-key-name">Övriga typer</span>
+                    <span className="map-key-count">{legend.rest.toLocaleString('sv-SE')}</span>
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
+
+          <p className="map-key-note">
+            Punkten sitter där anmälan skrevs, inte nödvändigtvis där något hände. Polisen anger
+            ofta en kommun eller en ort snarare än en adress, så anmälningar samlas i tätorterna.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -460,9 +578,7 @@ function buildPopup(group: MarkerGroup, now: number): string {
     return tb - ta;
   });
 
-  const place = sorted[0].place
-    ? `${sorted[0].place}, ${sorted[0].location}`
-    : sorted[0].location || '';
+  const place = placeLabel(sorted[0]);
 
   // Long piles get their first few and a count, rather than a popup that needs
   // scrolling of its own.

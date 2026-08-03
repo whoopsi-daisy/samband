@@ -9,6 +9,7 @@ import {
   SeasonProfile,
   FamilyYear,
   YearToDate,
+  RegionBreakdown,
   getTypeStyle,
 } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
@@ -136,6 +137,84 @@ function TopList({
   );
 }
 
+/** A signed percentage, in the form a Swedish reader writes one. */
+function signedPercent(change: number): string {
+  const rounded = Math.round(change * 100);
+  if (rounded === 0) return '±0 %';
+  // U+2212, the minus sign: a hyphen is a word-break opportunity and renders
+  // shorter than the plus it is lined up against.
+  return rounded > 0 ? `+${rounded} %` : `−${Math.abs(rounded)} %`;
+}
+
+/**
+ * The country by county.
+ *
+ * The feed names places at whatever level the officer chose, so the "vanligaste
+ * platser" list beside this one is a mix of municipalities, counties and the
+ * odd district: useful for finding your own town, useless for seeing the
+ * country. Folded into the twenty-one counties it answers where in Sweden the
+ * notices are written, and against the year before, which way it is going.
+ *
+ * Deliberately not clickable. The filter behind the feed matches the place
+ * string on the notice, and no notice is labelled "Västra Götalands län" unless
+ * an officer wrote exactly that, so a row that looked like a filter would
+ * return a fraction of what it had just counted.
+ */
+function RegionTable({ regions }: { regions: RegionBreakdown }) {
+  const max = Math.max(...regions.rows.map((row) => row.total), 1);
+  const hasTrend = regions.trendFrom !== null && regions.rows.some((row) => row.change !== null);
+
+  return (
+    <div className="region-scroll">
+      <table className="region-table">
+        <thead>
+          <tr>
+            <th scope="col">Län</th>
+            <th scope="col" className="region-num">
+              Andel
+            </th>
+            <th scope="col" className="region-num">
+              Notiser
+            </th>
+            {hasTrend && (
+              <th scope="col" className="region-num">
+                Mot i fjol
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {regions.rows.map((row) => (
+            <tr key={row.county}>
+              <th scope="row">
+                <span className="region-name">{row.county.replace(/ län$/, '')}</span>
+                <span className="region-track" aria-hidden="true">
+                  <span className="region-bar" style={{ width: `${(row.total / max) * 100}%` }} />
+                </span>
+              </th>
+              <td className="region-num">{(row.share * 100).toFixed(1).replace('.', ',')} %</td>
+              <td className="region-num">{sv(row.total)}</td>
+              {hasTrend && (
+                <td className="region-num">
+                  {row.change === null ? (
+                    <span className="region-flat" title="För få notiser året före för en jämförelse">
+                      –
+                    </span>
+                  ) : (
+                    <span className={row.change >= 0 ? 'region-up' : 'region-down'}>
+                      {signedPercent(row.change)}
+                    </span>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function peakIndex(values: number[]): number {
   let best = 0;
   for (let i = 1; i < values.length; i++) if (values[i] > values[best]) best = i;
@@ -228,7 +307,11 @@ function MonthHeatmap({ rows, season }: { rows: MonthGridRow[]; season: SeasonPr
                   return (
                     <td key={month} className="heat-cell heat-cell--none">
                       <span className="sr-only">
-                        {MONTH_NAMES[month]} {row.year}: utanför arkivet
+                        {/* "utanför arkivet" told a screen reader about the
+                            shape of a database. The cell is blank because the
+                            month has no data, which is the same thing said
+                            without borrowing the operator's word for it. */}
+                        {MONTH_NAMES[month]} {row.year}: inga siffror
                       </span>
                     </td>
                   );
@@ -425,6 +508,17 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   const runningYear = stats.yearly.find((year) => year.year === thisYear) ?? null;
   const coverage = coverageSpan(stats.coverageDays);
 
+  // "2024-07" as "juli 2024". Behind the mount gate with the other dates: it is
+  // formatted against the viewer's locale data, not the server's.
+  const trendWindow =
+    mounted && stats.regions.trendFrom
+      ? new Date(`${stats.regions.trendFrom}-01T00:00:00Z`).toLocaleDateString('sv-SE', {
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })
+      : null;
+
   // A grid needs either more than one year to read down, or a single year with
   // enough of it lived to read across. Below that it is the same few months
   // the daily and weekly charts above already cover, drawn as mostly blanks.
@@ -442,8 +536,8 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
   return (
     <>
       <Block
-        title="Den senaste tiden"
-        lede="Hur mycket som kommer in just nu, och hur det senaste dygnet står sig mot veckan före."
+        title="Sverige den senaste tiden"
+        lede="Hur många händelsenotiser polisen publicerat i hela landet, och hur det senaste dygnet står sig mot veckan före."
       >
         <div className="stats-grid stats-grid--three">
           <Stat value={sv(stats.last24h)} label="Senaste dygnet" />
@@ -552,6 +646,37 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
         </div>
       </Block>
 
+      {/* Where in the country, rather than which town. The list above answers
+          "is my own place in here"; this answers "what does Sweden look like",
+          which is the question the page exists for and the one it could not
+          previously answer at all. */}
+      {stats.regions.rows.length > 1 && (
+        <Block
+          title="Län för län"
+          lede="Var i landet notiserna skrivs, och åt vilket håll det har gått det senaste året."
+        >
+          <div className="card">
+            <RegionTable regions={stats.regions} />
+            <p className="chart-caption">
+              Andelen är av de {sv(stats.regions.placed)} notiser som går att placera i ett län.
+              {stats.regions.unplaced > 0 && (
+                <>
+                  {' '}
+                  {sv(stats.regions.unplaced)} till saknar en plats som går att placera och räknas
+                  inte med här.
+                </>
+              )}
+              {trendWindow && (
+                <>
+                  {' '}
+                  Jämförelsen är de tolv månaderna från {trendWindow} mot de tolv närmast före.
+                </>
+              )}
+            </p>
+          </div>
+        </Block>
+      )}
+
       {/* The long view, which is where nearly all of the data is once an
           archive is loaded. On an install without one it is where none of it
           is, so both blocks stay away rather than standing as headings over an
@@ -642,14 +767,17 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
       </Block>
       )}
 
-      <Block
-        title="Hela arkivet"
-        lede="Vad databasen innehåller, och varifrån det kommer."
-      >
-        <div className="stats-grid stats-grid--four">
-          <Stat value={approxTotal(stats.total)} label="Händelser totalt" />
+      {/* What the numbers rest on, and the two things they are routinely read
+          as and are not. This was "Hela arkivet", a block about the database:
+          how many rows it held, how many distinct places and types were in it,
+          and where the rows had been imported from. None of that is something a
+          reader came here for, and where the data is kept is nobody's business
+          but the operator's. What is left is the part that changes how every
+          chart above should be read. */}
+      <Block title="Om siffrorna" lede="Vad de bygger på, och vad de inte säger.">
+        <div className="stats-grid stats-grid--three">
           <Stat value={coverage.value} label={coverage.label} />
-          <Stat value={sv(stats.avgPerDay)} label="Snitt per dygn" />
+          <Stat value={sv(stats.avgPerDay)} label="Snitt per dygn i landet" />
           {stats.busiestDay ? (
             <Stat
               value={sv(stats.busiestDay.count)}
@@ -657,25 +785,24 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
               note={coverageDay(stats.busiestDay.date)}
             />
           ) : (
-            <Stat value={sv(stats.uniqueLocations)} label="Unika platser" />
+            <Stat value={sv(stats.uniqueLocations)} label="Platser i materialet" />
           )}
         </div>
 
-        {/* The one thing here a reader cannot work out from the charts. The
-            paragraph used to open by counting the archive and the distinct
-            places and types, which is inventory: three numbers to read past
-            before reaching the caveat that actually changes how the charts
-            should be read. */}
-        {stats.archiveEvents > 0 ? (
-          <p className="stats-coverage">
-            De importerade händelserna är daterade när de publicerades, inte när de inträffade,
-            vilket kan flytta enstaka händelser till dygnet efter.
-          </p>
-        ) : (
-          <p className="stats-coverage">
-            Endast polisens egen händelseström. Inget arkiv är importerat.
-          </p>
-        )}
+        <p className="stats-coverage">
+          Det som räknas här är polisens egna händelsenotiser, {approxTotal(stats.total)} stycken.
+          En notis är inte samma sak som ett brott: polisen skriver inte om allt som händer, en
+          notis kan gälla flera brott på en gång, och en anmälan som visar sig vara något annat
+          rättas sällan i efterhand. Siffrorna säger alltså vad polisen rapporterat, inte hur
+          mycket brott som begåtts.
+          {stats.archiveEvents > 0 && (
+            <>
+              {' '}
+              Äldre notiser är daterade när de publicerades, inte när något inträffade, vilket kan
+              flytta enstaka händelser till dygnet efter.
+            </>
+          )}
+        </p>
       </Block>
     </>
   );

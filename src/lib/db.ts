@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
 import { escapeLikeWildcards } from './utils';
+import { countyOf } from './regions';
 import { memoizeWithTtl } from './cache';
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
@@ -1158,11 +1159,25 @@ interface SourceStats {
    * per year if it were asked one year at a time.
    */
   yearTypes: Map<string, Map<string, number>>;
+  /**
+   * Place name by month, over the last two years only.
+   *
+   * Enough to say whether a county is busier than it was a year ago, and no
+   * more: the same grouping without a window is a scan of the whole source
+   * producing a row per place per month, which for a decade of history is tens
+   * of thousands of rows to answer a question about the last twenty-four
+   * months. The all-time county totals are folded out of `locations`, which is
+   * already collected, so nothing here is asked twice.
+   */
+  regionMonths: Array<{ month: string; label: string; total: number }>;
   withGps: number;
   updated: number;
 }
 
-function collectSourceStats(source: StatsSource, windows: { since24h: string; since7d: string; since30d: string }): SourceStats {
+function collectSourceStats(
+  source: StatsSource,
+  windows: { since24h: string; since7d: string; since30d: string; since24m: string }
+): SourceStats {
   const pdo = getDatabase();
   const excludePattern = '%Sammanfattning%';
   const { from, time, type, location, where, whereParams } = source;
@@ -1282,6 +1297,16 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     byType.set(row.label, (byType.get(row.label) ?? 0) + row.total);
   }
 
+  const regionMonthRows = pdo
+    .prepare(
+      `SELECT substr(${time}, 1, 7) AS month, ${location} AS label, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY month, label`
+    )
+    .all(...baseParams, windows.since24m) as Array<{
+    month: string;
+    label: string | null;
+    total: number;
+  }>;
+
   return {
     // The totals count every row: they answer "how much is stored". The rest
     // exclude summary posts, as the live feed's statistics always have.
@@ -1298,6 +1323,11 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     daily: new Map(dailyRows.map(row => [row.bucket, row.total])),
     allDays: new Map(allDayRows.map(row => [row.bucket, row.total])),
     yearTypes,
+    regionMonths: regionMonthRows.map((row) => ({
+      month: row.month,
+      label: row.label ?? '',
+      total: row.total,
+    })),
     withGps: scalars.withGps ?? 0,
     updated: scalars.updated ?? 0,
   };
@@ -1530,6 +1560,90 @@ function familyMixByYear(yearTypes: Map<string, Map<string, number>>): FamilyYea
   });
 }
 
+/**
+ * The country broken down by county.
+ *
+ * The feed names places at whatever level the officer chose, so counted as they
+ * come the record is three hundred labels of four different kinds. Folded into
+ * the twenty-one counties it becomes a picture of Sweden, which is the question
+ * a reader actually has.
+ *
+ * A trend needs two comparable windows, and the running month is not one: it is
+ * however many days into it we happen to be. Both windows therefore end at the
+ * last completed month, and the comparison is dropped rather than shown small
+ * where the record does not reach back far enough to make it mean anything.
+ */
+const TREND_MIN_BASE = 100;
+
+function regionBreakdown(
+  totals: Map<string, number>,
+  months: Array<{ month: string; label: string; total: number }>,
+  now: Date
+): RegionBreakdown {
+  const monthKey = (year: number, month: number): string =>
+    `${year}-${String(month + 1).padStart(2, '0')}`;
+
+  // Exclusive: the month we are standing in is partial on both sides of the
+  // comparison and belongs to neither.
+  const openMonth = monthKey(now.getFullYear(), now.getMonth());
+  const recentStart = monthKey(now.getFullYear() - 1, now.getMonth());
+  const previousStart = monthKey(now.getFullYear() - 2, now.getMonth());
+
+  const allTime = new Map<string, number>();
+  const recent = new Map<string, number>();
+  const previous = new Map<string, number>();
+  let unplaced = 0;
+  let placed = 0;
+
+  for (const [label, count] of totals) {
+    const county = countyOf(label);
+    if (!county) {
+      unplaced += count;
+      continue;
+    }
+    placed += count;
+    allTime.set(county, (allTime.get(county) ?? 0) + count);
+  }
+
+  for (const row of months) {
+    const county = countyOf(row.label);
+    if (!county) continue;
+    if (row.month >= recentStart && row.month < openMonth) {
+      recent.set(county, (recent.get(county) ?? 0) + row.total);
+    } else if (row.month >= previousStart && row.month < recentStart) {
+      previous.set(county, (previous.get(county) ?? 0) + row.total);
+    }
+  }
+
+  const previousTotal = [...previous.values()].reduce((sum, n) => sum + n, 0);
+
+  const rows = [...allTime.entries()]
+    .map(([county, total]) => {
+      const before = previous.get(county) ?? 0;
+      const after = recent.get(county) ?? 0;
+      // A county with a handful of notices last year swings by hundreds of
+      // percent on a difference of three, which reads as a finding and is not.
+      const change = previousTotal > 0 && before >= TREND_MIN_BASE ? (after - before) / before : null;
+      return {
+        county,
+        total,
+        share: placed > 0 ? total / placed : 0,
+        recent: after,
+        previous: before,
+        change,
+      };
+    })
+    .sort((a, b) => b.total - a.total || a.county.localeCompare(b.county, 'sv'));
+
+  return {
+    rows,
+    unplaced,
+    placed,
+    // Only claim a comparison window when there is something in it to compare.
+    trendFrom: previousTotal > 0 ? recentStart : null,
+  };
+}
+
 function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
   return [...counts]
     .filter(([label]) => label !== '')
@@ -1549,6 +1663,9 @@ function computeStatsSummary(): Statistics {
     since24h: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
     since7d: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     since30d: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    // Two whole years back from the start of the current month, so the regional
+    // trend has both of its windows complete.
+    since24m: new Date(Date.UTC(now.getFullYear() - 2, now.getMonth(), 1)).toISOString(),
   };
 
   const live = collectSourceStats(LIVE_STATS_SOURCE, windows);
@@ -1636,6 +1753,7 @@ function computeStatsSummary(): Statistics {
     avgPerDay,
     topTypes: topItems(typeCounts),
     topLocations: topItems(locationCounts),
+    regions: regionBreakdown(locationCounts, [...live.regionMonths, ...(archive?.regionMonths ?? [])], now),
     hourly,
     weekdays,
     daily,

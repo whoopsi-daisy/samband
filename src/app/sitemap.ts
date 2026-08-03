@@ -8,7 +8,7 @@ import { siteUrl } from '@/lib/site';
 export const dynamic = 'force-dynamic';
 
 /**
- * Two entries, because there are two pages.
+ * One entry, because there is one page.
  *
  * The views are query parameters on the same route, so listing them would be
  * listing one page four times under different addresses, which is exactly the
@@ -25,11 +25,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(),
       changeFrequency: 'hourly',
       priority: 1,
-    },
-    {
-      url: `${base}/om`,
-      changeFrequency: 'yearly',
-      priority: 0.4,
     },
   ];
 }

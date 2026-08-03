@@ -130,6 +130,34 @@ export interface DailyPeak {
   count: number;
 }
 
+/** One county's share of the record, and which way it is going. */
+export interface RegionStat {
+  county: string;
+  /** Notices over the whole record. */
+  total: number;
+  /** That county's share of everything that could be placed in one. */
+  share: number;
+  /** The last twelve complete months. */
+  recent: number;
+  /** The twelve before those. */
+  previous: number;
+  /**
+   * Change between the two windows, as a fraction. Null where the earlier
+   * window is too thin for a percentage to say anything.
+   */
+  change: number | null;
+}
+
+export interface RegionBreakdown {
+  rows: RegionStat[];
+  /** Notices whose place could not be resolved to a county, so shares are honest. */
+  unplaced: number;
+  /** Notices that could. */
+  placed: number;
+  /** First month of the recent window, as YYYY-MM. Null when there is no comparison. */
+  trendFrom: string | null;
+}
+
 export interface Statistics {
   total: number;
   totalStored: number;
@@ -139,6 +167,8 @@ export interface Statistics {
   avgPerDay: number;
   topTypes: TopItem[];
   topLocations: TopItem[];
+  /** The whole record folded into Sweden's twenty-one counties. */
+  regions: RegionBreakdown;
   hourly: number[];
   weekdays: number[];
   daily: DailyStats[];
