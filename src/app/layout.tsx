@@ -1,10 +1,14 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
+import { siteUrl } from '@/lib/site';
 
 export const metadata: Metadata = {
-  // Only used to resolve the relative share image below to an absolute URL.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://samband.unicast.space'),
+  // Resolves the share image and the canonical link to absolute URLs. Set
+  // NEXT_PUBLIC_SITE_URL per deployment: unset, a site on another domain
+  // publishes share cards pointing at somewhere else entirely.
+  metadataBase: new URL(siteUrl()),
+  alternates: { canonical: '/' },
   title: 'Sambandscentralen: polishändelser i realtid',
   description:
     'Följ polisens händelser i realtid över hela Sverige. Se aktuella polishändelser på karta, filtrera efter plats och händelsetyp.',
@@ -30,7 +34,15 @@ export const metadata: Metadata = {
     description: 'Följ polisens händelser i realtid över hela Sverige.',
     type: 'website',
     locale: 'sv_SE',
-    images: [{ url: '/icons/icon-512.png', width: 512, height: 512 }],
+    // A 512px square renders as a cropped thumbnail in most link previews.
+    // og.png is drawn at the 1.91:1 every platform actually lays out for.
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Sambandscentralen' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Sambandscentralen: polishändelser i realtid',
+    description: 'Följ polisens händelser i realtid över hela Sverige.',
+    images: ['/og.png'],
   },
 };
 
