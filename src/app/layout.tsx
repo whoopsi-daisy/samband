@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { THEME_SCRIPT } from '@/lib/themeScript';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 import { siteUrl } from '@/lib/site';
 
@@ -61,10 +62,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
 };
-
-// Runs before first paint so the theme never flashes. Absence of the attribute
-// is the light theme, so only dark needs stamping.
-const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark')}catch(e){}})()`;
 
 export default function RootLayout({
   children,
