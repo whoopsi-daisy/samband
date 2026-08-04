@@ -3,6 +3,9 @@ import { fetchDetailsText } from '@/lib/policeApi';
 import { getBpkEventText } from '@/lib/brottsplatskartanDb';
 import { sanitizeInput } from '@/lib/utils';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
+import { logger } from '@/lib/log';
+
+const log = logger('api:details');
 
 export async function GET(request: NextRequest) {
   // Check rate limit
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
     });
     return addRateLimitHeaders(response, rateLimitResult);
   } catch (error) {
-    console.error('Error fetching details:', error);
+    log.error('could not fetch the notice text', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch details' },
       { status: 500 }

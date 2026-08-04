@@ -1,6 +1,9 @@
 import { RawEvent } from '@/types';
 import { insertEvents, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
 import { isRetryableStatus, retryDelayMs, sleep } from './retry';
+import { logger } from './log';
+
+const log = logger('police');
 
 const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
@@ -175,7 +178,10 @@ export function refreshEventsIfNeeded(): Promise<RefreshResult> {
   // Check daily fetch limit (max 1440 calls per 24h)
   const dailyFetchCount = getDailyFetchCount();
   if (dailyFetchCount >= MAX_DAILY_FETCHES) {
-    console.warn(`Daily fetch limit reached (${dailyFetchCount}/${MAX_DAILY_FETCHES}). Skipping fetch.`);
+    log.warn('daily fetch limit reached, skipping', {
+      used: dailyFetchCount,
+      limit: MAX_DAILY_FETCHES,
+    });
     return Promise.resolve(SKIPPED);
   }
 
@@ -313,17 +319,17 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
 
     // Security: Only allow https protocol and polisen.se hostname
     if (parsedUrl.protocol !== 'https:') {
-      console.error('Invalid protocol in URL:', parsedUrl.protocol);
+      log.warn('refused a detail URL with a non-https scheme', { protocol: parsedUrl.protocol });
       return null;
     }
     if (parsedUrl.hostname !== 'polisen.se' && !parsedUrl.hostname.endsWith('.polisen.se')) {
-      console.error('Invalid hostname in URL:', parsedUrl.hostname);
+      log.warn('refused a detail URL off polisen.se', { host: parsedUrl.hostname });
       return null;
     }
 
     absoluteUrl = parsedUrl.href;
   } catch {
-    console.error('Invalid URL format:', url);
+    log.warn('refused an unparseable detail URL', { url });
     return null;
   }
 

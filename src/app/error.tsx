@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
+import { reportClientError } from '@/lib/reportClientError';
 
 /**
  * A render that threw.
@@ -25,7 +26,10 @@ export default function Error({
 }) {
   useEffect(() => {
     // The server log is where this belongs, and the container is watching it.
-    console.error('[ui] render failed:', error);
+    // This was a `console.error`, which in a client component means the
+    // visitor's own devtools: a production render crash was invisible to the
+    // operator by construction.
+    reportClientError(error, error.digest);
   }, [error]);
 
   return (

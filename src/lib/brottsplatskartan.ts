@@ -7,6 +7,9 @@ import {
   type BpkEventInput,
 } from './brottsplatskartanDb';
 import { isRetryableStatus, retryDelayMs, sleep } from './retry';
+import { logger } from './log';
+
+const log = logger('bpk');
 
 // Importer for the public brottsplatskartan.se events API.
 //
@@ -471,9 +474,9 @@ export async function importBrottsplatskartan(options: ImportOptions = {}): Prom
 
     const hitCeiling = lastPage >= pageCeiling;
     if (hitCeiling) {
-      console.warn(
-        `[bpk] stopped at the page ceiling (${pageCeiling}); the archive is growing faster than it can be read. Re-run to continue.`
-      );
+      log.warn('stopped at the page ceiling; the archive is growing faster than it can be read, re-run to continue', {
+        ceiling: pageCeiling,
+      });
     }
     const completed = !stoppedEarly && !hitCeiling && highestPageDone >= lastPage;
     updateBpkImportState({

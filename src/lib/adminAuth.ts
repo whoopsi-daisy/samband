@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { getDatabase, getDataDir } from './db';
+import { logger } from './log';
+
+const log = logger('auth');
 
 // Credentials for /stats and the import API.
 //
@@ -250,7 +253,7 @@ export function createStoredAdmin(username: string, password: string): AdminAcco
     .run(name, hashPassword(password), createdAt);
 
   consumeSetupToken();
-  console.log(`[auth] admin account "${name}" created; /stats now requires a login`);
+  log.info('admin account created; /stats now requires a login', { account: name });
   return { username: name, createdAt };
 }
 
@@ -317,9 +320,12 @@ export function getSetupToken(): string {
     // 0600: the data directory may be a bind mount that other things can read.
     fs.writeFileSync(tokenFilePath(), `${token}\n`, { mode: 0o600 });
   } catch (error) {
-    console.warn(`[auth] could not write ${tokenFilePath()}: ${String(error)}`);
+    log.warn('could not write the setup token file', { path: tokenFilePath(), error: String(error) });
   }
 
+  // Straight to stdout, not through the logger: this is a multi-line banner
+  // carrying a one-time setup URL, and it has to be readable and copyable in
+  // `docker compose logs` without a level and a scope stamped on every line.
   console.log(banner(token));
 
   return token;

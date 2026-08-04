@@ -6,6 +6,10 @@ import { escapeLikeWildcards, placeFromTitle } from './utils';
 import { countyOf, isCountyName } from './regions';
 import { buildRegionBreakdown } from './regionRows';
 import { memoizeWithTtl } from './cache';
+import { logger } from './log';
+import { classifyFetchError, isUnclassified } from './fetchErrors';
+
+const log = logger('db');
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
 // database somewhere other than <cwd>/data (the standalone Next.js server runs
@@ -22,7 +26,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -134,7 +138,7 @@ function migrateTimestampsToUtc(database: Database.Database): void {
   });
   applyAll(rows);
 
-  console.log(`[db] migration: normalised ${rows.length} event timestamps to UTC`);
+  log.info('migration: normalised event timestamps to UTC', { rows: rows.length });
 }
 
 // Migration 2: tables for imported brottsplatskartan.se events.
@@ -233,10 +237,10 @@ function migrateBrottsplatskartanForApp(database: Database.Database): void {
     .run();
 
   if (collapsed.changes > 0 || filled.changes > 0) {
-    console.log(
-      `[db] migration: normalised ${collapsed.changes} imported event types, ` +
-        `filled in ${filled.changes} imported locations`
-    );
+    log.info('migration: normalised imported event types and locations', {
+      types: collapsed.changes,
+      locations: filled.changes,
+    });
   }
 }
 
@@ -285,11 +289,11 @@ function buildSearchIndex(database: Database.Database, tokenizer: string): void 
     .run(tokenizer);
 
   if (rows > 0) {
-    console.log(
-      `[db] search index (${tokenizer}) built over ${rows.toLocaleString('sv-SE')} imported events in ${Math.round(
-        (Date.now() - started) / 1000
-      )}s`
-    );
+    log.info('search index built', {
+      tokenizer,
+      events: rows,
+      seconds: Math.round((Date.now() - started) / 1000),
+    });
   }
 }
 
@@ -308,7 +312,7 @@ function reconcileSearchTokenizer(database: Database.Database): void {
 
   if (row?.value === wanted) return;
 
-  console.log(`[db] search tokenizer changed to ${wanted}; rebuilding the index`);
+  log.info('search tokenizer changed; rebuilding the index', { tokenizer: wanted });
   buildSearchIndex(database, wanted);
 }
 
@@ -380,10 +384,44 @@ function migrateCountyColumn(database: Database.Database): void {
     fixAll(rows);
   }
 
-  console.log(
-    `[db] migration: placed ${live.length} live notices in a county` +
-      (normalised > 0 ? `, normalised ${normalised} imported ones` : '')
-  );
+  log.info('migration: placed live notices in a county', {
+    live: live.length,
+    normalisedImported: normalised || undefined,
+  });
+}
+
+/**
+ * Migration 6: classify fetch failures when they happen, not when they are read.
+ *
+ * The class used to be derived in SQL on every dashboard load, by a CASE over
+ * nine LIKE patterns, and anything unmatched became a single anonymous bucket.
+ * That made a brand-new kind of failure indistinguishable from more of an old
+ * one, which is exactly the thing an error log exists to surface.
+ *
+ * Backfills what is already stored so history keeps its shape rather than
+ * appearing to start at the upgrade.
+ */
+function migrateFetchErrorClass(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(fetch_log)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'error_class')) {
+    database.exec('ALTER TABLE fetch_log ADD COLUMN error_class TEXT');
+  }
+
+  const rows = database
+    .prepare("SELECT id, error_message FROM fetch_log WHERE success = 0 AND error_class IS NULL")
+    .all() as Array<{ id: number; error_message: string | null }>;
+
+  if (rows.length === 0) return;
+
+  const update = database.prepare('UPDATE fetch_log SET error_class = ? WHERE id = ?');
+  const applyAll = database.transaction((pending: typeof rows) => {
+    for (const row of pending) {
+      update.run(classifyFetchError(row.error_message), row.id);
+    }
+  });
+  applyAll(rows);
+
+  log.info('migration: classified stored fetch failures', { rows: rows.length });
 }
 
 function runMigrations(database: Database.Database): void {
@@ -411,6 +449,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 5) {
     migrateCountyColumn(database);
+  }
+
+  if (current < 6) {
+    migrateFetchErrorClass(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -497,7 +539,7 @@ export function getDatabase(): Database.Database {
       // Already closed, or never fully opened. The original error is the one
       // worth reporting.
     }
-    console.error('[db] initialisation failed; the database was not opened:', error);
+    log.error('initialisation failed; the database was not opened', error);
     throw error;
   }
 
@@ -813,10 +855,20 @@ export function insertEvents(events: RawEvent[]): InsertCounts {
 // Log a fetch operation
 export function logFetch(eventsFetched: number, eventsNew: number, success: boolean, error?: string): void {
   const pdo = getDatabase();
+  const errorClass = success ? null : classifyFetchError(error);
+
+  // A message this code has never been taught to read is the one thing in an
+  // error log worth interrupting for: it means the upstream is failing in a way
+  // nobody has looked at yet. It used to be folded into the same bucket as
+  // every recognised failure and never mentioned again.
+  if (isUnclassified(errorClass)) {
+    log.warn('unrecognised fetch failure; consider adding a rule for it', { error });
+  }
+
   pdo.prepare(`
-    INSERT INTO fetch_log (fetched_at, events_fetched, events_new, success, error_message)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(new Date().toISOString(), eventsFetched, eventsNew, success ? 1 : 0, error || null);
+    INSERT INTO fetch_log (fetched_at, events_fetched, events_new, success, error_message, error_class)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(new Date().toISOString(), eventsFetched, eventsNew, success ? 1 : 0, error || null, errorClass);
 }
 
 // Prune fetch_log entries older than the retention window to keep the
@@ -2287,7 +2339,7 @@ export function warmAggregateCaches(): void {
     getFilterOptions('location_name');
   } catch (error) {
     // Warming is an optimisation; a failure here must not take down the caller.
-    console.error('[db] failed to warm aggregate caches:', error);
+    log.error('failed to warm aggregate caches', error);
   }
 }
 
@@ -2306,12 +2358,19 @@ export function invalidateAggregateCaches(): void {
 }
 
 // Get operational statistics for monitoring
-// One classification of error_message, shared by the error list and the log
-// table so the two cannot disagree about what a row is.
-//
-// The labels are Swedish because the page is. The old set was English on an
-// otherwise Swedish screen, and bucketed a 503 as "Other Error" because it
-// tested for the literal '500'.
+/**
+ * The fallback classification, for rows written before migration 6.
+ *
+ * Failures are classified in TypeScript when they are logged now (see
+ * lib/fetchErrors), and the class is stored in `error_class`. This CASE only
+ * answers for rows that predate that column and were somehow not backfilled;
+ * every read wraps it in COALESCE so the stored value wins.
+ *
+ * Kept rather than deleted because a database restored from an old backup, or
+ * one whose migration was interrupted, should still show something sensible
+ * rather than a column of blanks. It is deliberately a copy of the same rules:
+ * fetchErrors.ts is the one that is maintained.
+ */
 const ERROR_TYPE_CASE = `
   CASE
     WHEN error_message LIKE '%timeout%' OR error_message LIKE '%ETIMEDOUT%' THEN 'Tidsgräns'
@@ -2390,7 +2449,8 @@ export function getOperationalStats(): OperationalStats {
   // the container lost DNS. Keep the bucket for scanning and the message for
   // diagnosing.
   const recentErrors = (pdo.prepare(`
-    SELECT fetched_at, error_message, ${ERROR_TYPE_CASE} as error_type
+    SELECT fetched_at, error_message,
+           COALESCE(error_class, ${ERROR_TYPE_CASE}) as error_type
     FROM fetch_log
     WHERE success = 0
     ORDER BY fetched_at DESC

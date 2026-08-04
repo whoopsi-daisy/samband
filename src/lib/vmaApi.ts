@@ -1,4 +1,7 @@
 import { VmaAlert, VmaSeverity } from '@/types';
+import { logger } from './log';
+
+const log = logger('vma');
 
 /**
  * Viktigt meddelande till allmänheten, from Sveriges Radio's VMA API.
@@ -271,7 +274,7 @@ async function loadWithFallback(): Promise<VmaResult> {
     cached = { storedAt: Date.now(), ttlMs: VMA_CACHE_TTL_MS, value };
     return value;
   } catch (error) {
-    console.error('[vma] could not reach the VMA API:', error);
+    log.error('could not reach the VMA API', error);
     const value: VmaResult = { alerts: [], failed: true };
     cached = { storedAt: Date.now(), ttlMs: VMA_FAILURE_TTL_MS, value };
     return value;

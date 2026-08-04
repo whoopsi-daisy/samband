@@ -8,6 +8,9 @@ import {
   verifySetupToken,
 } from '@/lib/adminAuth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
+import { logger } from '@/lib/log';
+
+const log = logger('auth');
 
 // Create the dashboard account, once, on a fresh installation.
 //
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
   try {
     stored = hasStoredAdmin();
   } catch (error) {
-    console.error('[auth] setup could not read the database:', error);
+    log.error('setup could not read the database', error);
     return NextResponse.json({ error: 'Databasen kunde inte läsas.' }, { status: 503 });
   }
   if (stored) {
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
   const token = typeof body.token === 'string' ? body.token : '';
 
   if (!verifySetupToken(token)) {
-    console.warn('[auth] setup rejected: wrong installation key');
+    log.warn('setup rejected: wrong installation key');
     return NextResponse.json(
       { error: 'Fel installationsnyckel. Den står i containerns logg vid start.' },
       { status: 403 }
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof AdminSetupError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error('[auth] setup failed:', error);
+    log.error('setup failed', error);
     return NextResponse.json({ error: 'Kontot kunde inte skapas.' }, { status: 500 });
   }
 }

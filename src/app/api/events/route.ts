@@ -5,6 +5,9 @@ import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from
 import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
+import { logger } from '@/lib/log';
+
+const log = logger('api:events');
 
 const EVENTS_PER_PAGE = 40;
 
@@ -79,7 +82,7 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store');
     return addRateLimitHeaders(response, rateLimitResult);
   } catch (error) {
-    console.error('Error fetching events:', error);
+    log.error('could not read events', error);
     return NextResponse.json(
       { error: 'Failed to fetch events' },
       { status: 500 }
