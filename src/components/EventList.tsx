@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import EventCard from './EventCard';
-import { FormattedEvent } from '@/types';
+import { FeedFilters, FormattedEvent } from '@/types';
 import { swedishDayKey } from '@/lib/utils';
 
 // Auto-refresh interval: 10 minutes (matches server-side fetch interval)
@@ -61,12 +61,7 @@ interface EventListProps {
   /** Every event matching the current filters, not just the first page. */
   initialTotal: number;
   initialHasMore: boolean;
-  filters: {
-    county: string;
-    location: string;
-    type: string;
-    search: string;
-  };
+  filters: FeedFilters;
   currentView: string;
   onShowMap?: (lat: number, lng: number, location: string) => void;
   highlightedEventId: number | null;
@@ -114,8 +109,10 @@ export default function EventList({
 
   // Stable key so a filter change resets the list
   const filterKey = useMemo(
-    () => `${filters.county}|${filters.location}|${filters.type}|${filters.search}`,
-    [filters.county, filters.location, filters.type, filters.search]
+    () =>
+      `${filters.county}|${filters.location}|${filters.type}|${filters.search}` +
+      `|${filters.from}|${filters.to}`,
+    [filters.county, filters.location, filters.type, filters.search, filters.from, filters.to]
   );
 
   useEffect(() => {
@@ -140,6 +137,8 @@ export default function EventList({
           location: filters.location,
           type: filters.type,
           search: filters.search,
+          from: filters.from,
+          to: filters.to,
         });
 
         const res = await fetch(`/api/events?${params}`);
@@ -197,6 +196,10 @@ export default function EventList({
         location: filters.location,
         type: filters.type,
         search: filters.search,
+        // Without these, scrolling past the first page of a date range quietly
+        // handed back page two of the whole archive.
+        from: filters.from,
+        to: filters.to,
       });
       const res = await fetch(`/api/events?${params}`);
       const data = await res.json();
@@ -546,8 +549,12 @@ export default function EventList({
             {total > events.length + PAGE_SIZE && (
               <p className="load-more-hint">
                 {/* "längre bak i arkivet" named the operator's storage. What
-                    the reader is actually reaching for is an older date. */}
-                Sök eller filtrera för att nå längre tillbaka i tiden.
+                    the reader is actually reaching for is an older date, and
+                    "Avgränsa i tiden" is now the control that gets them there:
+                    this used to point at filtering in general, because there
+                    was no date control to point at. */}
+                Sök, eller välj en period under <strong>Avgränsa i tiden</strong>, för att nå
+                längre tillbaka.
               </p>
             )}
           </>

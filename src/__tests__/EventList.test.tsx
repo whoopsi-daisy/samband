@@ -60,7 +60,7 @@ function renderList(props: Partial<React.ComponentProps<typeof EventList>> = {})
       initialEvents={page(1, 40)}
       initialTotal={1000}
       initialHasMore
-      filters={{ county: '', location: '', type: '', search: '' }}
+      filters={{ county: '', location: '', type: '', search: '', from: '', to: '' }}
       currentView="list"
       highlightedEventId={null}
       linkedEvent={null}
@@ -175,7 +175,7 @@ describe('EventList', () => {
       initialEvents: [],
       initialTotal: 0,
       initialHasMore: false,
-      filters: { county: '', location: 'Borås',  type: '', search: '' },
+      filters: { county: '', location: 'Borås',  type: '', search: '', from: '', to: '' },
       onClearFilters,
     });
 
@@ -197,7 +197,7 @@ describe('EventList', () => {
   // filter found anything before you scroll looking.
   it('counts the matches once a filter is applied', () => {
     renderList({
-      filters: { county: '', location: 'Borås',  type: '', search: '' },
+      filters: { county: '', location: 'Borås',  type: '', search: '', from: '', to: '' },
       initialEvents: page(1, 12),
       initialTotal: 12,
       initialHasMore: false,
@@ -210,7 +210,7 @@ describe('EventList', () => {
 
   it('offers a way back out from the match count', () => {
     const onClearFilters = jest.fn();
-    renderList({ filters: { county: '', location: '',  type: '', search: 'brand' }, onClearFilters });
+    renderList({ filters: { county: '', location: '',  type: '', search: 'brand', from: '', to: '' }, onClearFilters });
 
     fireEvent.click(screen.getByRole('button', { name: /^rensa$/i }));
     expect(onClearFilters).toHaveBeenCalled();

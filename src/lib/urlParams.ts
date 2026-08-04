@@ -18,6 +18,17 @@ export const QUERY = {
   search: 'sok',
   event: 'handelse',
   /**
+   * The two ends of a date range on the feed, as Swedish calendar days
+   * ("2019-04-01").
+   *
+   * The archive reaches back to 2016 and the feed pages newest-first, so until
+   * these existed the only way to reach a particular week was to guess a word
+   * that appears in it — while the list itself told readers to "filtrera för
+   * att nå längre bak i arkivet", pointing at a control that was not there.
+   */
+  from: 'fran',
+  to: 'till',
+  /**
    * How far back the map is looking, in days.
    *
    * This was deliberately kept out of the URL, on the reasoning that it is a
@@ -44,6 +55,10 @@ const LEGACY_QUERY: Record<QueryKey, string> = {
   type: 'type',
   search: 'search',
   event: 'event',
+  // New in the same release as the parameters themselves, so there is no older
+  // spelling to accept. Kept in the map so the shape stays exhaustive.
+  from: 'fran',
+  to: 'till',
   // Both new in the same release as the parameters themselves, so there is no
   // older spelling to accept. Kept in the map so the shape stays exhaustive.
   mapDays: 'dagar',

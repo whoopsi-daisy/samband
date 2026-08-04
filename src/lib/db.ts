@@ -1101,6 +1101,10 @@ function liveFilterSql(filters: EventFilters): SqlFragment {
     sql += ' AND e.event_time >= ?';
     params.push(filters.since);
   }
+  if (filters.until) {
+    sql += ' AND e.event_time <= ?';
+    params.push(filters.until);
+  }
 
   // Both unconditional, and applied here rather than at a call site so the
   // feed and the count that pages it can never disagree about how many rows
@@ -1162,6 +1166,10 @@ function archiveFilterSql(filters: EventFilters): SqlFragment {
   if (filters.since) {
     sql += ' AND b.pubdate >= ?';
     params.push(filters.since);
+  }
+  if (filters.until) {
+    sql += ' AND b.pubdate <= ?';
+    params.push(filters.until);
   }
 
   sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
 import { isCountyName } from '@/lib/regions';
+import type { FeedFilters } from '@/types';
+import { swedishDayKey } from '@/lib/utils';
+import { useMounted } from '@/hooks/useMounted';
 
 interface FiltersProps {
   /**
@@ -15,12 +18,7 @@ interface FiltersProps {
   locations: string[];
   types: string[];
   currentView: string;
-  filters: {
-    county: string;
-    location: string;
-    type: string;
-    search: string;
-  };
+  filters: FeedFilters;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -42,9 +40,24 @@ export default function Filters({ counties, locations, types, currentView, filte
   const [county, setCounty] = useState(filters.county);
   const [location, setLocation] = useState(filters.location);
   const [type, setType] = useState(filters.type);
+  const [from, setFrom] = useState(filters.from);
+  const [to, setTo] = useState(filters.to);
   const isInitialMount = useRef(true);
 
   const debouncedSearch = useDebounce(search, 300);
+
+  /*
+   * The latest date worth offering, as a Swedish calendar day.
+   *
+   * Only after mount. swedishDayKey is timezone-independent, so the server and
+   * the browser agree on which day it is — but not on which *instant*, and a
+   * render that straddles midnight would hand the two of them different
+   * strings for the same attribute. Undefined until mounted leaves the control
+   * unbounded for one frame, which costs nothing, rather than risking React
+   * discarding the server's markup once a day.
+   */
+  const mounted = useMounted();
+  const today = mounted ? swedishDayKey(new Date()) : undefined;
 
   // Narrowing what is on screen is not navigation. `push` gave every pause in
   // typing its own history entry, so Back replayed the search one fragment at
@@ -75,6 +88,11 @@ export default function Filters({ counties, locations, types, currentView, filte
   useEffect(() => setCounty(filters.county), [filters.county]);
   useEffect(() => setLocation(filters.location), [filters.location]);
   useEffect(() => setType(filters.type), [filters.type]);
+  // The server may have swapped a range typed backwards, or dropped a date it
+  // could not read, so these follow what was actually applied rather than what
+  // was typed.
+  useEffect(() => setFrom(filters.from), [filters.from]);
+  useEffect(() => setTo(filters.to), [filters.to]);
 
   useEffect(() => {
     if (isInitialMount.current) {
@@ -113,7 +131,7 @@ export default function Filters({ counties, locations, types, currentView, filte
       : places;
 
   const hasActiveFilters = Boolean(
-    filters.county || filters.location || filters.type || filters.search
+    filters.county || filters.location || filters.type || filters.search || filters.from || filters.to
   );
 
   const clearAllFilters = useCallback(() => {
@@ -121,11 +139,15 @@ export default function Filters({ counties, locations, types, currentView, filte
     setCounty('');
     setLocation('');
     setType('');
+    setFrom('');
+    setTo('');
     replaceParams((p) => {
       p.delete(QUERY.county);
       p.delete(QUERY.location);
       p.delete(QUERY.type);
       p.delete(QUERY.search);
+      p.delete(QUERY.from);
+      p.delete(QUERY.to);
     });
   }, [replaceParams]);
 
@@ -152,11 +174,25 @@ export default function Filters({ counties, locations, types, currentView, filte
     replaceParams((p) => (value ? p.set(QUERY.type, value) : p.delete(QUERY.type)));
   };
 
-  const removeFilter = (name: 'county' | 'location' | 'type' | 'search') => {
+  // The two ends move together in the URL but are set independently, so each
+  // writes only its own parameter.
+  const handleFromChange = (value: string) => {
+    setFrom(value);
+    replaceParams((p) => (value ? p.set(QUERY.from, value) : p.delete(QUERY.from)));
+  };
+
+  const handleToChange = (value: string) => {
+    setTo(value);
+    replaceParams((p) => (value ? p.set(QUERY.to, value) : p.delete(QUERY.to)));
+  };
+
+  const removeFilter = (name: 'county' | 'location' | 'type' | 'search' | 'from' | 'to') => {
     if (name === 'search') setSearch('');
     if (name === 'type') setType('');
     if (name === 'location') setLocation('');
     if (name === 'county') setCounty('');
+    if (name === 'from') setFrom('');
+    if (name === 'to') setTo('');
     replaceParams((p) => p.delete(QUERY[name]));
   };
 
@@ -253,6 +289,52 @@ export default function Filters({ counties, locations, types, currentView, filte
         ))}
       </select>
 
+      {/*
+        The period, behind a disclosure.
+        The archive reaches back to 2016 and the feed pages newest-first, so
+        until this existed the only way to reach a particular week was to guess
+        a word that appears in it — while the list itself told readers to
+        "filtrera för att nå längre bak i arkivet" and pointed at nothing.
+
+        Folded away because most readers want the last few days, which is what
+        the feed already opens on: two more permanently visible boxes would
+        cost every visit a row of chrome to serve the rarer question. It opens
+        by itself when a range is set, so a shared link arrives with its own
+        controls visible.
+      */}
+      <details className="filter-period" open={Boolean(filters.from || filters.to)}>
+        <summary>Avgränsa i tiden</summary>
+        <div className="filter-period-row">
+          <label className="filter-period-field">
+            <span>Från</span>
+            <input
+              className="field"
+              type="date"
+              name="from"
+              value={from}
+              max={to || today}
+              onChange={(e) => handleFromChange(e.target.value)}
+            />
+          </label>
+          <label className="filter-period-field">
+            <span>Till</span>
+            <input
+              className="field"
+              type="date"
+              name="to"
+              value={to}
+              min={from || undefined}
+              max={today}
+              onChange={(e) => handleToChange(e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="filter-period-hint">
+          Datum räknas som svenska kalenderdygn, och båda ändarna räknas med.
+          Lämna ett fält tomt för att bara sätta den andra gränsen.
+        </p>
+      </details>
+
       {/* Not a live region either. Changing a filter used to announce three
           things at once: these chips, the match count above the feed, and the
           end-of-list line. The count is the one that answers what the reader
@@ -267,6 +349,8 @@ export default function Filters({ counties, locations, types, currentView, filte
               ['location', 'Plats', filters.location],
               ['type', 'Typ', filters.type],
               ['search', 'Sökord', filters.search],
+              ['from', 'Från', filters.from],
+              ['to', 'Till', filters.to],
             ] as const
           ).map(([name, key, label]) =>
             label ? (

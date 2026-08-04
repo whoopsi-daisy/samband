@@ -2,7 +2,13 @@ import { Suspense } from 'react';
 import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { COUNTIES, resolveRegionFilters } from '@/lib/regions';
-import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
+import {
+  formatEventForUi,
+  resolveDateRange,
+  sanitizeLocation,
+  sanitizeType,
+  sanitizeSearch,
+} from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
 import { parseView, readParam } from '@/lib/urlParams';
 
@@ -55,19 +61,32 @@ async function HomeContent({ searchParams }: PageProps) {
     sanitizeLocation(readParam(get, 'location'))
   );
 
+  // The two ends of a date range, as Swedish calendar days. Anything
+  // unparseable is dropped rather than guessed at, and a range typed backwards
+  // is swapped: someone who wrote it that way meant the span between them.
+  const range = resolveDateRange(readParam(get, 'from'), readParam(get, 'to'));
+
+  // What the controls show: the reader's own words, including the two dates as
+  // they typed them.
   const filters = {
     county: region.county,
     location: region.location,
     type: sanitizeType(readParam(get, 'type')),
     search: sanitizeSearch(readParam(get, 'search')),
+    from: range.from,
+    to: range.to,
   };
+
+  // What the queries compare against: the same range as the two instants that
+  // bound it, which is a detail the UI has no use for.
+  const queryFilters = { ...filters, since: range.since, until: range.until };
 
   const currentView = parseView(readParam(get, 'view'));
 
   // Paging past the first page is the list's own job, over /api/events. A
   // `?page=` here only ever produced a feed with an unreachable beginning.
-  const events = getEventsFromDb(filters, EVENTS_PER_PAGE, 0);
-  const totalEvents = countEventsInDb(filters);
+  const events = getEventsFromDb(queryFilters, EVENTS_PER_PAGE, 0);
+  const totalEvents = countEventsInDb(queryFilters);
   const hasMore = EVENTS_PER_PAGE < totalEvents;
 
   // Map events are deliberately NOT fetched here: the map loads them from
