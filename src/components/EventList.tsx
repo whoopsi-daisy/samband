@@ -62,6 +62,7 @@ interface EventListProps {
   initialTotal: number;
   initialHasMore: boolean;
   filters: {
+    county: string;
     location: string;
     type: string;
     search: string;
@@ -113,8 +114,8 @@ export default function EventList({
 
   // Stable key so a filter change resets the list
   const filterKey = useMemo(
-    () => `${filters.location}|${filters.type}|${filters.search}`,
-    [filters.location, filters.type, filters.search]
+    () => `${filters.county}|${filters.location}|${filters.type}|${filters.search}`,
+    [filters.county, filters.location, filters.type, filters.search]
   );
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function EventList({
       try {
         const params = new URLSearchParams({
           page: '1',
+          county: filters.county,
           location: filters.location,
           type: filters.type,
           search: filters.search,
@@ -191,6 +193,7 @@ export default function EventList({
     async (pageNumber: number) => {
       const params = new URLSearchParams({
         page: String(pageNumber),
+        county: filters.county,
         location: filters.location,
         type: filters.type,
         search: filters.search,
@@ -532,19 +535,19 @@ export default function EventList({
                 ) : failure ? (
                   'Försök igen'
                 ) : (
-                  'Visa fler'
+                  'Visa fler händelser'
                 )}
               </button>
             )}
-            {/* The remaining count used to sit in the button's own label, which
-                read as an invitation to reach the end of the archive forty rows
-                at a time. With an import loaded that is thousands of taps. Say
-                how much there is, and point at the way that actually reaches
-                it. */}
+            {/* Just the way out. This used to open with the number of matching
+                events, which on an unfiltered feed is the size of the whole
+                archive: a six-figure count nobody asked for, sitting where the
+                reader is looking for what to do next. */}
             {total > events.length + PAGE_SIZE && (
               <p className="load-more-hint">
-                {total.toLocaleString('sv-SE')} händelser matchar. Sök eller filtrera för att nå
-                längre bak i arkivet.
+                {/* "längre bak i arkivet" named the operator's storage. What
+                    the reader is actually reaching for is an older date. */}
+                Sök eller filtrera för att nå längre tillbaka i tiden.
               </p>
             )}
           </>

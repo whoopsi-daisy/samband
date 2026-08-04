@@ -91,14 +91,24 @@
   --t-base: 180ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* ── Colour ─────────────────────────────────────────────── */
-  --bg: #ffffff;
-  --fg: #111111;         /* primary text: 18.1:1 on --bg */
-  --fg-secondary: #3d3d3d; /* body prose: 10.4:1 on --surface */
-  --muted: #6b6b6b;      /* meta and labels: 5.1:1 on --surface */
-  --subtle: #f5f5f5;
-  --border: #e0e0e0;
-  --border-strong: #c0c0c0;
+  /* ── Colour ─────────────────────────────────────────────────
+     Every neutral here carries a little blue, around hue 215 at 6-14%
+     saturation. Nothing in the ramp is a pure grey, because a pure grey ramp is
+     what a page looks like when nobody chose its colours: correct, legible and
+     bleak. The cast is well under the threshold where anyone would call the
+     page blue; it just stops the surfaces reading as absence.
+
+     The canvas is tinted and the cards are near-white, rather than the other
+     way round. That is the arrangement that gives a light interface depth
+     without shadows doing all the work, and it is why the feed now reads as
+     paper on a desk instead of hairlines on a void. */
+  --bg: #f2f5f9;         /* the desk */
+  --fg: #0e1520;         /* primary text: 16.9:1 on --surface */
+  --fg-secondary: #37424f; /* body prose: 9.5:1 on --surface */
+  --muted: #5e6b7a;      /* meta and labels: 5.2:1 on --surface */
+  --subtle: #e9eff6;
+  --border: #dce4ed;
+  --border-strong: #b4c1d0;
 
   /* The outline of anything you can click or type into. --border is 1.26:1 on
      a card and --border-strong 1.82:1, both well under the 3:1 that WCAG 1.4.11
@@ -106,22 +116,27 @@
      filter selects had no visible edge at all. 3.4:1 on --bg, --surface and
      --subtle alike. Structural hairlines: dividers, card edges, table rules:
      keep --border, which carries no information and is exempt. */
-  --border-control: #8a8a8a;
+  --border-control: #7c8a9b;
 
   /* Resting fill for cards so bordered surfaces read as solid objects rather
-     than hairline wireframe outlines. */
-  --surface: #fafafa;
-  --surface-hover: #f2f2f2;
+     than hairline wireframe outlines. Near-white against the tinted canvas, so
+     a card is lifted by being cleaner than the page rather than by a shadow. */
+  --surface: #fbfcfe;
+  --surface-hover: #f4f8fc;
   /* One step above --surface, for the single row that is currently open. */
   --surface-raised: #ffffff;
 
-  --shadow-sm: 0 1px 2px rgba(17, 17, 17, 0.04), 0 2px 6px rgba(17, 17, 17, 0.05);
-  --shadow-md: 0 2px 6px rgba(17, 17, 17, 0.06), 0 10px 28px rgba(17, 17, 17, 0.10);
+  /* Cast to match the ramp: a neutral-black shadow over a tinted surface reads
+     as dirt on the page rather than as depth. */
+  --shadow-sm: 0 1px 2px rgba(16, 30, 54, 0.05), 0 2px 6px rgba(16, 30, 54, 0.06);
+  --shadow-md: 0 2px 6px rgba(16, 30, 54, 0.07), 0 10px 28px rgba(16, 30, 54, 0.11);
 
-  /* Single restrained accent: 7.07:1 on --bg. Carries the mark, active nav,
-     the newest incident's rail, type badges and focus rings. Nothing else. */
-  --accent: #165a9b;
-  --accent-strong: #114a80; /* pressed states, text on an accent tint */
+  /* Single accent, and it is allowed to mean it: 7.4:1 on --surface. Carries
+     the mark, active nav, links, chart fills, type badges and focus rings.
+     Nothing else. The old value was half a step duller and read as a grey that
+     happened to be blue. */
+  --accent: #0d5cad;
+  --accent-strong: #0a4a8d; /* pressed states, text on an accent tint */
 
   /* Derived tints, so every accent-tinted surface in the app is the same wash
      rather than a hand-picked rgba per component. */
@@ -134,12 +149,19 @@
   --pill-accent-ink: color-mix(in srgb, var(--accent), #000 8%);
   --pill-muted-ink: color-mix(in srgb, var(--muted), #000 8%);
   --pill-alert-ink: color-mix(in srgb, var(--alert), #000 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #000 8%);
 
   /* Status hues. Three, each AA on --bg and on a 12% tint of itself. Used for
-     live/error/stale signals, never decoratively. */
-  --ok: #18713b;
-  --warn: #935110;
-  --alert: #b33528;
+     live/error/stale signals, never decoratively.
+
+     Pulled apart from each other and from the accent: the old green was close
+     enough to neutral that "live" read as a dot rather than as a state, and the
+     old warn was a brown that could have been either a warning or a link. Each
+     is now unmistakably its own hue while staying dark enough to be read as
+     text on a light page. */
+  --ok: #0c7a43;
+  --warn: #9a5504;
+  --alert: #b62f28;
 
   /* The VMA ribbon's fill. Deliberately NOT --alert and deliberately not
      overridden in the dark block: --alert is tuned to be readable *as text* on
@@ -147,7 +169,7 @@
      3.1:1 behind white. This is a fixed fill that holds 6.1:1 with white in
      both themes, which is also the right instinct for a warning: it should not
      dim when the lights go out. */
-  --vma-ribbon-bg: #b33528;
+  --vma-ribbon-bg: #b62f28;
 }
 
 /* Touch. See the note on --control-xl for why this is one block rather than a
@@ -163,32 +185,36 @@
   }
 }
 
+/* The same ramp, inverted. Dark carries the cast more openly than light does,
+   because a pure-neutral dark theme goes muddy rather than merely plain: the
+   blue is what keeps these surfaces reading as slate instead of as soot. */
 [data-theme="dark"] {
-  --bg: #111111;
-  --fg: #e8e8e8;
-  --fg-secondary: #bdbdbd; /* 8.5:1 on --surface */
-  --muted: #999999;        /* 5.6:1 on --surface */
-  --subtle: #1a1a1a;
-  --border: #2e2e2e;
-  --border-strong: #444444;
+  --bg: #0e1218;
+  --fg: #e7ecf2;
+  --fg-secondary: #b7c1cd; /* 8.6:1 on --surface */
+  --muted: #8e9bab;        /* 5.5:1 on --surface */
+  --subtle: #151b23;
+  --border: #262e3a;
+  --border-strong: #3d4757;
   /* 3.9:1 on --surface, 4.6:1 on --bg: the same headroom as the light theme.
      Measured against --surface-raised, the lightest thing a control ever sits
      on here, it still clears 3:1. */
-  --border-control: #7d7d7d;
+  --border-control: #788493;
 
-  --surface: #222222;
-  --surface-hover: #2b2b2b;
+  --surface: #181e27;
+  --surface-hover: #1f2733;
   /* Dark raises by lightening too, so "open" reads the same way in both themes. */
-  --surface-raised: #2c2c2c;
+  --surface-raised: #222b37;
 
   /* On dark, elevation reads mostly from the lighter surface; keep shadows
      present but subtle so edges still gain depth. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.30);
-  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.40), 0 12px 32px rgba(0, 0, 0, 0.50);
 
-  /* Lightened to 6.61:1 on --bg, mirroring the light theme's headroom. */
-  --accent: #4d9fe0;
-  --accent-strong: #74b4e8;
+  /* Lightened to mirror the light theme's headroom, and given the same lift in
+     chroma so the accent reads as the same colour in both themes. */
+  --accent: #58a9ee;
+  --accent-strong: #80c0f5;
 
   /* Dark flips the contrast direction: pill ink must be LIGHTER than its tint,
      so mix toward white. */
@@ -197,10 +223,11 @@
   /* Plain --alert on its own 12% tint is 4.32:1 here: under AA for 11px
      badge text. The lightened ink clears it at 4.73:1. */
   --pill-alert-ink: color-mix(in srgb, var(--alert), #fff 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #fff 8%);
 
-  --ok: #5ab870;
-  --warn: #e0a055;
-  --alert: #e07070;
+  --ok: #46c07d;
+  --warn: #e8a94e;
+  --alert: #f07b73;
 }
 
 /* ── Reset + base ─────────────────────────────────────────── */
@@ -219,6 +246,67 @@ html {
 }
 
 [data-theme="dark"] { color-scheme: dark; }
+
+/* The same palette, for a browser that never ran the bootstrap.
+ *
+ * The theme lives in an attribute written before first paint by an inline
+ * script. That is the only thing that knew about it, so anything that stopped
+ * the script running left a reader who asked their system for dark with a page
+ * of white: a blocked script under a strict CSP, JavaScript turned off, and,
+ * as it turned out, the statically prerendered 404, where React reconciles
+ * <html> during hydration and drops the attribute again a frame after it was
+ * set.
+ *
+ * :not([data-theme]) so that an explicit choice still wins in both directions.
+ * The values are duplicated from the block above, which is a thing that drifts,
+ * so themeFallback.test.ts asserts the two are identical.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+  --bg: #0e1218;
+  --fg: #e7ecf2;
+  --fg-secondary: #b7c1cd; /* 8.6:1 on --surface */
+  --muted: #8e9bab;        /* 5.5:1 on --surface */
+  --subtle: #151b23;
+  --border: #262e3a;
+  --border-strong: #3d4757;
+  /* 3.9:1 on --surface, 4.6:1 on --bg: the same headroom as the light theme.
+     Measured against --surface-raised, the lightest thing a control ever sits
+     on here, it still clears 3:1. */
+  --border-control: #788493;
+
+  --surface: #181e27;
+  --surface-hover: #1f2733;
+  /* Dark raises by lightening too, so "open" reads the same way in both themes. */
+  --surface-raised: #222b37;
+
+  /* On dark, elevation reads mostly from the lighter surface; keep shadows
+     present but subtle so edges still gain depth. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.40), 0 12px 32px rgba(0, 0, 0, 0.50);
+
+  /* Lightened to mirror the light theme's headroom, and given the same lift in
+     chroma so the accent reads as the same colour in both themes. */
+  --accent: #58a9ee;
+  --accent-strong: #80c0f5;
+
+  /* Dark flips the contrast direction: pill ink must be LIGHTER than its tint,
+     so mix toward white. */
+  --pill-accent-ink: color-mix(in srgb, var(--accent), #fff 8%);
+  --pill-muted-ink: color-mix(in srgb, var(--muted), #fff 8%);
+  /* Plain --alert on its own 12% tint is 4.32:1 here: under AA for 11px
+     badge text. The lightened ink clears it at 4.73:1. */
+  --pill-alert-ink: color-mix(in srgb, var(--alert), #fff 8%);
+  --pill-ok-ink: color-mix(in srgb, var(--ok), #fff 8%);
+
+  --ok: #46c07d;
+  --warn: #e8a94e;
+  --alert: #f07b73;
+  }
+
+  :root:not([data-theme]) { color-scheme: dark; }
+}
+
 
 body {
   font-family: var(--font-sans);
@@ -377,6 +465,14 @@ main:focus { outline: none; }
   color: var(--pill-muted-ink);
   background: var(--subtle);
   border-color: var(--border);
+}
+
+/* Success. OK used to wear .badge--neutral, which is the same wash the
+   accent-adjacent chips use, so a healthy log column read as a row of links. */
+.badge--ok {
+  color: var(--pill-ok-ink);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
 }
 
 .badge--alert {
@@ -836,6 +932,13 @@ main {
 */
 
 .view-header { margin-bottom: var(--space-4); }
+
+/* Level with the wordmark, not above it.
+   At 22px against the brand's 18px, whichever view you happened to be on was
+   the largest thing on the screen, and "Senaste händelserna" outranked the name
+   of the product. Both are set at --text-lg now: the title still leads the
+   column against a 13px lede and 15px rows, and it no longer wins the page. */
+.view-header h1 { font-size: var(--text-lg); }
 
 /* A sentence, so it is set at reading size rather than at caption size, and it
    runs to the width of the column it sits under.
@@ -1299,6 +1402,36 @@ main {
   text-wrap: pretty;
 }
 
+/* ── The resting state ────────────────────────────────────────
+   No warning is what this page says almost every day, and it was styled the
+   same as everything else: a solid card that a reader has to read before they
+   can tell nothing is happening. Recessed instead — the page's own canvas
+   rather than a raised surface, a dashed edge, and a grey dot where a live
+   warning has a red one. Enough to read as "off" at a glance without becoming
+   a second thing to interpret. */
+.vma-clear--quiet {
+  border-style: dashed;
+  background: var(--bg);
+}
+
+.vma-clear--quiet .vma-clear-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--fg-secondary);
+}
+
+.vma-clear--quiet .vma-clear-title .dot {
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.vma-clear--quiet .vma-clear-text {
+  padding-left: calc(var(--space-3) + 8px);
+}
+
 /* Not the alert red: this is "we do not know", which is a different thing from
    "there is a warning" and must not be mistaken for one at a glance. */
 .vma-clear--failed {
@@ -1457,7 +1590,9 @@ main {
   align-items: flex-start;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3) var(--space-4);
+  /* Even padding all round. It was 12px vertical against 16px horizontal, so
+     the text sat tighter to the row above and below it than to either side. */
+  padding: var(--space-4);
   border: none;
   background: none;
   text-align: left;
@@ -1491,18 +1626,24 @@ main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  /* The tag, the place and the sentence are three separate things and were set
+     4px apart, which is closer than the words within each of them. At that
+     spacing the card reads as one crushed block rather than as three facts. */
+  gap: var(--space-2);
 }
 
 /* One line: what, where, when. It was three lines, with the place alone on the
    middle one, which made every row in the feed a line taller than the two facts
    in it needed and left the type and the place reading as unrelated fragments.
    Nothing wraps, so the time holds the same column all the way down the list. */
+/* The tag and the time, and nothing else: the two shortest things, so they can
+   share a line without either being cut. */
 .event-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: nowrap;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 /* The kind of incident is the row's headline: it is what a reader scans for,
@@ -1514,11 +1655,32 @@ main {
   /* Shrinks only after the place has: the type is the headline. */
   flex: 0 1 auto;
   min-width: 0;
-  font-size: var(--text-body);
-  font-weight: var(--weight-semi);
+  /* The category tag: emoji and word together in a wash of the family's own
+     colour, the word set in that colour walked dark (or light) enough to read.
+     No border, because the tint is the shape and an outline repeated down a
+     scrolling list turns a tag into a control.
+
+     Deliberately small. At body size in full category colour it was the loudest
+     thing in the row and five hues shouted at once; at label size the same
+     colour reads as a classification. That is also what lets the place below
+     take the row's weight: the tag says what happened, the place says where.
+
+     --tag is the family hue and --tag-ink its readable form, both set by the
+     [data-family] block below. Anything unmapped falls through to no wash and
+     the ordinary foreground, so an unrecognised type is plain rather than
+     wrong. */
+  align-items: center;
+  /* It has the line to itself now, so a long name like "Farligt föremål,
+     misstänkt" fits whole instead of ellipsising to make room for a place. */
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tag, transparent) var(--tag-tint, 0%), transparent);
+  color: var(--tag-ink, var(--fg-secondary));
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
-  color: var(--fg);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
 }
 
 /* The clipping happens here, not on the flex row above it. */
@@ -1529,41 +1691,92 @@ main {
   white-space: nowrap;
 }
 
+/* ── Category tags ─────────────────────────────────────────
+   One hue per family, the same families the map's key already uses, so a
+   colour means the same thing on both screens.
+
+   --tag is the family's own colour, used only as a wash. --tag-ink is that hue
+   walked toward black (or, in dark, toward white) until it clears 4.5:1 on that
+   wash: the family colours were chosen as solid map markers and their
+   luminance ranges from #991b1b to #f59e0b, so one shared mix ratio would leave
+   half of them unreadable.
+
+   Each ink is computed against the WORST of the surfaces a row can present,
+   not against its resting one. A row is also hovered, and the open one is
+   raised, and the deep-linked one carries the accent wash; each of those is
+   lighter than --surface, which thins the tint and drops the contrast. Tuned
+   to --surface alone, every family in the set landed between 3.87:1 and 4.45:1
+   the moment a card was moused over or opened. Lowest in the set now: 4.60:1,
+   on all four surfaces, in both themes. */
+.event-type { --tag-tint: 10%; }
+[data-theme="dark"] .event-type { --tag-tint: 20%; }
+
+.event-type[data-family="death"]        { --tag: #991b1b; --tag-ink: #b82121; }
+.event-type[data-family="sexual"]       { --tag: #9f1239; --tag-ink: #b61e48; }
+.event-type[data-family="weapons"]      { --tag: #b91c1c; --tag-ink: #ba1e1e; }
+.event-type[data-family="violence"]     { --tag: #f43f5e; --tag-ink: #bd1f3a; }
+.event-type[data-family="harassment"]   { --tag: #ec4899; --tag-ink: #b81e6a; }
+.event-type[data-family="fire"]         { --tag: #ef4444; --tag-ink: #bf1f1f; }
+.event-type[data-family="robbery"]      { --tag: #f59e0b; --tag-ink: #885e16; }
+.event-type[data-family="theft"]        { --tag: #c2410c; --tag-ink: #a4431b; }
+.event-type[data-family="damage"]       { --tag: #a16207; --tag-ink: #865816; }
+.event-type[data-family="traffic"]      { --tag: #3b82f6; --tag-ink: #205fc5; }
+.event-type[data-family="intoxication"] { --tag: #0891b2; --tag-ink: #156c81; }
+.event-type[data-family="drugs"]        { --tag: #10b981; --tag-ink: #137252; }
+.event-type[data-family="fraud"]        { --tag: #8b5cf6; --tag-ink: #5c24db; }
+.event-type[data-family="environment"]  { --tag: #65a30d; --tag-ink: #486e12; }
+.event-type[data-family="rescue"]       { --tag: #14b8a6; --tag-ink: #127066; }
+.event-type[data-family="police"]       { --tag: #6366f1; --tag-ink: #2428db; }
+.event-type[data-family="other"]        { --tag: #64748b; --tag-ink: #556377; }
+.event-type[data-family="unknown"]      { --tag: #94a3b8; --tag-ink: #54667f; }
+
+/* Dark keeps the same hue and walks the ink the other way. */
+[data-theme="dark"] .event-type[data-family="death"]        { --tag-ink: #df7777; }
+[data-theme="dark"] .event-type[data-family="sexual"]       { --tag-ink: #df7592; }
+[data-theme="dark"] .event-type[data-family="weapons"]      { --tag-ink: #e07b7b; }
+[data-theme="dark"] .event-type[data-family="violence"]     { --tag-ink: #e38999; }
+[data-theme="dark"] .event-type[data-family="harassment"]   { --tag-ink: #e389b6; }
+[data-theme="dark"] .event-type[data-family="fire"]         { --tag-ink: #e38989; }
+[data-theme="dark"] .event-type[data-family="robbery"]      { --tag-ink: #d9aa5c; }
+[data-theme="dark"] .event-type[data-family="theft"]        { --tag-ink: #dc8a68; }
+[data-theme="dark"] .event-type[data-family="damage"]       { --tag-ink: #d2963f; }
+[data-theme="dark"] .event-type[data-family="traffic"]      { --tag-ink: #85a9e2; }
+[data-theme="dark"] .event-type[data-family="intoxication"] { --tag-ink: #3db5d1; }
+[data-theme="dark"] .event-type[data-family="drugs"]        { --tag-ink: #30cf9a; }
+[data-theme="dark"] .event-type[data-family="fraud"]        { --tag-ink: #b098e7; }
+[data-theme="dark"] .event-type[data-family="environment"]  { --tag-ink: #8dcf30; }
+[data-theme="dark"] .event-type[data-family="rescue"]       { --tag-ink: #30cfbd; }
+[data-theme="dark"] .event-type[data-family="police"]       { --tag-ink: #9c9de8; }
+[data-theme="dark"] .event-type[data-family="other"]        { --tag-ink: #99a4b5; }
+[data-theme="dark"] .event-type[data-family="unknown"]      { --tag-ink: #a5b1c3; }
+
 /* A fixed advance, so the type words line up in a column down the list however
    wide the glyph the font happens to pick. */
 .event-type-emoji {
   flex-shrink: 0;
-  width: 1.35em;
-  font-size: var(--text-ui);
+  width: 1.2em;
+  /* Held at its own size rather than the tag's, so shrinking the label to
+     11px does not shrink the glyph into illegibility. */
+  font-size: var(--text-xs);
   line-height: 1;
   text-align: center;
 }
 
 /* Where it happened, beside what happened. Takes the slack in the row, which is
    what pushes the time to its column on the right. */
+/* The card's headline, on its own line. With the type carried by a coloured
+   tag above it, the place is the thing set in plain type, and it is what a
+   reader scans for anyway: whether this happened anywhere near them. */
 .event-place {
-  /* Basis 0, so it claims only what is left once the type has the width it
-     needs, and gives that back first when the row is tight: on a phone the
-     type, the place and the time cannot all sit at their natural widths, and
-     the type is the one that has to survive whole.
-     The floor stops it giving back everything. Shrinking to "D…" costs the row
-     its place without buying the type anything worth having, so past this point
-     the type ellipsises instead. */
-  flex: 1 1 0;
-  min-width: 6ch;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
+  min-width: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semi);
   line-height: var(--leading-snug);
-  color: var(--muted);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.event-place::before {
-  content: '·';
-  margin-right: var(--space-2);
-  color: var(--border-strong);
 }
 
 .event-time {
@@ -1587,13 +1800,13 @@ main {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
+  /* Two lines, as many as the notice fills.
+     One line kept every row identical, which was worth having while the card
+     was a single crammed strip. Now that the tag and the place each have a line
+     of their own, a card is read rather than scanned past, and cutting the
+     sentence short to save 20px is the wrong economy. Nothing is reserved: a
+     one-sentence notice ends where it ends. */
   -webkit-line-clamp: 2;
-  /* Reserve both lines whether the notice fills them or not. polisen.se writes
-     anything from "Singelolycka på riksväg 23." to three sentences, so clamping
-     alone left the list jumping between two row heights, and a feed that never
-     settles into a beat is the thing that reads as unfinished. Mail clients
-     reserve their preview line for the same reason. */
-  min-height: calc(2em * var(--leading-normal));
 }
 
 .event-row--expanded .event-text {
@@ -1786,8 +1999,13 @@ main {
   z-index: 0;
 }
 
+/* Sweden is about twice as tall as it is wide, so a taller box renders the
+   same bounds larger: at 648px the markers use 90% of the canvas height
+   against 67% at 600px with whole-step zoom. Capped rather than left to grow,
+   because every pixel past this pushes the count and the key further below the
+   fold. Most of the framing came from zoomSnap in EventMap, not from here. */
 .map-canvas {
-  height: min(68vh, 600px);
+  height: min(72vh, 680px);
   width: 100%;
   background: var(--subtle);
 }
@@ -1856,45 +2074,250 @@ main {
   font-weight: var(--weight-semi);
 }
 
-.map-hint {
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  font-size: var(--text-xs);
+/* What the window holds but the map cannot draw. Its own line, because it is a
+   caveat on the number beside it rather than part of it. */
+.map-status-missing {
+  flex-basis: 100%;
   line-height: var(--leading-normal);
-  color: var(--muted);
 }
 
-/* Key for the marker colours. The map has always been colour-coded by incident
-   type with nothing anywhere saying so. */
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  padding: var(--space-3) var(--space-4);
+/* ── The map key ──────────────────────────────────────────────
+   One block under the canvas that says how to read what is on it: what a mark
+   is, what a number on it means, and what the colours are.
+
+   This was a row of colour chips laid out with flex-wrap, and the ask was that
+   it looked messy and unsymmetric, which it was: every chip was as wide as its
+   own label, so "Rån (4)" and "Sexualbrott och frihetsbrott (11)" sat in the
+   same row with the dots at four unrelated x-positions and the counts at
+   sixteen. A grid fixes exactly that. The rows line up because the columns are
+   declared once, not derived from eighteen different strings. */
+.map-key {
+  padding: var(--space-4);
   border-top: 1px solid var(--border);
   background: var(--bg);
-}
-
-.map-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--fg-secondary);
 }
 
+.map-key-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+
+.map-key-subtitle {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* What the marks themselves mean. Reading order matters here: a reader looks
+   at a mark before they look at a colour, so this comes first. */
+.map-key-marks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.map-key-mark {
+  display: grid;
+  /* A fixed first column, so the three samples sit on one vertical line even
+     though they are three different sizes. */
+  grid-template-columns: 26px 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  line-height: var(--leading-normal);
+}
+
+.map-key-sample {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-key-sample--single {
+  width: 11px;
+  height: 11px;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+.map-key-sample--group {
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+/* The merged-positions sample carries the same faint outer ring the map draws
+   on a cluster, which is what tells it apart from a single busy place. */
+.map-key-sample--cluster {
+  width: 22px;
+  height: 22px;
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 0 4px color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+/* The live ring, at rest. No animation: it is a still sample of a thing, and a
+   pulsing dot in a key draws the eye away from the map it explains. */
+.map-key-sample--recent {
+  width: 11px;
+  height: 11px;
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 0 5px color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+/* Three declared columns: swatch, name, count. The count column is fixed and
+   right-aligned with tabular figures, so the numbers form a column of their own
+   rather than landing wherever each label happened to end. */
+.map-key-colors {
+  display: grid;
+  /* Capped rather than 1fr. Stretched across a desktop card the tracks grew to
+     700px each, which put six hundred pixels of nothing between "Rån" and the
+     number belonging to it: the counts lined up beautifully and had visibly
+     stopped belonging to their labels. */
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 18rem));
+  justify-content: start;
+  gap: var(--space-1) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.map-key-color {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 22px;
+}
+
 /* The ring is load-bearing, not decoration: the palette runs to a pale yellow
    that would otherwise vanish against the light theme's background. */
-.map-legend-dot {
-  width: 10px;
-  height: 10px;
-  flex-shrink: 0;
+.map-key-dot {
+  width: 11px;
+  height: 11px;
   border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
-.map-legend-count { color: var(--muted); }
+.map-key-dot--rest {
+  background: transparent;
+  border-style: dashed;
+}
+
+.map-key-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-key-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.map-key-color--rest .map-key-name { color: var(--muted); }
+
+.map-key-note {
+  max-width: 68ch;
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ── Map pins ─────────────────────────────────────────────────
+   One kind of mark for every position, whether it holds one incident or a
+   hundred, and the same mark again for a cluster of positions that merely
+   overlap on screen. Singles used to be SVG circles, which markercluster
+   cannot take and which never accepted keyboard focus.
+
+   Fill and ink are computed per family in markerInk.ts, because the eighteen
+   family colours run from near-black red to a pale slate and no single ink
+   clears AA on all of them. */
+.map-pin-icon { background: none; border: none; }
+
+.map-pin {
+  display: grid;
+  place-items: center;
+  width: var(--pin-size);
+  height: var(--pin-size);
+  border-radius: var(--radius-full);
+  background: var(--pin-fill);
+  color: var(--pin-ink);
+  /* White, not the theme background: the ring separates the pin from the
+     basemap, and the basemap is light in both themes' terms here. */
+  box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.35);
+  font-size: 11px;
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* A single incident is a dot rather than a full-size bubble: it carries no
+   number, so it needs no room for one. The hit area stays the icon's own
+   28px, which is what WCAG 2.5.8 measures. */
+.map-pin:not(.map-pin--many) {
+  width: 13px;
+  height: 13px;
+  justify-self: center;
+  align-self: center;
+  margin: auto;
+}
+
+/* Merged positions, as opposed to one position holding several incidents.
+   Faintly ringed so the two are not quite the same mark: this one splits if
+   you zoom in, and the other never will. */
+.map-pin--cluster {
+  box-shadow:
+    0 0 0 1.5px #fff,
+    0 0 0 4px color-mix(in srgb, var(--pin-fill) 30%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.map-pin--recent {
+  box-shadow:
+    0 0 0 2.5px #fff,
+    0 0 0 8px color-mix(in srgb, var(--pin-fill) 22%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+/* markercluster ships its own green/yellow/red icons and a wrapper with a
+   background. On this map colour already means the kind of incident, and a
+   second meaning for it would make both unreadable. */
+.marker-cluster,
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background: none !important;
+}
+
+.marker-cluster div {
+  background: none !important;
+  margin: 0 !important;
+  width: auto !important;
+  height: auto !important;
+}
 
 /* Named for what it is. This was .timeline-range, left over from the scrubber
    these replaced, and it carried no horizontal padding: at 375px the three
@@ -1936,14 +2359,96 @@ main {
    instead (see basemapUrl in EventMap): this inverted a basemap that was
    already dark, so dark mode produced a glowing white map. */
 
-.leaflet-control-attribution {
-  background: color-mix(in srgb, var(--bg) 88%, transparent) !important;
-  color: var(--muted) !important;
-  font-size: var(--text-2xs) !important;
+/* ── The tile credit ──────────────────────────────────────────
+   Behind one character, which is what OpenStreetMap's own attribution
+   guidelines allow for a constrained interactive map and what every other map
+   on the web does. Small and quiet, but a real button: reachable by keyboard,
+   and it opens on focus as well as on click. */
+.map-credit {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 0 !important;
 }
 
-.leaflet-control-attribution a { color: var(--muted) !important; }
-.leaflet-control-attribution svg { display: none; }
+.map-credit-toggle {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: var(--weight-semi);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-credit-toggle:hover { color: var(--fg); }
+
+.map-credit-panel {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.map-credit-panel a {
+  color: var(--fg-secondary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--fg-secondary) 40%, transparent);
+}
+
+.map-credit-panel a:hover { color: var(--fg); }
+
+/* ── Fullscreen ───────────────────────────────────────────────
+   Added only where the Fullscreen API exists and the pointer is fine, so it
+   never appears on a phone. Styled as one of Leaflet's own bar buttons so it
+   sits under the zoom control as though it shipped with it. */
+.map-fullscreen-button {
+  display: grid !important;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 0;
+}
+
+.map-fullscreen-button::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  /* Four corner brackets, drawn with borders and a couple of gradients so the
+     button needs no image and inherits the control's own colour. */
+  border: 2px solid currentColor;
+  border-radius: 1px;
+  clip-path: polygon(
+    0 0, 40% 0, 40% 100%, 60% 100%, 60% 0, 100% 0, 100% 100%, 60% 100%,
+    60% 40%, 40% 40%, 40% 100%, 0 100%
+  );
+}
+
+/* Brackets pointing inward once fullscreen is on: the same mark, reversed. */
+.map-fullscreen--on .map-fullscreen-button::before {
+  clip-path: polygon(
+    0 40%, 40% 40%, 40% 0, 60% 0, 60% 40%, 100% 40%, 100% 60%, 60% 60%,
+    60% 100%, 40% 100%, 40% 60%, 0 60%
+  );
+}
+
+/* Going fullscreen makes the canvas the whole screen; without this the map
+   keeps the height the stylesheet gave it and sits in a black band. */
+.map-canvas:fullscreen {
+  height: 100% !important;
+  width: 100%;
+}
 
 .leaflet-bar a {
   background: var(--bg) !important;
@@ -2051,8 +2556,6 @@ main {
   font-size: var(--text-2xs) !important;
   color: var(--muted) !important;
 }
-
-.map-legend-item--rest { color: var(--muted); }
 
 .popup-links {
   display: flex;
@@ -2252,6 +2755,285 @@ main {
 /* Where the numbers come from: live feed, imported archive, or both. Without
    it, a database holding years of history reads the same as one holding a
    week. Sits with the meta text, not the numbers. */
+/* ── The decade grid ──────────────────────────────────────────
+   One row per year, one cell per month. A real table underneath: the colour
+   is the fast read, the numbers in the title and the screen-reader text are
+   the answer. Ten years drawn as a single strip of 120 bars is a hairline per
+   month and can only be read for trend; stacked, the same numbers also read
+   down the columns, which is where the seasons are. */
+
+.heat-wrap { overflow-x: auto; }
+
+.heat {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-month,
+.heat-total-head {
+  padding: 0 0 var(--space-1);
+  font-weight: var(--weight-semi);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.heat-month abbr { text-decoration: none; }
+.heat-total-head { text-align: right; }
+.heat-corner { width: 4ch; }
+
+.heat-year {
+  padding-right: var(--space-2);
+  text-align: right;
+  font-weight: var(--weight-semi);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.heat-year--season { color: var(--muted); font-weight: var(--weight-normal); }
+
+.heat-cell {
+  height: 22px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+}
+
+/* Five steps of one hue rather than a rainbow: the quantity is ordered, and
+   an ordered quantity on a multi-hue scale reads as categories. Mixed against
+   the page rather than set as fixed colours, so it holds in both themes. */
+.heat-cell--1 { background: color-mix(in srgb, var(--accent) 16%, var(--subtle)); }
+.heat-cell--2 { background: color-mix(in srgb, var(--accent) 38%, var(--subtle)); }
+.heat-cell--3 { background: color-mix(in srgb, var(--accent) 64%, var(--subtle)); }
+.heat-cell--4 { background: var(--accent); }
+
+/* Outside the record, which is not the same as a month with nothing in it. */
+.heat-cell--none {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* The month in progress, hatched over its own shade. Left plain it reads as a
+   collapse on the first of every month, which is the same trap the daily
+   chart's last bar has. */
+.heat-cell--partial {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    var(--surface) 3px 6px
+  );
+}
+
+.heat-total {
+  padding-left: var(--space-2);
+  text-align: right;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.heat-total--season { color: var(--muted); }
+
+/* The average year, drawn as bars rather than as more heat cells. On the same
+   ramp it would invite comparing a pale average against a dark year and
+   concluding the average is quieter than every real one; on the same scale it
+   would flatten to two shades and show no season at all. */
+.heat-season {
+  height: 32px;
+  vertical-align: bottom;
+  padding: 0;
+}
+
+.heat-spark {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.heat tfoot th,
+.heat tfoot td { border-top: 1px solid var(--border); padding-top: var(--space-1); }
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.heat-key {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.heat-legend > span:first-child { margin-right: var(--space-1); }
+.heat-legend > span:last-child { margin-left: var(--space-1); }
+
+/* ── This year against last ───────────────────────────────────
+   Two counts and the change between them. Stated as a direction, because two
+   six-figure numbers side by side are a subtraction the reader has to do. */
+
+.yoy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.yoy-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.yoy-side--past { text-align: right; }
+
+.yoy-value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.yoy-side--past .yoy-value { color: var(--muted); font-weight: var(--weight-semi); }
+
+.yoy-label {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.yoy-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semi);
+  white-space: nowrap;
+}
+
+/* More incidents is not good news, so up takes the alert tone and down the
+   calm one. The neutral case is deliberately grey: a direction drawn on a
+   two-percent difference would be a claim the counts do not support. */
+.yoy-change--up {
+  color: var(--alert);
+  background: color-mix(in srgb, var(--alert) 10%, transparent);
+}
+.yoy-change--down {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+.yoy-change--flat {
+  color: var(--muted);
+  background: var(--subtle);
+}
+
+.yoy-arrow { font-size: var(--text-lg); line-height: 1; }
+
+/* ── Composition per year ─────────────────────────────────────
+   Equal-width bars, so what is compared is the mix and not the volume. The
+   families keep their order across every year: ranked per year they would
+   swap places underneath the reader and the drift would be unreadable. */
+
+.mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mix-year {
+  width: 4ch;
+  flex-shrink: 0;
+  color: var(--fg-secondary);
+  font-weight: var(--weight-semi);
+}
+
+.mix-track {
+  display: flex;
+  flex: 1;
+  height: 16px;
+  min-width: 0;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--subtle);
+}
+
+.mix-seg { height: 100%; }
+
+.mix-total {
+  width: 7ch;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--muted);
+}
+
+.mix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.mix-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mix-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  /* The year and the total already sit outside the bar; on a narrow screen
+     they are what the row is read by, so the bar gives up the width. */
+  .mix-total { width: 5ch; }
+
+  /* Twelve months and a year label fit a phone; twelve months, a year label
+     and a totals column do not, and the grid was scrolling sideways with the
+     totals parked off-screen. The composition chart below carries the same
+     per-year totals in a layout that does fit, so this drops them. */
+  .heat {
+    min-width: 0;
+    border-spacing: 2px;
+    font-size: 10px;
+  }
+  .heat-total,
+  .heat-total-head { display: none; }
+  .heat-corner { width: 3ch; }
+  .heat-year { padding-right: var(--space-1); }
+  .heat-cell { height: 18px; }
+  .heat-season { height: 24px; }
+
+  /* Eleven six-figure numbers across 360px run into one smear. The counts are
+     in the composition chart directly below, one per row with room to be
+     read, so the bars keep the shape and give up the labels. */
+  .stats-block .chart-value--wide { display: none; }
+}
+
 .stats-coverage {
   margin-top: var(--space-3);
   font-size: var(--text-xs);
@@ -2321,7 +3103,10 @@ main {
   width: 100%;
   min-height: 2px;
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* 45% left the charts the palest thing on the page: a page of data drawn in
+     a colour that looked like it was still loading. At 70% the bars carry the
+     accent properly and still sit under the solid fill that marks the peak. */
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
   transition: background var(--t-fast) var(--ease);
 }
 
@@ -2333,8 +3118,8 @@ main {
 .chart-bar--partial {
   background: repeating-linear-gradient(
     -45deg,
-    color-mix(in srgb, var(--accent) 45%, transparent) 0 4px,
-    color-mix(in srgb, var(--accent) 18%, transparent) 4px 8px
+    color-mix(in srgb, var(--accent) 70%, transparent) 0 4px,
+    color-mix(in srgb, var(--accent) 26%, transparent) 4px 8px
   );
 }
 
@@ -2443,6 +3228,355 @@ main {
   text-align: right;
 }
 
+/* ── Sverige, länsvis ─────────────────────────────────────────
+   A choropleth: twenty-one paths, no basemap, no map library.
+
+   The ramp is one hue, light to dark, derived from --accent rather than
+   borrowed: the darkest step IS --accent, and the three above it are the same
+   OKLCH hue at rising lightness and falling chroma, so a pale county is the
+   same blue as a dark one rather than drifting to grey. Four steps, not five or
+   six, because four is what let every adjacent pair stay ~10 apart in OKLab —
+   at six the palest two were 6.6 apart, which is inside the range where a
+   reader cannot tell two neighbouring counties apart.
+
+   Dark mode is selected, not flipped. An inverted light ramp puts its dark end
+   against a dark surface, where the low bin disappears; these steps climb away
+   from the dark card instead. Both sets clear 2:1 against their own surface at
+   the pale end, so no county can dissolve into the card it sits on — Gotland is
+   an island with no neighbours to give it an edge. */
+:root {
+  --choro-0: #8fb7ea;
+  --choro-1: #6899d6;
+  --choro-2: #407ac2;
+  --choro-3: #0d5cad;
+}
+
+[data-theme="dark"] {
+  --choro-0: #365780;
+  --choro-1: #4476b3;
+  --choro-2: #5c96df;
+  --choro-3: #82b9fe;
+}
+
+.county-map {
+  margin: 0 0 var(--space-5);
+}
+
+/* Map on the left, everything that explains it on the right. Stacked, the
+   block ran to most of a screen before the table it introduces; side by side it
+   uses the width the card already has and the legend sits at eye level with the
+   shading it describes. */
+.county-map-figure {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-6);
+}
+
+.county-map-svg,
+.county-map-placeholder {
+  width: 100%;
+  height: auto;
+}
+
+/* Holds the space the map will take, so nothing below jumps down the page when
+   the geometry lands. */
+.county-map-placeholder {
+  aspect-ratio: 320 / 723.5;
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+
+.county-shape {
+  /* The surface between fills, so two counties in the same bin still read as
+     two counties. A darker outline would fight the ramp for attention. */
+  stroke: var(--surface);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  transition: fill var(--t-fast) var(--ease);
+}
+
+/* A county the breakdown has no row for. Should not happen, but a hole drawn
+   as a hole is better than one silently painted as the lowest bin. */
+.county-shape--none {
+  fill: var(--subtle);
+}
+
+.county-shape--hover {
+  stroke: var(--fg);
+  stroke-width: 1.4;
+}
+
+.county-map-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Optically level with the top of the country rather than with the top of the
+     viewbox, which carries the padding and a slice of empty Baltic. */
+  padding-top: var(--space-2);
+}
+
+/* Fixed height, so hovering does not shuffle the legend under it. */
+.county-map-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 3.25rem;
+  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.county-map-readout-name {
+  font-weight: var(--weight-semi);
+  font-size: var(--text-base);
+  color: var(--fg);
+}
+
+.county-map-readout-value {
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.county-map-readout-hint {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  max-width: 22ch;
+  line-height: var(--leading-normal);
+}
+
+.county-map-legend-label {
+  display: block;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* One per row rather than wrapped inline: the four ranges then read as a scale
+   from pale to dark, which is what they are. */
+.county-map-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.county-map-step {
+  display: grid;
+  grid-template-columns: 14px auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.county-map-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
+}
+
+.county-map-note {
+  max-width: 34ch;
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Narrows the county map and its table to one type of notice. Sits above both,
+   because it governs both: put beside the map alone it reads as a map control
+   and leaves the table underneath looking like it disagrees. */
+.region-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.region-filter-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.region-filter-select {
+  /* Type names run from "Rån" to "Stöld/inbrott, försök", and a select sized
+     to its widest option jumps the row every time the selection changes. */
+  flex: 1 1 14rem;
+  max-width: 22rem;
+  height: var(--control-lg);
+  font-size: var(--text-sm);
+}
+
+/* Pushed to the far end on a row wide enough to hold it, and wrapping under the
+   select rather than squeezing it on a phone. */
+.region-filter-count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .region-filter-count { margin-left: 0; }
+}
+
+/* The map is an overview and the table below is the data. On a phone there is
+   no second column to put the key in, and a full-height Sweden would push the
+   table most of a screen down, so both shrink. */
+@media (max-width: 640px) {
+  .county-map-figure {
+    grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .county-map-readout {
+    min-height: 2.75rem;
+    margin-bottom: var(--space-4);
+  }
+
+  .county-map-note {
+    max-width: none;
+    margin-top: var(--space-4);
+  }
+}
+
+/* ── Län för län ──────────────────────────────────────────────
+   A real table, not a list of buttons: these rows are read against each other
+   down four columns, which is what a table is for, and unlike the top lists
+   they are not filters. A county name filters nothing, because the notices
+   underneath are labelled with municipalities. */
+.region-scroll {
+  /* The trend column is the first thing to go on a narrow phone, and a table
+     that scrolls inside its own box beats one that pushes the page sideways. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.region-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.region-table th,
+.region-table td {
+  padding: var(--space-2);
+  text-align: left;
+  font-weight: var(--weight-normal);
+  vertical-align: middle;
+}
+
+.region-table thead th {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.region-table tbody tr + tr th,
+.region-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+/* Name over its own bar, so the county column carries the shape of the
+   distribution without spending a column on it. */
+.region-table tbody th {
+  min-width: 11rem;
+}
+
+/* The county cell is a filter now. A button that fills its cell, carries the
+   name and the bar, and reads as a row rather than as a control bolted into
+   one. */
+.region-pick {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.region-pick:hover .region-name { color: var(--accent); }
+.region-pick:hover .region-bar { background: var(--accent-strong); }
+
+.region-name {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.region-track {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.region-bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.region-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* No moral colour. More notices in a county is not self-evidently worse, and a
+   red arrow on Skåne would be the page drawing a conclusion the data does not
+   support. Weight separates the movement from the flat rows; hue does not. */
+.region-up,
+.region-down {
+  font-weight: var(--weight-medium);
+  color: var(--fg);
+}
+
+.region-flat { color: var(--muted); }
+
+/* At 360px the four columns are about 90px wider than the card. Rather than
+   leave the trend to be discovered by sideways-scrolling a table with no
+   affordance saying it scrolls, the county column gives the width up: the names
+   are the one column that can wrap. */
+@media (max-width: 480px) {
+  .region-table { font-size: var(--text-xs); }
+
+  .region-table th,
+  .region-table td {
+    padding: var(--space-2) var(--space-1);
+  }
+
+  .region-table tbody th {
+    min-width: 6.5rem;
+  }
+
+  .region-name { text-wrap: balance; }
+}
+
 /* Label / value rows, shared by the ops info panels. */
 .info-list { display: flex; flex-direction: column; }
 
@@ -2468,6 +3602,8 @@ main {
 
 .info-value--muted { color: var(--muted); font-weight: var(--weight-normal); }
 .info-value--ok { color: var(--ok); }
+.info-value--warn { color: var(--warn); }
+.info-value--alert { color: var(--alert); }
 
 /* ── Footer ───────────────────────────────────────────────── */
 
@@ -2475,13 +3611,37 @@ main {
   max-width: var(--max-w);
   margin: 0 auto;
   padding: var(--space-5) var(--gutter) var(--space-8);
-  border-top: 1px solid var(--border);
+  /* The rule is inset by the gutter rather than drawn on the border box.
+     `main` carries the same gutter as padding, so every card on the page is
+     that much narrower than the footer's box: a border-top here ran wider than
+     the panel above it by a gutter on each side, and the overhang is the sort
+     of misalignment that reads as "something is off" before it is identifiable
+     as anything in particular. */
+  position: relative;
   font-size: var(--text-xs);
   color: var(--muted);
+  /* Centred and stacked. Spread across a row, two unrelated things sat at
+     opposite ends of a very wide rule with nothing between them. */
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.site-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--gutter);
+  right: var(--gutter);
+  border-top: 1px solid var(--border);
+}
+
+.footer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* Each part stays whole: the timestamp and the shortcut hint wrap as units
@@ -2563,6 +3723,17 @@ main {
   padding: 0 var(--gutter) var(--space-12);
 }
 
+/* The global `main` caps itself at the 760px reading column and adds its own
+   gutter, which is right for an article and wrong here: the dashboard header
+   sat at 1088px while everything under it was squeezed to 728px and centred,
+   so the top of the page overhung the rest by 180px on each side. The
+   container already owns the width and the gutter. */
+.ops-container main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 .ops-header {
   padding: var(--space-5) 0 var(--space-4);
   border-bottom: 1px solid var(--border);
@@ -2574,18 +3745,260 @@ main {
   gap: var(--space-3);
 }
 
-.ops-title {
+/* The way back to the app, and the only branding on the page. It used to have
+   neither: you arrived by typing the URL and left the same way. */
+.ops-brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  color: var(--fg);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
 }
 
-.ops-title p {
-  font-size: var(--text-xs);
-  color: var(--muted);
+.ops-brand:hover { text-decoration: none; }
+.ops-brand:hover .ops-brand-page { color: var(--accent-strong); }
+
+.ops-brand svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ops-brand-sep { color: var(--border-strong); font-weight: var(--weight-normal); }
+.ops-brand-page { color: var(--fg-secondary); font-weight: var(--weight-semi); }
+
+.ops-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
 }
 
 .ops-timestamp {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  /* The label counts up between refreshes, so reserve the width it will grow
+     into rather than nudging the buttons sideways every fifteen seconds. */
+  min-width: 12ch;
+}
+
+.ops-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ops-toggle input { accent-color: var(--accent); }
+
+/* ── The verdict ──────────────────────────────────────────────
+   The page opens with a sentence, not with three percentages. Knowing that
+   "Drifttid 100 % / Lyckade 98,2 % / Datafärskhet 63m" means nothing is wrong
+   takes knowing what those look like when something is. */
+
+.ops-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.ops-verdict .dot { margin-top: 6px; flex-shrink: 0; }
+
+.ops-verdict--ok { border-left-color: var(--ok); }
+.ops-verdict--warn {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+}
+.ops-verdict--alert {
+  border-left-color: var(--alert);
+  background: color-mix(in srgb, var(--alert) 7%, var(--surface));
+}
+
+.ops-verdict-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-snug);
+  color: var(--fg);
+}
+
+.ops-verdict-detail {
+  margin-top: var(--space-1);
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+/* ── Metric tiles ─────────────────────────────────────────────
+   One shape for every headline number, always with what it is measured
+   against underneath. The old page reused the same tile for health
+   percentages, lifetime counters and table sizes, so nothing about a box told
+   you whether its number was good. */
+
+/* Four to a row, always, because every group here has exactly four. auto-fit
+   picked its own count from the available width and left a lone tile on a
+   second row at most desktop sizes, which is what made the sections look
+   ragged against each other. */
+.ops-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .ops-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .ops-metrics { grid-template-columns: 1fr; }
+}
+
+.ops-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.ops-metric-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.ops-metric-value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.ops-metric-note {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Tone rings the tile and colours the number. Only the ones that are not fine
+   get a colour, so a healthy page is quiet and a problem is the only thing
+   with a hue on it. */
+.ops-metric--warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--border));
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+}
+.ops-metric--warn .ops-metric-value { color: var(--warn); }
+
+.ops-metric--alert {
+  border-color: color-mix(in srgb, var(--alert) 40%, var(--border));
+  background: color-mix(in srgb, var(--alert) 7%, var(--surface));
+}
+.ops-metric--alert .ops-metric-value { color: var(--alert); }
+
+/* Deliberately no rule for the healthy case: a tile only takes on a colour
+   when it wants something. On a working system the whole grid is plain ink and
+   the verdict at the top carries the signal, so a single amber tile is the one
+   thing on the screen with a hue on it. */
+
+/* ── Fetch timeline ───────────────────────────────────────────
+   24 columns, each split by outcome. Counting attempts alone drew six
+   identical bars an hour whatever was happening; a failed pass is now the one
+   column that is not a plain full bar. */
+
+.ops-timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  /* Grows into whatever height the card beside it sets, rather than leaving a
+     third of the card empty under a 96px chart. */
+  flex: 1;
+  min-height: 96px;
+}
+
+.card--chart {
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-timeline-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 100%;
+}
+
+.ops-timeline-track {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  overflow: hidden;
+}
+
+.ops-timeline-bar { width: 100%; }
+.ops-timeline-bar--ok { background: var(--accent); }
+.ops-timeline-bar--failed { background: var(--alert); }
+
+.ops-timeline-hour {
+  margin-top: var(--space-1);
+  height: 1em;
+  font-size: var(--text-2xs);
+  line-height: 1;
+  color: var(--muted);
+  text-align: center;
+}
+
+.ops-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.ops-legend-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: var(--space-1);
+  display: inline-block;
+}
+
+.ops-legend-key--ok { background: var(--accent); }
+.ops-legend-key--failed { background: var(--alert); }
+.ops-legend-note { margin-left: auto; }
+
+.ops-outro {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
   font-size: var(--text-xs);
   color: var(--muted);
 }
@@ -2606,7 +4019,15 @@ main {
   color: var(--muted);
 }
 
-.ops-table-wrap { overflow-x: auto; }
+/* The log used to run to 25 full-height rows and take a third of the page,
+   most of it identical OK lines. It keeps all 25, inside a window: the header
+   is already sticky, so scrolling it reads like a terminal rather than
+   pushing the database section below three screens of nothing happening. */
+.ops-table-wrap {
+  overflow-x: auto;
+  max-height: 22rem;
+  overflow-y: auto;
+}
 
 .ops-table {
   width: 100%;
@@ -2614,12 +4035,9 @@ main {
   font-size: var(--text-sm);
 }
 
-/* Not sticky. It was `position: sticky; top: 0`, which never once engaged: the
-   only scroll container around this table is .ops-table-wrap, and that scrolls
-   horizontally with no height cap, so there is no vertical scrolling for a
-   header to stick against. The page scrolls, and a sticky header inside a
-   non-scrolling ancestor does nothing at all. */
 .ops-table th {
+  position: sticky;
+  top: 0;
   padding: var(--space-2) var(--space-4);
   text-align: left;
   font-size: var(--text-2xs);
@@ -2641,45 +4059,36 @@ main {
 .ops-table tr:last-child td { border-bottom: none; }
 .ops-table-time { color: var(--muted); }
 
-/* The notes column of the fetch log. This was written as a standalone block
-   note: its own padding and a border-top, applied to a <td>. Inside a row that
-   meant one cell four pixels taller than its siblings and a stray rule drawn
-   across the middle of it. It is a table cell, so it takes the table's own
-   padding and only says "quieter, and allowed to wrap": error text is the one
-   column here that does not fit on a line. */
-.ops-note {
-  font-size: var(--text-2xs);
-  color: var(--muted);
-  white-space: normal;
-  min-width: 18ch;
-}
+/* Counts line up on the decimal so a column of them can be read down. */
+.ops-table-num { text-align: right; font-variant-numeric: tabular-nums; }
 
-.ops-error-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+/* The reason to open the table at all, so it is tinted rather than filed in a
+   separate list built from the same rows. */
+.ops-table-row--failed td { background: color-mix(in srgb, var(--alert) 6%, transparent); }
 
-.ops-error-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--alert) 25%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--alert) 8%, transparent);
+/* What the upstream actually said. Allowed to be long and to be cut: the full
+   text is in the title, and the column must not push the counts off screen. */
+.ops-table-message {
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-xs);
+  color: var(--muted);
 }
 
-.ops-error-time { color: var(--muted); flex-shrink: 0; }
-.ops-error-type { font-weight: var(--weight-semi); overflow-wrap: anywhere; }
+.ops-table-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--muted);
+}
 
-.ops-footer {
-  padding-top: var(--space-4);
+.ops-note {
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
   font-size: var(--text-2xs);
   color: var(--muted);
 }
+
 
 .ops-controls {
   display: flex;
@@ -2697,6 +4106,20 @@ main {
 .ops-row .field { flex: 1; min-width: 180px; }
 
 .ops-hint { font-size: var(--text-2xs); color: var(--muted); }
+
+.ops-hint--alert {
+  margin-top: var(--space-2);
+  color: var(--alert);
+  line-height: var(--leading-normal);
+}
+
+.info-value code {
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
 
 .ops-alert {
   padding: var(--space-2) var(--space-3);
@@ -2737,7 +4160,8 @@ main {
 
 /* Sits under the track, not inside it. As a child of .ops-progress it was
    clipped to nothing by that rule's 6px height and overflow:hidden, so the
-   percentage never appeared at all. A block, so the margin applies. */
+   percentage never appeared at all while an import ran. `display: block` so the
+   margin above applies whatever element carries the class. */
 .ops-progress-text {
   display: block;
   margin-top: var(--space-2);
@@ -2765,6 +4189,112 @@ main {
 
 .ops-log-time { color: var(--muted); flex-shrink: 0; }
 
+/* ── First-run setup (/stats/setup) ───────────────────────────
+   One form, seen once per installation. It sits on its own rather than
+   inheriting the dashboard's density: nothing competes with it, so the measure
+   is short and the fields are full width. */
+
+.setup {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-8);
+}
+
+.setup-column {
+  width: 100%;
+  max-width: 30rem;
+}
+
+.setup-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-secondary);
+}
+
+.setup-brand svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.setup-panel {
+  padding: var(--space-6);
+}
+
+.setup-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-snug);
+  color: var(--fg);
+}
+
+.setup-lead {
+  margin-top: var(--space-2);
+  font-size: var(--text-ui);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.setup-field { margin-top: var(--space-5); }
+
+.setup-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  color: var(--fg);
+}
+
+.setup-input { width: 100%; }
+
+.setup-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.setup-hint--alert { color: var(--alert); }
+
+.setup .ops-alert { margin-top: var(--space-5); }
+
+.setup-submit {
+  width: 100%;
+  margin-top: var(--space-6);
+  text-decoration: none;
+}
+
+.setup-footnote {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* A filename or a variable name is one token. Letting it wrap puts a tinted
+   background around half a word at the end of a line and the other half at the
+   start of the next, which reads as two things. */
+.setup code {
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
 /* ── Responsive ───────────────────────────────────────────── */
 
 @media (max-width: 600px) {
@@ -2784,14 +4314,27 @@ main {
       calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-6));
   }
 
-  /* Tighten the block above the first card. Measured at 375x667, 44% of the
-     screen was chrome before any incident: the title and its sentence do not
-     need desktop leading on a screen where every line they take is a line of
-     the feed the reader cannot see. The wording is unchanged; only the space
-     around it is. The lede stays at 13px: it is a sentence, and shaving it to
-     12 would buy about two pixels a line at the cost of reading it. */
-  h1 { font-size: var(--text-lg); }
-  .view-header { margin-bottom: var(--space-3); }
+  /* The title block goes away, and stays in the accessibility tree.
+     A phone gets the bottom nav, whose active tab already names the view:
+     "Lista" at the bottom and "Senaste händelserna" at the top are the same
+     word twice, and the lede under it explains that tapping a card opens it,
+     which the chevron on every card says without spending a line. Together
+     they were 67px, and the first incident started a third of the way down
+     the screen on a page whose whole job is the incidents.
+
+     Hidden rather than dropped: it is still the document's h1, and it is how
+     a screen reader user knows which view they landed on, since they have no
+     highlighted tab to look at. */
+  .view-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 
   .site-footer {
     padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-4));
@@ -2854,6 +4397,338 @@ main {
   .top-track { display: none; }
 }
 
+/* ── About ────────────────────────────────────────────────────
+   One page of prose, so it gets a reading measure rather than the app's
+   layout. */
+
+.about {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--space-8) var(--gutter) var(--space-12);
+}
+
+.about-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
+}
+
+.about-brand:hover { text-decoration: none; }
+
+.about-brand svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--accent);
+}
+
+.about-title {
+  margin-top: var(--space-6);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+}
+
+/* The disclaimer, first and unskimmable. Everything else on this page is
+   ordinary prose; this one has to survive being glanced at. */
+.about-lead {
+  margin-top: var(--space-4);
+  font-size: var(--text-body);
+}
+
+.about-heading {
+  margin-top: var(--space-8);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+}
+
+.about-text {
+  margin-top: var(--space-3);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.about-list {
+  margin-top: var(--space-3);
+  padding-left: var(--space-5);
+  list-style: disc;
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+}
+
+.about-list li { margin-top: var(--space-2); text-wrap: pretty; }
+
+.about-actions { margin-top: var(--space-8); }
+.about-actions .btn { text-decoration: none; }
+
+/* Attribution and the unofficial-service line, in the footer of every view. */
+.footer-about a { color: inherit; }
+
+/* ── 404 ──────────────────────────────────────────────────────
+   A dispatch centre that cannot find something sweeps the area and reports
+   back. Three rings, a beam going round, and returns that light as it passes:
+   none of them the page being looked for. All CSS over one small SVG, because
+   the 404 is the page that has to render when something has already failed. */
+
+.lost {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--space-8) var(--gutter) var(--space-12);
+  text-align: center;
+}
+
+.lost-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+  color: var(--fg);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
+}
+
+.lost-brand:hover { text-decoration: none; }
+
+.lost-brand svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--accent);
+}
+
+.lost-scope {
+  /* The radius is needed by the returns inside, so the size is a property
+     rather than a literal: one number places the frame and everything on it. */
+  --scope: min(260px, 62vw);
+  position: relative;
+  width: var(--scope);
+  aspect-ratio: 1;
+  margin: 0 auto var(--space-6);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.lost-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+/* The beam. A conic gradient turning inside the round frame costs one
+   composited property and no repaint of anything under it. */
+.lost-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--accent) 55%, transparent) 0deg,
+    color-mix(in srgb, var(--accent) 12%, transparent) 26deg,
+    transparent 62deg,
+    transparent 360deg
+  );
+  animation: lost-sweep 4s linear infinite;
+}
+
+@keyframes lost-sweep {
+  to { transform: rotate(360deg); }
+}
+
+/* A return sits at a bearing and lights when the beam reaches it, so its delay
+   is that bearing as a fraction of one turn. Pushed out from the centre along
+   its own bearing: no counter-rotation needed, a turned circle is a circle. */
+.lost-blip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  transform: rotate(var(--bearing)) translateY(calc(var(--scope) * -0.31));
+  opacity: 0;
+  animation: lost-blip 4s linear infinite;
+  animation-delay: var(--reach);
+}
+
+@keyframes lost-blip {
+  0% { opacity: 0.95; }
+  55% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.lost-centre {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+.lost-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.lost-title {
+  margin-top: var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+}
+
+.lost-text {
+  margin-top: var(--space-3);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  color: var(--fg-secondary);
+  text-wrap: pretty;
+}
+
+.lost-path {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.lost-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.lost-actions .btn,
+.lost-actions .btn-quiet { text-decoration: none; }
+
+.lost-note {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ── Radio check ──────────────────────────────────────────────
+   Sits in a corner, takes no focus and closes itself. Someone who opened the
+   app to find out whether their street is on fire must not have to dismiss a
+   novelty first. */
+
+.radio {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  z-index: 400;
+  width: min(21rem, calc(100vw - var(--space-8)));
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  animation: radio-in var(--t-base) var(--ease);
+}
+
+@keyframes radio-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.radio-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.radio-beacon {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  animation: radio-beacon 1.6s ease-out infinite;
+}
+
+@keyframes radio-beacon {
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--ok) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 0%, transparent); }
+}
+
+.radio-log {
+  margin-top: var(--space-3);
+  min-height: 6.4em;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-secondary);
+}
+
+.radio-log p:last-child { color: var(--fg); }
+
+.radio-close {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.radio-close:hover { color: var(--accent-strong); }
+
+@media (max-width: 600px) {
+  /* Clear of the bottom navigation, which owns that edge on a phone. */
+  .radio {
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-3));
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+  }
+}
+
 /* ── Motion + print ───────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -2863,6 +4738,13 @@ main {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* The rule above ends every animation on its last frame, and the returns on
+     the 404's scope end theirs at zero. Without this the scope loses the one
+     thing that makes it a scope, so it becomes a still picture instead: beam
+     parked, returns lit. */
+  .lost-blip { opacity: 0.7; }
+  .lost-sweep { opacity: 0.6; }
 }
 
 @media print {

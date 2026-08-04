@@ -10,13 +10,49 @@ import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { pruneFetchLog, warmAggregateCaches } from '@/lib/db';
 import { getBpkImportState } from '@/lib/brottsplatskartanDb';
 import { reconcileImportState, startImport } from '@/lib/brottsplatskartanRunner';
+import { getEnvCredentials, getSetupToken, hasStoredAdmin, isSetupOpen } from '@/lib/adminAuth';
+import { isSiteUrlConfigured, siteUrl } from '@/lib/site';
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min: matches the API cache window
 const FETCH_LOG_RETENTION_DAYS = 30;
 
 export function start(): void {
+  checkSiteUrl();
+  announceAdminSetup();
   startRefreshScheduler();
   startBrottsplatskartanImport();
+}
+
+// Share cards, the canonical link, robots.txt and the sitemap all have to name
+// a host, and only this variable knows it. Wrong, it is invisible from inside
+// the app and only shows up when somebody posts a link somewhere public.
+function checkSiteUrl(): void {
+  if (isSiteUrlConfigured()) return;
+  console.warn(
+    `[site] SITE_URL is not set; using ${siteUrl()} for share images, ` +
+      'the canonical link and the sitemap. Set it to this deployment\'s own address.'
+  );
+}
+
+// Print the installation key at boot, when there is still no way to log in to
+// /stats. Minting it here rather than on the first request means it is on the
+// same screen as the startup lines, which is where an operator is looking.
+function announceAdminSetup(): void {
+  try {
+    if (getEnvCredentials() || hasStoredAdmin()) return;
+    if (process.env.STATS_PUBLIC === 'true') return;
+    if (isSetupOpen()) {
+      console.warn(
+        '[auth] no admin account yet. /stats/setup is open to anyone who reaches it ' +
+          '(ADMIN_SETUP_OPEN=true).'
+      );
+      return;
+    }
+    getSetupToken();
+  } catch (error) {
+    // Never let the login banner be the reason the container fails to start.
+    console.error('[auth] could not prepare the setup key:', error);
+  }
 }
 
 // The app refreshes police events lazily inside the request path, which means

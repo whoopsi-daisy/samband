@@ -9,7 +9,6 @@ interface VmaViewProps {
   live: VmaAlert[];
   failed: boolean;
   loading: boolean;
-  checkedAt: string | null;
   onRetry: () => void;
 }
 
@@ -112,8 +111,7 @@ function AlertCard({ alert, live }: { alert: VmaAlert; live: boolean }) {
   );
 }
 
-function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewProps) {
-  const mounted = useMounted();
+function VmaView({ alerts, live, failed, loading, onRetry }: VmaViewProps) {
   const liveIds = new Set(live.map((a) => a.id));
   const others = alerts.filter((a) => !liveIds.has(a.id));
 
@@ -134,13 +132,17 @@ function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewP
       {failed && live.length === 0 && (
         <div className="vma-clear vma-clear--failed" role="alert">
           <p className="vma-clear-title">Vi vet inte just nu</p>
+          {/* Tightened, not trimmed. This block is the page's role="alert", so
+              it is what a screen reader announces; the footnote below is not.
+              Everything a reader needs while the source is unreachable has to
+              be inside it, including the 112 the footnote also carries. */}
           <p className="vma-clear-text">
-            Sveriges Radios VMA-tjänst går inte att nå, så den här sidan kan inte säga om det
-            finns ett VMA eller inte. Kontrollera{' '}
+            Sveriges Radios VMA-tjänst går inte att nå, så sidan kan inte säga om ett VMA är
+            utfärdat. Lyssna på P4 eller se{' '}
             <a href="https://sverigesradio.se/vma" target="_blank" rel="noopener noreferrer">
               sverigesradio.se/vma
-            </a>{' '}
-            eller lyssna på P4. Ring 112 vid akut fara.
+            </a>
+            . Ring 112 vid akut fara.
           </p>
           <p className="vma-clear-actions">
             <button type="button" className="btn-ghost" onClick={onRetry}>
@@ -161,12 +163,20 @@ function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewP
       {!failed && live.length === 0 && (
         /* No warning is the normal state, and the page has to say so plainly
            rather than looking like it failed to load. */
-        <div className="vma-clear">
-          <p className="vma-clear-title">Inget VMA är utfärdat just nu</p>
+        <div className="vma-clear vma-clear--quiet">
+          {/* The normal state, and it should look like one. A card styled the
+              same as a live warning makes a reader check twice to work out
+              that nothing is happening. */}
+          <p className="vma-clear-title">
+            <span className="dot dot--sm" aria-hidden="true" />
+            Inget VMA är utfärdat just nu
+          </p>
+          {/* The state this page is in almost always, so it is a line and not
+              a paragraph. The examples that used to be here explained what a
+              VMA is to someone who is not currently in one. */}
           <p className="vma-clear-text">
-            Ett VMA skickas ut när det finns omedelbar fara för liv, hälsa eller egendom, till
-            exempel vid gasutsläpp, stora bränder eller allvarliga olyckor. Den här sidan hämtar
-            dem från Sveriges Radio och uppdateras varje minut.
+            Ett VMA skickas ut vid omedelbar fara för liv, hälsa eller egendom. Sidan hämtar dem
+            från Sveriges Radio varje minut.
           </p>
         </div>
       )}
@@ -197,7 +207,7 @@ function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewP
       )}
 
       <p className="vma-footnote">
-        Källa: Sveriges Radios VMA-API. Vid fara, följ alltid myndigheternas egna kanaler:{' '}
+        Källa: Sveriges Radios VMA-API. Vid fara, följ myndigheternas kanaler:{' '}
         <a href="https://sverigesradio.se/vma" target="_blank" rel="noopener noreferrer">
           sverigesradio.se/vma
         </a>{' '}
@@ -205,8 +215,7 @@ function VmaView({ alerts, live, failed, loading, checkedAt, onRetry }: VmaViewP
         <a href="https://www.krisinformation.se" target="_blank" rel="noopener noreferrer">
           krisinformation.se
         </a>
-        . Ring 112 vid akut fara.
-        {mounted && checkedAt ? ` Senast kontrollerat ${formatTime(checkedAt)}.` : ''}
+        .
       </p>
     </section>
   );

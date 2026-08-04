@@ -6,7 +6,10 @@ const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
 const USER_AGENT = 'Tiny Tiny RSS/25.05-6abd7fdc (https://tt-rss.org/)';
 const CACHE_TIME = 600; // 10 minutes in seconds (minimum interval between fetches)
-const MAX_DAILY_FETCHES = 1440; // Maximum API calls per 24-hour period
+// Ceiling on upstream calls per rolling 24 hours, so a revalidation loop can
+// never turn into a scrape. Exported because /stats shows how much of it a
+// normal day actually uses: on the 10-minute schedule, 144 of 1440.
+export const MAX_DAILY_FETCHES = 1440;
 const MAX_FETCH_RETRIES = 3;
 const BACKFILL_THRESHOLD = 200; // If DB has fewer events than this, do initial backfill
 const BACKFILL_TARGET = 500; // Target number of events for backfill

@@ -48,21 +48,42 @@ describe('getMapEvents', () => {
   // The shift handover the police publish on a schedule is not an incident,
   // and its marker lands on a county centroid where nothing happened.
   it('leaves the scheduled summary posts off the map', () => {
-    const types = db.getMapEvents({}, dayAgo()).map((e) => e.type);
+    const types = db.getMapEvents({}, dayAgo()).rows.map((e) => e.type);
 
     expect(types).toEqual(expect.arrayContaining(['Trafikolycka', 'Misshandel']));
     expect(types.filter((t) => t.includes('Sammanfattning'))).toEqual([]);
   });
 
   it("still applies the reader's own filters", () => {
-    expect(db.getMapEvents({ type: 'Misshandel' }, dayAgo()).map((e) => e.id)).toEqual([4]);
+    expect(db.getMapEvents({ type: 'Misshandel' }, dayAgo()).rows.map((e) => e.id)).toEqual([4]);
   });
 
-  // The feed is the record of what the police published, summary posts and all.
-  it('leaves the list alone', () => {
+  // The feed used to be the exception, which had the app saying two things at
+  // once: not an incident anywhere a number is computed, and the top rows of
+  // the list every morning, one per county.
+  it('keeps them out of the feed too', () => {
     const types = db.getEventsFromDb().map((e) => e.type);
 
-    expect(types.filter((t) => t.includes('Sammanfattning'))).toHaveLength(2);
+    expect(types.filter((t) => t.includes('Sammanfattning'))).toEqual([]);
+    expect(types).toEqual(expect.arrayContaining(['Trafikolycka', 'Misshandel']));
+  });
+
+  // The feed is paged off one query and sized off another. If only one of them
+  // dropped the summaries, the last page would promise rows that never arrive.
+  it('counts them out as well as filters them out', () => {
+    expect(db.countEventsInDb({})).toBe(db.getEventsFromDb({}, 500, 0).length);
+  });
+
+  // Filtered from the views, not deleted: a shared ?handelse= link to one has
+  // to keep resolving, and getEventById does not go through the filter.
+  it('still resolves a direct link to one', () => {
+    const summary = db
+      .getDatabase()
+      .prepare("SELECT id FROM events WHERE type LIKE '%Sammanfattning%' LIMIT 1")
+      .get() as { id: number } | undefined;
+
+    expect(summary).toBeDefined();
+    expect(db.getEventById(summary!.id)?.type).toContain('Sammanfattning');
   });
 
   // The map used to ask for the newest 500 rows whatever the period and drop
@@ -72,8 +93,8 @@ describe('getMapEvents', () => {
     const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     // Fixtures are minutes old, so an hour reaches them and a year ago does not
     // reach anything newer than itself.
-    expect(db.getMapEvents({}, anHourAgo).length).toBeGreaterThan(0);
-    expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000))).toEqual([]);
+    expect(db.getMapEvents({}, anHourAgo).rows.length).toBeGreaterThan(0);
+    expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000)).rows).toEqual([]);
   });
 });
 

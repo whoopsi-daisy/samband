@@ -1,8 +1,10 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthlyStats, DailyPeak, TopItem, OperationalStats, FetchLogEntry, DatabaseHealth } from '@/types';
-import { escapeLikeWildcards } from './utils';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, RegionTypeCube, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
+import { escapeLikeWildcards, placeFromTitle } from './utils';
+import { countyOf, isCountyName } from './regions';
+import { buildRegionBreakdown } from './regionRows';
 import { memoizeWithTtl } from './cache';
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
@@ -20,7 +22,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -41,6 +43,9 @@ function initializeDatabase(database: Database.Database): void {
       type TEXT,
       location_name TEXT,
       location_gps TEXT,
+      -- Resolved from the location field, or from the municipality in the
+      -- notice's title. See migration 5.
+      county TEXT,
       raw_data TEXT,
       fetched_at TEXT,
       content_hash TEXT
@@ -75,6 +80,17 @@ function initializeDatabase(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT
+    )
+  `);
+
+  // The dashboard login, when it is not coming from the environment. One row,
+  // enforced by the CHECK rather than by whoever writes next. See adminAuth.ts.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS admin_user (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      username TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
 
@@ -296,6 +312,80 @@ function reconcileSearchTokenizer(database: Database.Database): void {
   buildSearchIndex(database, wanted);
 }
 
+/**
+ * Migration 5: which county each notice is in, as a column.
+ *
+ * The county was derived on the fly, in JavaScript, out of whatever the
+ * location field happened to say — which made the regional breakdown possible
+ * and a county filter impossible. The feed filters on the place string an
+ * officer typed, and no notice is labelled "Skåne län" unless somebody wrote
+ * exactly that, so a filter on the county name would have returned a fraction
+ * of what the same page had just counted.
+ *
+ * Resolved once, at write time, into an indexed column on both tables. Nothing
+ * about the source rows changes: `location_name` still holds what the feed
+ * said, and this sits beside it.
+ *
+ * The archive already carried a `county`, from Brottsplatskartan's own
+ * geocoding, in the same "Skåne län" form. It is normalised through the same
+ * lookup here so the two sources cannot disagree about spelling, and anything
+ * the lookup does not recognise becomes NULL rather than staying as a value
+ * only one of the two tables would ever match.
+ */
+function migrateCountyColumn(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'county')) {
+    database.exec('ALTER TABLE events ADD COLUMN county TEXT');
+  }
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_events_county ON events(county, event_time);
+  `);
+
+  // Live rows: the county comes from the location field, or from the
+  // municipality in the notice's own title where the location is only a county.
+  const live = database
+    .prepare('SELECT id, name, location_name FROM events WHERE county IS NULL')
+    .all() as Array<{ id: number; name: string | null; location_name: string | null }>;
+
+  const setLive = database.prepare('UPDATE events SET county = ? WHERE id = ?');
+  const fillLive = database.transaction((rows: typeof live) => {
+    for (const row of rows) {
+      const location = row.location_name ?? '';
+      const place = placeFromTitle(row.name ?? '', location);
+      setLive.run(countyOf(location) ?? countyOf(place), row.id);
+    }
+  });
+  fillLive(live);
+
+  // Archive rows: normalise whatever the import wrote into the same vocabulary.
+  const archiveExists = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bpk_events'")
+    .get();
+
+  let normalised = 0;
+  if (archiveExists) {
+    const rows = database
+      .prepare('SELECT DISTINCT county FROM bpk_events WHERE county IS NOT NULL')
+      .all() as Array<{ county: string }>;
+    const rename = database.prepare('UPDATE bpk_events SET county = ? WHERE county = ?');
+    const fixAll = database.transaction((values: typeof rows) => {
+      for (const { county } of values) {
+        const canonical = countyOf(county);
+        if (canonical !== county) {
+          normalised += rename.run(canonical, county).changes;
+        }
+      }
+    });
+    fixAll(rows);
+  }
+
+  console.log(
+    `[db] migration: placed ${live.length} live notices in a county` +
+      (normalised > 0 ? `, normalised ${normalised} imported ones` : '')
+  );
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
   if (current >= SCHEMA_VERSION) {
@@ -317,6 +407,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 4) {
     migrateSearchIndex(database);
+  }
+
+  if (current < 5) {
+    migrateCountyColumn(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -587,6 +681,7 @@ function getEventStatements(pdo: Database.Database): EventStatements {
         type = ?,
         location_name = ?,
         location_gps = ?,
+        county = ?,
         raw_data = ?,
         last_updated = ?,
         content_hash = ?
@@ -595,8 +690,8 @@ function getEventStatements(pdo: Database.Database): EventStatements {
     insert: pdo.prepare(`
       INSERT INTO events
       (id, datetime, event_time, publish_time, last_updated, name, summary, url, type,
-       location_name, location_gps, raw_data, fetched_at, content_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       location_name, location_gps, county, raw_data, fetched_at, content_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
   };
 
@@ -608,6 +703,17 @@ function getEventStatements(pdo: Database.Database): EventStatements {
 function applyEvent(statements: EventStatements, event: RawEvent, now: string): InsertStatus {
   const normalizedDatetime = normalizeDateTime(event.datetime);
   const contentHash = generateContentHash(event);
+  /*
+   * Which county this is in, resolved once here rather than per query.
+   *
+   * The location field is usually a county already; where it is not, the
+   * municipality in the notice's own title is, and that is the same pair
+   * positionFor uses to place the pin. Null when neither resolves, which is
+   * honest: "Nationellt" is not a county.
+   */
+  const location = event.location.name ?? '';
+  const county =
+    countyOf(location) ?? countyOf(placeFromTitle(event.name ?? '', location));
 
   const existing = statements.select.get(event.id) as
     | { content_hash: string; event_time: string }
@@ -629,6 +735,7 @@ function applyEvent(statements: EventStatements, event: RawEvent, now: string): 
       event.type,
       event.location.name,
       event.location.gps || '',
+      county,
       JSON.stringify(event),
       now,
       contentHash,
@@ -652,6 +759,7 @@ function applyEvent(statements: EventStatements, event: RawEvent, now: string): 
     event.type,
     event.location.name,
     event.location.gps || '',
+    county,
     JSON.stringify(event),
     now,
     contentHash
@@ -844,15 +952,37 @@ interface SqlFragment {
  * whichever county desk wrote it. The statistics have always left them out.
  * The map has the same reason to, and a sharper one: a marker for it lands on
  * a county centroid that no incident actually happened at.
+ *
+ * The feed used to be the exception, which made the app say two things at
+ * once: these are not events anywhere a number is computed, and they are the
+ * top seven rows of the list every morning, one per county, all filed within a
+ * minute of each other. Excluded everywhere now, and unconditionally rather
+ * than through a flag, so the query that pages the feed and the count that
+ * sizes it cannot disagree about how many rows exist.
+ *
+ * They are filtered from the views, not deleted: a ?handelse= link to one
+ * still resolves, because getEventById does not go through here.
  */
 const SUMMARY_TYPE_PATTERN = '%Sammanfattning%';
 
-interface QueryOptions {
-  /** Drop the police's scheduled summary posts from the result. */
-  excludeSummaries?: boolean;
-}
+/**
+ * The press desk's nightly boilerplate.
+ *
+ * "Efter klockan 22:00 finns ingen presstalesperson i tjänst. Frågor från media
+ * besvaras av vakthavande befäl i mån av tid." Word for word the same text,
+ * filed once per region, every night around 21:50. It reports no incident, it
+ * is addressed to journalists rather than to the public, and seven copies of it
+ * arrive together at the top of the feed each evening and push the day's actual
+ * events down the page.
+ *
+ * Matched on the phrase rather than on the type, because "Övrigt" also carries
+ * real notices and dropping the whole type would take those with it. Nothing is
+ * deleted: the rows stay in the database and in the statistics, they are only
+ * kept out of the feed and the map.
+ */
+const PRESS_DESK_PATTERN = '%presstalesperson%';
 
-function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
+function liveFilterSql(filters: EventFilters): SqlFragment {
   const params: (string | number)[] = [];
   let sql = '';
 
@@ -861,11 +991,19 @@ function liveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFr
     params.push(filters.since);
   }
 
-  if (options.excludeSummaries) {
-    sql += " AND COALESCE(e.type, '') NOT LIKE ?";
-    params.push(SUMMARY_TYPE_PATTERN);
-  }
+  // Both unconditional, and applied here rather than at a call site so the
+  // feed and the count that pages it can never disagree about how many rows
+  // there are.
+  sql += " AND COALESCE(e.type, '') NOT LIKE ?";
+  params.push(SUMMARY_TYPE_PATTERN);
 
+  sql += " AND COALESCE(e.summary, '') NOT LIKE ?";
+  params.push(PRESS_DESK_PATTERN);
+
+  if (filters.county) {
+    sql += ' AND e.county = ?';
+    params.push(filters.county);
+  }
   if (filters.location) {
     sql += ' AND e.location_name = ?';
     params.push(filters.location);
@@ -906,7 +1044,7 @@ function toSearchMatch(search: string): string | null {
 
 // The same filters against the archive's own column names, plus the cutoff
 // that keeps the two sources from overlapping.
-function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): SqlFragment {
+function archiveFilterSql(filters: EventFilters): SqlFragment {
   const params: (string | number)[] = [getArchiveCutoff()];
   let sql = ' AND b.pubdate < ?';
 
@@ -915,11 +1053,17 @@ function archiveFilterSql(filters: EventFilters, options: QueryOptions = {}): Sq
     params.push(filters.since);
   }
 
-  if (options.excludeSummaries) {
-    sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
-    params.push(SUMMARY_TYPE_PATTERN);
-  }
+  sql += " AND COALESCE(b.title_type, '') NOT LIKE ?";
+  params.push(SUMMARY_TYPE_PATTERN);
 
+  // The archive carries the same boilerplate under its own column name.
+  sql += " AND COALESCE(b.description, '') NOT LIKE ?";
+  params.push(PRESS_DESK_PATTERN);
+
+  if (filters.county) {
+    sql += ' AND b.county = ?';
+    params.push(filters.county);
+  }
   if (filters.location) {
     sql += ` AND ${ARCHIVE_LOCATION} = ?`;
     params.push(filters.location);
@@ -1011,11 +1155,10 @@ export function getEventById(id: number): EventWithMetadata | null {
 export function getEventsFromDb(
   filters: EventFilters = {},
   limit = 500,
-  offset = 0,
-  options: QueryOptions = {}
+  offset = 0
 ): EventWithMetadata[] {
   const pdo = getDatabase();
-  const live = liveFilterSql(filters, options);
+  const live = liveFilterSql(filters);
 
   if (!hasArchiveEvents()) {
     const rows = pdo
@@ -1027,7 +1170,7 @@ export function getEventsFromDb(
     return rows.map(rowToEvent);
   }
 
-  const archive = archiveFilterSql(filters, options);
+  const archive = archiveFilterSql(filters);
 
   // Each arm is limited to what the requested window could possibly need
   // before the union is sorted, so neither side is materialised in full.
@@ -1065,8 +1208,34 @@ export function getEventsFromDb(
  * stamps a relative time ("2 timmar sedan") that would be frozen at whatever it
  * said when the entry was created. Formatting is cheap; the query is not.
  */
-const MAP_EVENT_LIMIT = 500;
+/*
+ * How many notices the map will draw.
+ *
+ * This was 500, and 500 is roughly what the live feed produces in three weeks.
+ * The map's own status line therefore read "500 händelser den senaste
+ * månaden" — a number that looks like a total, is exactly the cap, and is the
+ * newest 500 of them, because the query orders by time descending. The older
+ * third of the month was silently missing and nothing on the page said so.
+ *
+ * Raised, and affordable now that the map is sent a notice shaped for the map
+ * rather than the one the feed renders: about 15 gzipped bytes each instead of
+ * 43. The feed runs near 45 notices a day, so a month is roughly 1,300-1,700
+ * and three thousand is about twice that — enough headroom for a busy month
+ * without becoming an unbounded query. It lands near 25 kB on the wire.
+ *
+ * Still a cap and not "all of them": this endpoint is public and unauthenticated,
+ * and an unbounded query is how the feed's paging turned into a denial of
+ * service. Where it does bite, `total` below is what lets the map say so
+ * instead of quietly showing a slice.
+ */
+const MAP_EVENT_LIMIT = 3000;
 const MAP_CACHE_TTL_MS = 60_000;
+
+export interface MapEventPage {
+  rows: EventWithMetadata[];
+  /** Every notice in the window, whether or not it fit under the cap. */
+  total: number;
+}
 
 /**
  * Round a window start down to the minute.
@@ -1092,10 +1261,22 @@ function bucketWindowStart(since: Date): string {
 }
 
 const getMapEventRows = memoizeWithTtl(
-  (filters: EventFilters, since: string): EventWithMetadata[] =>
-    getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
+  (filters: EventFilters, since: string): MapEventPage => {
+    const scoped = { ...filters, since };
+    const rows = getEventsFromDb(scoped, MAP_EVENT_LIMIT, 0);
+    // Only counted when the cap was actually reached. Under it the rows are
+    // the whole answer, and a second scan of the window would be work done to
+    // learn something already known.
+    const total = rows.length < MAP_EVENT_LIMIT ? rows.length : countEventsInDb(scoped);
+    return { rows, total };
+  },
   MAP_CACHE_TTL_MS,
-  (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`,
+  // Every filter that changes the answer has to be in the key. County was
+  // missing from it for the length of one test run: a map filtered to Skåne and
+  // an unfiltered one shared a cache entry, so whichever was asked for first
+  // was served to both for the next minute.
+  (filters, since) =>
+    `${filters.county ?? ''}|${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`,
   // The search term is free text from a query string, so the key space is as
   // wide as a visitor cares to make it, and each entry here is 500 events.
   { maxEntries: 32 }
@@ -1109,11 +1290,11 @@ const getMapEventRows = memoizeWithTtl(
  * which meant a filter whose incidents were all in the archive fetched five
  * hundred rows and drew none of them.
  */
-export function getMapEvents(filters: EventFilters = {}, since: Date): EventWithMetadata[] {
+export function getMapEvents(filters: EventFilters = {}, since: Date): MapEventPage {
   return getMapEventRows(filters, bucketWindowStart(since));
 }
 
-/** Live entry count of the map cache, for the health endpoint. */
+/** Live entry count of the map cache, for tests and for reporting cache health. */
 export function getMapCacheSize(): number {
   return getMapEventRows.size();
 }
@@ -1232,6 +1413,8 @@ interface StatsSource {
   /** Type as the breakdown groups it: the bare column, so an index answers it. */
   typeLabel: string;
   location: string;
+  /** The resolved county column. Both tables carry one; see migration 5. */
+  county: string;
   hasGps: string;
   wasUpdated: string;
   /** Extra always-on condition, e.g. the archive cutoff. */
@@ -1245,6 +1428,7 @@ const LIVE_STATS_SOURCE: StatsSource = {
   type: "COALESCE(e.type, '')",
   typeLabel: 'e.type',
   location: 'e.location_name',
+  county: 'e.county',
   hasGps: "e.location_gps != ''",
   wasUpdated: 'e.last_updated != e.publish_time',
   where: '',
@@ -1258,6 +1442,7 @@ function archiveStatsSource(): StatsSource {
     type: "COALESCE(b.title_type, '')",
     typeLabel: 'b.title_type',
     location: ARCHIVE_LOCATION,
+    county: 'b.county',
     hasGps: 'b.lat IS NOT NULL AND b.lng IS NOT NULL',
     // Brottsplatskartan does not republish corrections, so nothing here is
     // ever a revision of something already stored.
@@ -1285,11 +1470,57 @@ interface SourceStats {
    * and at roughly 3,600 buckets for a decade of history it is a small map.
    */
   allDays: Map<string, number>;
+  /**
+   * Year -> type -> count, over the whole source.
+   *
+   * A decade of composition in one grouped scan: ten years by sixty types is
+   * six hundred rows out, against the millions the same question would cost
+   * per year if it were asked one year at a time.
+   */
+  yearTypes: Map<string, Map<string, number>>;
+  /**
+   * Place name by month, over the last two years only.
+   *
+   * Enough to say whether a county is busier than it was a year ago, and no
+   * more: the same grouping without a window is a scan of the whole source
+   * producing a row per place per month, which for a decade of history is tens
+   * of thousands of rows to answer a question about the last twenty-four
+   * months. The all-time county totals are folded out of `locations`, which is
+   * already collected, so nothing here is asked twice.
+   */
+  regionMonths: Array<{ month: string; label: string; total: number }>;
+  /**
+   * County by type, over the whole source, with both trend windows counted.
+   *
+   * `county` is the resolved column rather than the place name on the notice,
+   * so a type filter counts the same rows the county filter on the feed would
+   * return. A null county is the source's unplaceable rows, kept rather than
+   * dropped so the filtered table can say how many it is leaving out.
+   */
+  countyTypes: Array<{
+    county: string | null;
+    label: string;
+    total: number;
+    recent: number;
+    previous: number;
+  }>;
   withGps: number;
   updated: number;
 }
 
-function collectSourceStats(source: StatsSource, windows: { since24h: string; since7d: string; since30d: string }): SourceStats {
+function collectSourceStats(
+  source: StatsSource,
+  windows: {
+    since24h: string;
+    since7d: string;
+    since30d: string;
+    since24m: string;
+    /** Month boundaries as YYYY-MM, shared with regionBreakdown. */
+    openMonth: string;
+    recentStart: string;
+    previousStart: string;
+  }
+): SourceStats {
   const pdo = getDatabase();
   const excludePattern = '%Sammanfattning%';
   const { from, time, type, location, where, whereParams } = source;
@@ -1390,6 +1621,70 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     .prepare(`SELECT substr(${time}, 1, 10) AS bucket, COUNT(*) AS total ${base} GROUP BY bucket`)
     .all(...baseParams) as Array<{ bucket: string; total: number }>;
 
+  // Same trick as above: the year comes off the front of the ISO string rather
+  // than through a datetime parse, and the type stays the bare column so the
+  // index can answer it.
+  const yearTypeRows = pdo
+    .prepare(
+      `SELECT substr(${time}, 1, 4) AS year, ${source.typeLabel} AS label, COUNT(*) AS total ${base} GROUP BY year, label`
+    )
+    .all(...baseParams) as Array<{ year: string; label: string | null; total: number }>;
+  const yearTypes = new Map<string, Map<string, number>>();
+  for (const row of yearTypeRows) {
+    if (!row.label) continue;
+    let byType = yearTypes.get(row.year);
+    if (!byType) {
+      byType = new Map();
+      yearTypes.set(row.year, byType);
+    }
+    byType.set(row.label, (byType.get(row.label) ?? 0) + row.total);
+  }
+
+  /*
+   * County by type, with both trend windows counted in the same pass.
+   *
+   * One grouped scan for the whole cube: twenty-one counties by however many
+   * types the source carries, which is a few hundred rows out. Asking it per
+   * type instead would be a scan each, and the control it feeds is built for
+   * flicking between types.
+   *
+   * The window comparisons are string prefixes against the ISO timestamp, the
+   * same trick the year and month groupings above use: '2026-08-04T09:00:00Z'
+   * sorts after '2026-08' and before '2026-09', so a YYYY-MM boundary bounds a
+   * month without a datetime parse per row.
+   */
+  const countyTypeRows = pdo
+    .prepare(
+      `SELECT ${source.county} AS county, ${source.typeLabel} AS label,
+              COUNT(*) AS total,
+              SUM(CASE WHEN ${time} >= ? AND ${time} < ? THEN 1 ELSE 0 END) AS recent,
+              SUM(CASE WHEN ${time} >= ? AND ${time} < ? THEN 1 ELSE 0 END) AS previous
+         ${base} GROUP BY county, label`
+    )
+    .all(
+      windows.recentStart,
+      windows.openMonth,
+      windows.previousStart,
+      windows.recentStart,
+      ...baseParams
+    ) as Array<{
+    county: string | null;
+    label: string | null;
+    total: number;
+    recent: number;
+    previous: number;
+  }>;
+
+  const regionMonthRows = pdo
+    .prepare(
+      `SELECT substr(${time}, 1, 7) AS month, ${location} AS label, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY month, label`
+    )
+    .all(...baseParams, windows.since24m) as Array<{
+    month: string;
+    label: string | null;
+    total: number;
+  }>;
+
   return {
     // The totals count every row: they answer "how much is stored". The rest
     // exclude summary posts, as the live feed's statistics always have.
@@ -1405,6 +1700,23 @@ function collectSourceStats(source: StatsSource, windows: { since24h: string; si
     weekdays,
     daily: new Map(dailyRows.map(row => [row.bucket, row.total])),
     allDays: new Map(allDayRows.map(row => [row.bucket, row.total])),
+    yearTypes,
+    regionMonths: regionMonthRows.map((row) => ({
+      month: row.month,
+      label: row.label ?? '',
+      total: row.total,
+    })),
+    countyTypes: countyTypeRows
+      // An untyped notice cannot be offered in a type filter, and counting it
+      // under a blank label would put an unselectable row in the cube.
+      .filter((row) => Boolean(row.label))
+      .map((row) => ({
+        county: row.county || null,
+        label: row.label as string,
+        total: row.total,
+        recent: row.recent,
+        previous: row.previous,
+      })),
     withGps: scalars.withGps ?? 0,
     updated: scalars.updated ?? 0,
   };
@@ -1422,8 +1734,6 @@ function countLabels(counts: Map<string, number>): number {
   for (const label of counts.keys()) if (label !== '') total++;
   return total;
 }
-
-const MONTH_ABBR = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
 /**
  * Every year the data covers, oldest first, with the gaps filled in.
@@ -1450,26 +1760,132 @@ function yearlyFromDays(days: Map<string, number>): YearlyStats[] {
   return out;
 }
 
-/** The last `months` calendar months up to and including the current one. */
-function monthlyFromDays(days: Map<string, number>, now: Date, months: number): MonthlyStats[] {
+/**
+ * The whole record as one row per year and one cell per month.
+ *
+ * Everything here comes from the same `allDays` map the year and month charts
+ * already use, so a decade of extra reading costs no extra query. Months
+ * before the first recorded day and after the last are null rather than zero:
+ * an archive that starts in March 2016 has no January, and drawing it as an
+ * empty month says the opposite.
+ */
+const MAX_GRID_YEARS = 10;
+
+function monthGridFromDays(days: Map<string, number>, now: Date): MonthGridRow[] {
+  if (days.size === 0) return [];
+
   const totals = new Map<string, number>();
   for (const [day, count] of days) {
     const month = day.slice(0, 7);
     totals.set(month, (totals.get(month) ?? 0) + count);
   }
 
-  const out: MonthlyStats[] = [];
-  for (let back = months - 1; back >= 0; back--) {
-    const at = new Date(now.getFullYear(), now.getMonth() - back, 1);
-    const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
-    out.push({
-      month: key,
-      label: MONTH_ABBR[at.getMonth()],
-      year: at.getFullYear(),
-      count: totals.get(key) ?? 0,
-    });
+  const keys = [...days.keys()].sort();
+  const firstDay = keys[0];
+  const lastDay = keys[keys.length - 1];
+  const firstYear = parseInt(firstDay.slice(0, 4), 10);
+  const lastYear = parseInt(lastDay.slice(0, 4), 10);
+  const firstMonth = parseInt(firstDay.slice(5, 7), 10) - 1;
+  const lastMonth = parseInt(lastDay.slice(5, 7), 10) - 1;
+  const runningYear = now.getFullYear();
+
+  const rows: MonthGridRow[] = [];
+  for (let year = firstYear; year <= lastYear; year++) {
+    const months: (number | null)[] = [];
+    let total = 0;
+    for (let month = 0; month < 12; month++) {
+      const beforeStart = year === firstYear && month < firstMonth;
+      const afterEnd = year === lastYear && month > lastMonth;
+      if (beforeStart || afterEnd) {
+        months.push(null);
+        continue;
+      }
+      const count = totals.get(`${year}-${String(month + 1).padStart(2, '0')}`) ?? 0;
+      months.push(count);
+      total += count;
+    }
+    rows.push({ year, months, total, running: year === runningYear });
   }
-  return out;
+
+  // The first year of an archive usually starts partway through, and a row
+  // that begins in July sits at the top of the grid reading as a quiet year.
+  // The year in progress has the same problem at the other end, but it is the
+  // current one and belongs on the chart; this one is only history the source
+  // happens not to have.
+  if (rows.length > 1 && rows[0].months[0] === null) rows.shift();
+
+  // Ten rows is as much as the grid can carry before the cells go under 20px,
+  // and a decade is already more history than any question here reaches for.
+  return rows.slice(-MAX_GRID_YEARS);
+}
+
+/**
+ * The average shape of a year.
+ *
+ * Only complete years count. Including the running one would pull every month
+ * after today's toward zero and invent a collapse in the autumn, and including
+ * a part-year at the start of the archive would do the same to the spring.
+ */
+function seasonFromGrid(grid: MonthGridRow[], now: Date): SeasonProfile {
+  const complete = grid.filter(
+    (row) => !row.running && row.year !== now.getFullYear() && row.months.every((m) => m !== null)
+  );
+
+  if (complete.length === 0) {
+    return { average: [], years: 0, busiestMonth: null, quietestMonth: null };
+  }
+
+  const average = Array.from({ length: 12 }, (_, month) => {
+    const sum = complete.reduce((total, row) => total + (row.months[month] ?? 0), 0);
+    return Math.round(sum / complete.length);
+  });
+
+  let busiest = 0;
+  let quietest = 0;
+  average.forEach((value, month) => {
+    if (value > average[busiest]) busiest = month;
+    if (value < average[quietest]) quietest = month;
+  });
+
+  return {
+    average,
+    years: complete.length,
+    busiestMonth: busiest,
+    quietestMonth: quietest,
+  };
+}
+
+/**
+ * This year and last year, both counted through today's date.
+ *
+ * The comparison is only fair if both sides stop at the same day of the year,
+ * which is the whole reason a bare year chart cannot answer the question.
+ */
+function yearToDateFromDays(days: Map<string, number>, now: Date): YearToDate | null {
+  const year = now.getFullYear();
+  const previousYear = year - 1;
+  // MM-DD in UTC, matching how allDays is bucketed.
+  const throughDay = new Date(now.getTime()).toISOString().slice(5, 10);
+
+  let count = 0;
+  let previousCount = 0;
+  let sawPrevious = false;
+
+  for (const [day, total] of days) {
+    const dayYear = parseInt(day.slice(0, 4), 10);
+    const monthDay = day.slice(5, 10);
+    if (dayYear === year && monthDay <= throughDay) count += total;
+    if (dayYear === previousYear) {
+      sawPrevious = true;
+      if (monthDay <= throughDay) previousCount += total;
+    }
+  }
+
+  // With nothing recorded in the previous year there is nothing to compare to,
+  // and a "+100%" against zero would be noise dressed as a finding.
+  if (!sawPrevious || previousCount === 0) return null;
+
+  return { year, count, previousYear, previousCount, throughDay };
 }
 
 function busiestFromDays(days: Map<string, number>): DailyPeak | null {
@@ -1478,6 +1894,179 @@ function busiestFromDays(days: Map<string, number>): DailyPeak | null {
     if (!best || count > best.count) best = { date, count };
   }
   return best;
+}
+
+/**
+ * How the mix of incident types has moved across the years.
+ *
+ * Grouped by family rather than by type: sixty type names produce sixty
+ * near-identical slivers, and the families are the level the rest of the app
+ * already colours by. Only whole years are shown; a running year's mix is
+ * skewed by whatever season it has reached so far.
+ *
+ * The families are ranked once, over the whole record, so a family keeps the
+ * same position in every year's bar. Ranking per year would reorder the
+ * segments underneath the reader and make the drift impossible to follow,
+ * which is the one thing this chart exists to show.
+ */
+function familyMixByYear(yearTypes: Map<string, Map<string, number>>): FamilyYear[] {
+  const years = [...yearTypes.keys()].sort();
+  // Under two years there is no drift to look at.
+  if (years.length < 2) return [];
+
+  const overall = new Map<TypeFamilyKey, number>();
+  const byYear = new Map<string, Map<TypeFamilyKey, number>>();
+
+  for (const year of years) {
+    const families = new Map<TypeFamilyKey, number>();
+    for (const [type, count] of yearTypes.get(year) ?? []) {
+      const family = getTypeStyle(type).family;
+      families.set(family, (families.get(family) ?? 0) + count);
+      overall.set(family, (overall.get(family) ?? 0) + count);
+    }
+    byYear.set(year, families);
+  }
+
+  const ranked = [...overall.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([family]) => family);
+
+  return years.map((year) => {
+    const families = byYear.get(year) ?? new Map();
+    const total = [...families.values()].reduce((sum, count) => sum + count, 0);
+    const shares = ranked
+      .map((family) => {
+        const count = families.get(family) ?? 0;
+        return {
+          family: family as string,
+          label: TYPE_FAMILIES[family].label,
+          count,
+          share: total > 0 ? count / total : 0,
+        };
+      })
+      .filter((entry) => entry.count > 0);
+    return { year, total, shares };
+  });
+}
+
+/**
+ * The country broken down by county.
+ *
+ * The feed names places at whatever level the officer chose, so counted as they
+ * come the record is three hundred labels of four different kinds. Folded into
+ * the twenty-one counties it becomes a picture of Sweden, which is the question
+ * a reader actually has.
+ *
+ * A trend needs two comparable windows, and the running month is not one: it is
+ * however many days into it we happen to be. Both windows therefore end at the
+ * last completed month, and the comparison is dropped rather than shown small
+ * where the record does not reach back far enough to make it mean anything.
+ */
+/**
+ * The two comparison windows, as YYYY-MM.
+ *
+ * Exclusive of the month we are standing in: it is partial on both sides of the
+ * comparison and belongs to neither. Shared with the SQL that builds the
+ * per-type cube, because two places deciding separately where "the last twelve
+ * months" starts is two places that can drift apart.
+ */
+function monthWindows(now: Date): { openMonth: string; recentStart: string; previousStart: string } {
+  const monthKey = (year: number, month: number): string =>
+    `${year}-${String(month + 1).padStart(2, '0')}`;
+  return {
+    openMonth: monthKey(now.getFullYear(), now.getMonth()),
+    recentStart: monthKey(now.getFullYear() - 1, now.getMonth()),
+    previousStart: monthKey(now.getFullYear() - 2, now.getMonth()),
+  };
+}
+
+function regionBreakdown(
+  totals: Map<string, number>,
+  months: Array<{ month: string; label: string; total: number }>,
+  now: Date,
+  coverage: { placed: number; unplaced: number }
+): RegionBreakdown {
+  const { openMonth, recentStart, previousStart } = monthWindows(now);
+
+  const allTime = new Map<string, number>();
+  const recent = new Map<string, number>();
+  const previous = new Map<string, number>();
+
+  for (const [label, count] of totals) {
+    const county = countyOf(label);
+    if (!county) continue;
+    allTime.set(county, (allTime.get(county) ?? 0) + count);
+  }
+
+  for (const row of months) {
+    const county = countyOf(row.label);
+    if (!county) continue;
+    if (row.month >= recentStart && row.month < openMonth) {
+      recent.set(county, (recent.get(county) ?? 0) + row.total);
+    } else if (row.month >= previousStart && row.month < recentStart) {
+      previous.set(county, (previous.get(county) ?? 0) + row.total);
+    }
+  }
+
+  return buildRegionBreakdown(allTime, recent, previous, coverage, recentStart);
+}
+
+/**
+ * Types too thin to map.
+ *
+ * Spread over twenty-one counties, a type with fifty notices nationwide is
+ * single digits per county, and a choropleth of single digits is four shades of
+ * noise with Stockholm at the top because Stockholm is where the people are.
+ * Offering it in the filter is offering a finding that is not there.
+ */
+export const TYPE_MAP_MIN_TOTAL = 200;
+
+/** How many the filter offers. The tail below this is the long tail. */
+const TYPE_MAP_LIMIT = 20;
+
+/**
+ * The county breakdown per type, shaped for the page.
+ *
+ * Counted straight off the county column, unlike `regionBreakdown` above, which
+ * still folds the place names the notices carry. The two agree on the totals
+ * because migration 5 resolved the column from those same names; where they
+ * could disagree, the column is the one the feed's own county filter uses, so
+ * a reader who clicks through from a filtered map gets what the map counted.
+ */
+function regionTypeCube(
+  rows: Array<{ county: string | null; label: string; total: number; recent: number; previous: number }>,
+  recentStart: string
+): RegionTypeCube {
+  const totalByType = new Map<string, number>();
+  for (const row of rows) totalByType.set(row.label, (totalByType.get(row.label) ?? 0) + row.total);
+
+  const types = [...totalByType.entries()]
+    .filter(([, total]) => total >= TYPE_MAP_MIN_TOTAL)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'sv'))
+    .slice(0, TYPE_MAP_LIMIT)
+    .map(([label]) => label);
+
+  const offered = new Set(types);
+  const cells: RegionTypeCube['cells'] = {};
+  const unplaced: RegionTypeCube['unplaced'] = {};
+
+  for (const row of rows) {
+    if (!offered.has(row.label)) continue;
+
+    const county = countyOf(row.county);
+    if (!county) {
+      unplaced[row.label] = (unplaced[row.label] ?? 0) + row.total;
+      continue;
+    }
+
+    const byType = (cells[county] ??= {});
+    const cell = (byType[row.label] ??= [0, 0, 0]);
+    cell[0] += row.total;
+    cell[1] += row.recent;
+    cell[2] += row.previous;
+  }
+
+  return { types, cells, unplaced, recentStart };
 }
 
 function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
@@ -1499,6 +2088,10 @@ function computeStatsSummary(): Statistics {
     since24h: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
     since7d: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     since30d: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    // Two whole years back from the start of the current month, so the regional
+    // trend has both of its windows complete.
+    since24m: new Date(Date.UTC(now.getFullYear() - 2, now.getMonth(), 1)).toISOString(),
+    ...monthWindows(now),
   };
 
   const live = collectSourceStats(LIVE_STATS_SOURCE, windows);
@@ -1527,6 +2120,8 @@ function computeStatsSummary(): Statistics {
   const weekdayData = [...live.weekdays];
   const dailyMap = new Map(live.daily);
   const allDays = new Map(live.allDays);
+  const yearTypes = new Map<string, Map<string, number>>();
+  for (const [year, byType] of live.yearTypes) yearTypes.set(year, new Map(byType));
 
   if (archive) {
     mergeCounts(typeCounts, archive.types);
@@ -1535,6 +2130,11 @@ function computeStatsSummary(): Statistics {
     for (let i = 0; i < 7; i++) weekdayData[i] += archive.weekdays[i];
     for (const [day, count] of archive.daily) dailyMap.set(day, (dailyMap.get(day) ?? 0) + count);
     mergeCounts(allDays, archive.allDays);
+    for (const [year, byType] of archive.yearTypes) {
+      const target = yearTypes.get(year);
+      if (target) mergeCounts(target, byType);
+      else yearTypes.set(year, new Map(byType));
+    }
   }
 
   // Convert to Monday-Sunday order (Swedish)
@@ -1568,6 +2168,7 @@ function computeStatsSummary(): Statistics {
   const updatedPercent = totalStored > 0 ? Math.round((updatedEvents / totalStored) * 100) : 0;
 
   const coverage = getArchiveCoverage();
+  const monthGrid = monthGridFromDays(allDays, now);
 
   return {
     total,
@@ -1577,12 +2178,45 @@ function computeStatsSummary(): Statistics {
     last30d,
     avgPerDay,
     topTypes: topItems(typeCounts),
-    topLocations: topItems(locationCounts),
+    /*
+     * Places, with the counties left to the block that counts them properly.
+     *
+     * The feed labels a great many notices with the county alone, so this list
+     * carried rows like "Skåne län" beside "Malmö". Two things were wrong with
+     * that. The row counted only the notices whose location string was
+     * literally "Skåne län", while clicking it filters by county and returns
+     * every notice in Skåne, so the number shown and the number returned
+     * disagreed. And the question this list answers is "is my own town in
+     * here", which a county cannot answer; "Län för län" below answers the
+     * other one, off the resolved column rather than off the string.
+     *
+     * Filtered before the top eight are taken, so the card keeps its length
+     * rather than losing however many rows were counties.
+     */
+    topLocations: topItems(
+      new Map([...locationCounts].filter(([label]) => !isCountyName(label)))
+    ),
+    regions: regionBreakdown(
+      locationCounts,
+      [...live.regionMonths, ...(archive?.regionMonths ?? [])],
+      now,
+      // Straight from the county column rather than folded out of the location
+      // breakdown, so what the page reports as unplaceable is what the database
+      // actually failed to place, not what a second pass over the names did.
+      getCountyCoverage()
+    ),
+    regionTypes: regionTypeCube(
+      [...live.countyTypes, ...(archive?.countyTypes ?? [])],
+      windows.recentStart
+    ),
     hourly,
     weekdays,
     daily,
     yearly: yearlyFromDays(allDays),
-    monthly: monthlyFromDays(allDays, now, 24),
+    monthGrid,
+    season: seasonFromGrid(monthGrid, now),
+    yearToDate: yearToDateFromDays(allDays, now),
+    familyByYear: familyMixByYear(yearTypes),
     busiestDay: busiestFromDays(allDays),
     coverageDays,
     gpsPercent,
@@ -1594,6 +2228,41 @@ function computeStatsSummary(): Statistics {
     archiveEvents: coverage.events,
     archiveCutoff: coverage.cutoff,
   };
+}
+
+/**
+ * How many notices could be placed in a county and how many could not.
+ *
+ * A straight query now that the county is a column. It used to be derivable
+ * only by folding the whole location breakdown in JavaScript, which is why the
+ * number lived in a caption and nowhere an operator could read it.
+ */
+export function getCountyCoverage(): { placed: number; unplaced: number } {
+  const pdo = getDatabase();
+  const live = pdo
+    .prepare(
+      `SELECT SUM(CASE WHEN county IS NOT NULL AND county != '' THEN 1 ELSE 0 END) AS placed,
+              SUM(CASE WHEN county IS NULL OR county = '' THEN 1 ELSE 0 END) AS unplaced
+         FROM events`
+    )
+    .get() as { placed: number | null; unplaced: number | null };
+
+  let placed = live.placed ?? 0;
+  let unplaced = live.unplaced ?? 0;
+
+  if (hasArchiveEvents()) {
+    const archive = pdo
+      .prepare(
+        `SELECT SUM(CASE WHEN county IS NOT NULL AND county != '' THEN 1 ELSE 0 END) AS placed,
+                SUM(CASE WHEN county IS NULL OR county = '' THEN 1 ELSE 0 END) AS unplaced
+           FROM bpk_events WHERE pubdate < ?`
+      )
+      .get(getArchiveCutoff()) as { placed: number | null; unplaced: number | null };
+    placed += archive.placed ?? 0;
+    unplaced += archive.unplaced ?? 0;
+  }
+
+  return { placed, unplaced };
 }
 
 export const getFilterOptions = memoizeWithTtl(
@@ -1637,6 +2306,27 @@ export function invalidateAggregateCaches(): void {
 }
 
 // Get operational statistics for monitoring
+// One classification of error_message, shared by the error list and the log
+// table so the two cannot disagree about what a row is.
+//
+// The labels are Swedish because the page is. The old set was English on an
+// otherwise Swedish screen, and bucketed a 503 as "Other Error" because it
+// tested for the literal '500'.
+const ERROR_TYPE_CASE = `
+  CASE
+    WHEN error_message LIKE '%timeout%' OR error_message LIKE '%ETIMEDOUT%' THEN 'Tidsgräns'
+    WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Nekad anslutning'
+    WHEN error_message LIKE '%ENOTFOUND%' OR error_message LIKE '%EAI_AGAIN%' THEN 'DNS-fel'
+    WHEN error_message LIKE '%ECONNRESET%' OR error_message LIKE '%socket hang up%' THEN 'Bruten anslutning'
+    WHEN error_message LIKE '%429%' OR error_message LIKE '%rate%' THEN 'Nedstrypt'
+    WHEN error_message LIKE '%50_%' THEN 'Serverfel'
+    WHEN error_message LIKE '%404%' THEN 'Hittas inte'
+    WHEN error_message LIKE '%403%' THEN 'Nekad'
+    WHEN error_message IS NOT NULL THEN 'Fel'
+    ELSE NULL
+  END
+`;
+
 export function getOperationalStats(): OperationalStats {
   const pdo = getDatabase();
   const now = new Date();
@@ -1658,25 +2348,20 @@ export function getOperationalStats(): OperationalStats {
   // Fetches in last 7d
   const fetches7d = (pdo.prepare('SELECT COUNT(*) as count FROM fetch_log WHERE fetched_at >= ?').get(since7d) as { count: number }).count;
 
-  /**
-   * Success rate over a stated window.
-   *
-   * This divided the successes by the failures across the whole fetch_log
-   * table, which pruneFetchLog truncates at 30 days: so it was a rolling
-   * 30-day figure wearing no label, drifting silently as old rows aged out, and
-   * it is what colours the dashboard's red/amber/green. A bad afternoon three
-   * weeks ago still tinted today. Naming the window makes the number mean
-   * something and makes the health verdict answer for a period a reader can
-   * hold in their head.
-   */
-  const windowed = pdo
-    .prepare(
-      `SELECT COUNT(*) AS total, COALESCE(SUM(success), 0) AS ok
-         FROM fetch_log WHERE fetched_at >= ?`
-    )
-    .get(since7d) as { total: number; ok: number };
-  const successRate =
-    windowed.total > 0 ? Math.round((windowed.ok / windowed.total) * 1000) / 10 : 100;
+  // Outcome of the last 24 hours, separately from the lifetime figures.
+  //
+  // A lifetime success rate is the wrong number to watch: a container up for a
+  // year sits at 99.9% all through an outage that started this morning, because
+  // one bad day cannot move a denominator of fifty thousand. The 24h rate falls
+  // immediately, which is what an operator opening this page needs to see.
+  const successfulFetches24h = (pdo
+    .prepare('SELECT COUNT(*) as count FROM fetch_log WHERE fetched_at >= ? AND success = 1')
+    .get(since24h) as { count: number }).count;
+  const failedFetches24h = fetches24h - successfulFetches24h;
+
+  const successRate = totalFetches > 0 ? Math.round((successfulFetches / totalFetches) * 1000) / 10 : 100;
+  const successRate24h =
+    fetches24h > 0 ? Math.round((successfulFetches24h / fetches24h) * 1000) / 10 : 100;
 
   // Average fetch interval (in minutes)
   let avgFetchInterval = 30; // default
@@ -1696,46 +2381,58 @@ export function getOperationalStats(): OperationalStats {
   // Last failed fetch
   const lastFailure = pdo.prepare('SELECT fetched_at FROM fetch_log WHERE success = 0 ORDER BY fetched_at DESC LIMIT 1').get() as { fetched_at: string } | undefined;
 
-  // Recent errors (last 10, without detailed messages for security)
-  const recentErrors = pdo.prepare(`
-    SELECT
-      fetched_at,
-      CASE
-        WHEN error_message LIKE '%timeout%' THEN 'Timeout'
-        WHEN error_message LIKE '%network%' THEN 'Network Error'
-        WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Connection Refused'
-        WHEN error_message LIKE '%ENOTFOUND%' THEN 'DNS Error'
-        WHEN error_message LIKE '%500%' THEN 'Server Error (5xx)'
-        WHEN error_message LIKE '%404%' THEN 'Not Found (404)'
-        WHEN error_message LIKE '%403%' THEN 'Forbidden (403)'
-        WHEN error_message LIKE '%rate%' THEN 'Rate Limited'
-        WHEN error_message IS NOT NULL THEN 'Other Error'
-        ELSE 'Unknown'
-      END as error_type
+  // Recent errors, with what the upstream actually said.
+  //
+  // These used to be reduced to a bucket ("Other Error") and the message
+  // dropped, on the reasoning that it might leak something. The page is behind
+  // a login now, and the bucket on its own cannot be acted on: "Other Error"
+  // ten times in a row is the same screen whether polisen.se returned 503 or
+  // the container lost DNS. Keep the bucket for scanning and the message for
+  // diagnosing.
+  const recentErrors = (pdo.prepare(`
+    SELECT fetched_at, error_message, ${ERROR_TYPE_CASE} as error_type
     FROM fetch_log
     WHERE success = 0
     ORDER BY fetched_at DESC
     LIMIT 10
-  `).all() as Array<{ fetched_at: string; error_type: string }>;
+  `).all() as Array<{ fetched_at: string; error_message: string | null; error_type: string }>).map(
+    (row) => ({
+      fetchedAt: row.fetched_at,
+      errorType: row.error_type,
+      message: row.error_message,
+    })
+  );
 
-  // Fetch history by hour (last 24h)
+  // The last 24 hours by hour, split by outcome.
+  //
+  // Counting fetches alone drew a flat wall of identical bars: on a working
+  // schedule every hour holds exactly six, so the chart said nothing that the
+  // interval did not. Splitting it means an outage is a visible notch.
   const fetchesByHour = pdo.prepare(`
-    SELECT strftime('%H', fetched_at, 'localtime') AS hour, COUNT(*) AS count
+    SELECT
+      strftime('%H', fetched_at, 'localtime') AS hour,
+      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
+      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed
     FROM fetch_log
     WHERE fetched_at >= ?
     GROUP BY hour
     ORDER BY hour
-  `).all(since24h) as Array<{ hour: string; count: number }>;
-  const hourlyFetches: number[] = Array(24).fill(0);
+  `).all(since24h) as Array<{ hour: string; ok: number; failed: number }>;
+  const hourlyFetches = Array.from({ length: 24 }, () => ({ ok: 0, failed: 0 }));
   for (const row of fetchesByHour) {
-    hourlyFetches[parseInt(row.hour, 10)] = row.count;
+    hourlyFetches[parseInt(row.hour, 10)] = { ok: row.ok, failed: row.failed };
   }
 
-  // Events added per fetch (average)
+  // New events per successful fetch.
+  //
+  // This excluded fetches that brought nothing, which made it "the average
+  // number of new events among the fetches that had any": always well above 1,
+  // whatever the feed was doing. Most fetches legitimately return nothing new,
+  // and they belong in the denominator.
   const avgEventsPerFetch = pdo.prepare(`
     SELECT AVG(events_new) as avg
     FROM fetch_log
-    WHERE success = 1 AND events_new > 0
+    WHERE success = 1
   `).get() as { avg: number | null };
 
   // Total events added today
@@ -1745,21 +2442,34 @@ export function getOperationalStats(): OperationalStats {
     WHERE date(fetched_at, 'localtime') = date('now', 'localtime')
   `).get() as { count: number }).count;
 
-  // Uptime (based on successful fetches in expected intervals)
-  // If we expect a fetch every 10 min, check how many we got vs expected in last 24h
-  const expectedFetches24h = 144; // 24h / 10min
-  const uptimeScore = Math.min(100, Math.round((fetches24h / expectedFetches24h) * 100));
+  // Uptime: successful fetches in 24h against the 144 a 10-minute schedule
+  // expects.
+  //
+  // This counted every attempt, successful or not, so a container whose every
+  // fetch failed for a whole day still reported 100% uptime: it kept trying on
+  // schedule, and trying was all the number measured. It is the headline tile
+  // on this page, so it now counts the ones that worked.
+  const expectedFetches24h = 144; // 24h / 10 min
+  const uptimeScore = Math.min(100, Math.round((successfulFetches24h / expectedFetches24h) * 100));
+
+  const minutesSinceLastSuccess = lastSuccess
+    ? Math.max(0, Math.round((now.getTime() - new Date(lastSuccess.fetched_at).getTime()) / 60000))
+    : null;
 
   return {
     totalFetches,
     successfulFetches,
     failedFetches,
     fetches24h,
+    successfulFetches24h,
+    failedFetches24h,
     fetches7d,
     successRate,
+    successRate24h,
     avgFetchInterval,
     lastSuccessfulFetch: lastSuccess?.fetched_at || null,
     lastFailedFetch: lastFailure?.fetched_at || null,
+    minutesSinceLastSuccess,
     recentErrors,
     hourlyFetches,
     avgEventsPerFetch: avgEventsPerFetch.avg ? Math.round(avgEventsPerFetch.avg * 10) / 10 : 0,
@@ -1778,18 +2488,8 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
       events_fetched,
       events_new,
       success,
-      CASE
-        WHEN error_message LIKE '%timeout%' THEN 'Timeout'
-        WHEN error_message LIKE '%network%' THEN 'Network Error'
-        WHEN error_message LIKE '%ECONNREFUSED%' THEN 'Connection Refused'
-        WHEN error_message LIKE '%ENOTFOUND%' THEN 'DNS Error'
-        WHEN error_message LIKE '%500%' THEN 'Server Error'
-        WHEN error_message LIKE '%404%' THEN 'Not Found'
-        WHEN error_message LIKE '%403%' THEN 'Forbidden'
-        WHEN error_message LIKE '%rate%' THEN 'Rate Limited'
-        WHEN error_message IS NOT NULL THEN 'Error'
-        ELSE NULL
-      END as error_type
+      error_message,
+      ${ERROR_TYPE_CASE} as error_type
     FROM fetch_log
     ORDER BY fetched_at DESC
     LIMIT ?
@@ -1799,6 +2499,7 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
     events_fetched: number;
     events_new: number;
     success: number;
+    error_message: string | null;
     error_type: string | null;
   }>;
 
@@ -1809,7 +2510,88 @@ export function getRecentFetchLogs(limit = 20): FetchLogEntry[] {
     eventsNew: row.events_new,
     success: row.success === 1,
     errorType: row.error_type,
+    errorMessage: row.error_message,
   }));
+}
+
+/**
+ * What the container is, rather than what it has fetched.
+ *
+ * Every field answers something that used to need a shell on the host. The
+ * size on disk is the one an operator wants most: a full archive with a
+ * trigram index is several hundred megabytes, and the only warning that a
+ * volume is filling up was the app failing to write.
+ */
+export function getSystemSnapshot(): SystemSnapshot {
+  const pdo = getDatabase();
+
+  const fileSize = (file: string): number => {
+    try {
+      return fs.statSync(file).size;
+    } catch {
+      // The -wal and -shm sidecars only exist between checkpoints.
+      return 0;
+    }
+  };
+
+  const builtTokenizer = (pdo
+    .prepare("SELECT value FROM meta WHERE key = 'bpk_search_tokenizer'")
+    .get() as { value: string } | undefined)?.value ?? null;
+  const configuredTokenizer = configuredSearchTokenizer();
+
+  // Resolved rather than read from process.env.TZ: the image sets it, but a
+  // compose file can override it, and what matters is what the process ended
+  // up with. Every stored timestamp is parsed out of Swedish wall-clock text.
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return {
+    dataDir: DATA_DIR,
+    databaseBytes: fileSize(DB_PATH),
+    walBytes: fileSize(`${DB_PATH}-wal`),
+    timeZone,
+    timeZoneCorrect: timeZone === 'Europe/Stockholm',
+    nodeVersion: process.version,
+    processUptimeSeconds: Math.round(process.uptime()),
+    searchTokenizer: {
+      configured: configuredTokenizer,
+      built: builtTokenizer,
+      // A mismatch is not an error: the index rebuilds on the next start. It
+      // does mean search is answering with the old tokenizer until then.
+      matches: builtTokenizer === null || builtTokenizer === configuredTokenizer,
+    },
+    archive: archiveDiagnostics(),
+  };
+}
+
+/**
+ * What was imported against what is shown.
+ *
+ * The cutoff is MIN(event_time) over the live table, and the archive is served
+ * strictly below it. That is right while the live table holds a continuous
+ * recent stretch, and badly wrong the moment one row in it is much older than
+ * the rest: a single notice dated three years back moves the boundary three
+ * years back, and every archive row above it stops being counted. Nothing said
+ * so, so a finished import could leave the statistics looking untouched.
+ *
+ * Stored against shown makes it a number on a screen instead of a mystery.
+ */
+function archiveDiagnostics(): SystemSnapshot['archive'] {
+  const pdo = getDatabase();
+  const coverage = getArchiveCoverage();
+  const stored = getArchiveRowCount();
+
+  const span = stored
+    ? (pdo.prepare('SELECT MIN(pubdate) AS oldest, MAX(pubdate) AS newest FROM bpk_events').get() as {
+        oldest: string | null;
+        newest: string | null;
+      })
+    : { oldest: null, newest: null };
+
+  const liveOldest = (pdo.prepare('SELECT MIN(event_time) AS oldest FROM events').get() as {
+    oldest: string | null;
+  }).oldest;
+
+  return { ...coverage, stored, oldest: span.oldest, newest: span.newest, liveOldest };
 }
 
 // Get database health metrics

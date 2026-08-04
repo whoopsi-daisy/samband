@@ -1,14 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { isCountyName } from '@/lib/regions';
 
 interface FiltersProps {
+  /**
+   * All twenty-one, from the constant rather than from the data. Unlike the
+   * place list beside it, this is a fixed administrative taxonomy: there is
+   * nothing to discover by asking the database.
+   */
+  counties: string[];
   locations: string[];
   types: string[];
   currentView: string;
   filters: {
+    county: string;
     location: string;
     type: string;
     search: string;
@@ -26,11 +34,12 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export default function Filters({ locations, types, currentView, filters }: FiltersProps) {
+export default function Filters({ counties, locations, types, currentView, filters }: FiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [search, setSearch] = useState(filters.search);
+  const [county, setCounty] = useState(filters.county);
   const [location, setLocation] = useState(filters.location);
   const [type, setType] = useState(filters.type);
   const isInitialMount = useRef(true);
@@ -50,6 +59,23 @@ export default function Filters({ locations, types, currentView, filters }: Filt
     [currentView, router, searchParams]
   );
 
+  /*
+   * Follow the filters when something else changes them.
+   *
+   * These three start from props and were never told about it again, which is
+   * fine while the selects are the only thing that sets them. They are not: the
+   * statistics page links into a county or a place, and the component stays
+   * mounted across that navigation, so the chip said "Län: Stockholms län"
+   * while the select beside it still read "Alla län".
+   *
+   * Local state is kept rather than reading the props directly, so a change
+   * shows in the control immediately instead of waiting for the server round
+   * trip that `replace` starts.
+   */
+  useEffect(() => setCounty(filters.county), [filters.county]);
+  useEffect(() => setLocation(filters.location), [filters.location]);
+  useEffect(() => setType(filters.type), [filters.type]);
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -62,26 +88,59 @@ export default function Filters({ locations, types, currentView, filters }: Filt
     }
   }, [debouncedSearch, filters.search, replaceParams]);
 
-  // A ?plats= from a shared link can name a place the dropdown does not
+  /*
+   * Places, with the counties taken out.
+   *
+   * The list is built from the location strings the notices carry, and the feed
+   * labels a great many of them with the county alone, so "Blekinge län" was an
+   * option here as well as in the county select beside it. Picking it set a
+   * second filter that looked like the first, read as a contradiction in the
+   * chips, and returned less than either: a place filter matches the string an
+   * officer typed, so it dropped every notice in Blekinge that named a town.
+   * Counties belong to the control next door, which resolves them properly.
+   *
+   * Nothing becomes unreachable. A county removed from here is selectable in
+   * the county select, and what that returns is a superset of what this offered.
+   */
+  const places = useMemo(() => locations.filter((name) => !isCountyName(name)), [locations]);
+
+  // A ?plats= from a shared link can still name a place the dropdown does not
   // list. Carry it as an option so the control shows what is actually applied
   // instead of sitting blank next to an active filter chip.
   const locationOptions =
-    filters.location && !locations.includes(filters.location)
-      ? [filters.location, ...locations]
-      : locations;
+    filters.location && !places.includes(filters.location)
+      ? [filters.location, ...places]
+      : places;
 
-  const hasActiveFilters = Boolean(filters.location || filters.type || filters.search);
+  const hasActiveFilters = Boolean(
+    filters.county || filters.location || filters.type || filters.search
+  );
 
   const clearAllFilters = useCallback(() => {
     setSearch('');
+    setCounty('');
     setLocation('');
     setType('');
     replaceParams((p) => {
+      p.delete(QUERY.county);
       p.delete(QUERY.location);
       p.delete(QUERY.type);
       p.delete(QUERY.search);
     });
   }, [replaceParams]);
+
+  const handleCountyChange = (value: string) => {
+    setCounty(value);
+    // The place select lists municipalities from the whole country, so a place
+    // left set from before can contradict the county now chosen and return
+    // nothing. Choosing a county is the broader move and clears it.
+    setLocation('');
+    replaceParams((p) => {
+      p.delete(QUERY.location);
+      if (value) p.set(QUERY.county, value);
+      else p.delete(QUERY.county);
+    });
+  };
 
   const handleLocationChange = (value: string) => {
     setLocation(value);
@@ -93,10 +152,11 @@ export default function Filters({ locations, types, currentView, filters }: Filt
     replaceParams((p) => (value ? p.set(QUERY.type, value) : p.delete(QUERY.type)));
   };
 
-  const removeFilter = (name: 'location' | 'type' | 'search') => {
+  const removeFilter = (name: 'county' | 'location' | 'type' | 'search') => {
     if (name === 'search') setSearch('');
     if (name === 'type') setType('');
     if (name === 'location') setLocation('');
+    if (name === 'county') setCounty('');
     replaceParams((p) => p.delete(QUERY[name]));
   };
 
@@ -143,6 +203,23 @@ export default function Filters({ locations, types, currentView, filters }: Filt
           They are direct children of .filters rather than sitting in a row of
           their own: the three controls share one grid, which puts them beside
           the search box on a wide screen instead of on a second line. */}
+      {/* County first: it is the broadest of the three and the one the
+          statistics page links into. */}
+      <select
+        className="field"
+        name="county"
+        value={county}
+        onChange={(e) => handleCountyChange(e.target.value)}
+        aria-label="Välj län"
+      >
+        <option value="">Alla län</option>
+        {counties.map((name) => (
+          <option key={name} value={name}>
+            {name.replace(/ län$/, '')}
+          </option>
+        ))}
+      </select>
+
       <select
         className="field"
         name="location"
@@ -186,6 +263,7 @@ export default function Filters({ locations, types, currentView, filters }: Filt
           <span className="active-filters-label">Filtrerar på</span>
           {(
             [
+              ['county', 'Län', filters.county],
               ['location', 'Plats', filters.location],
               ['type', 'Typ', filters.type],
               ['search', 'Sökord', filters.search],

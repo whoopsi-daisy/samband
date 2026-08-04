@@ -15,11 +15,12 @@ export default function Footer({ lastChecked }: FooterProps) {
 
   return (
     <footer className="site-footer">
-      <span className="dot dot--sm dot--ok" aria-hidden="true" />
-      <span>
-        Uppdaterad{' '}
+      <span className="footer-status">
+        <span className="dot dot--sm dot--ok" aria-hidden="true" />
+        Senast uppdaterad{' '}
         {mounted ? lastChecked.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
       </span>
+
       {/* The app has had keyboard shortcuts since it was built and has never
           said so anywhere. Shown only where there is a keyboard to press.
           Counted off the nav rather than written out: it said "1 2 3" for a

@@ -1,420 +1,504 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { OperationalStats, FetchLogEntry, DatabaseHealth, Statistics } from '@/types';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type {
+  DatabaseHealth,
+  FetchLogEntry,
+  HourlyFetches,
+  OperationalStats,
+  SystemSnapshot,
+} from '@/types';
 import { useMounted } from '@/hooks/useMounted';
+import {
+  assessSystem,
+  budgetTone,
+  fetchAgeTone,
+  successRateTone,
+  uptimeTone,
+  type Tone,
+} from '@/lib/opsHealth';
+import {
+  formatAgo,
+  formatBytes,
+  formatDay,
+  formatMinutes,
+  formatNumber,
+  formatPercent,
+  formatStamp,
+  formatUptime,
+} from '@/lib/opsFormat';
 import ImportPanel from './ImportPanel';
 
 interface OperationalDashboardProps {
   operationalStats: OperationalStats;
   fetchLogs: FetchLogEntry[];
   databaseHealth: DatabaseHealth;
-  eventStats: Statistics;
+  system: SystemSnapshot;
+  fetchBudget: { used: number; limit: number };
+  /** When the server built this payload. Everything on the page is that old. */
+  generatedAt: string;
 }
 
-// Both helpers below depend on the viewer's clock and timezone, so they only
-// produce stable markup after mount: see the `mounted` gate in the component.
-function formatTimeAgo(dateString: string | null): string {
-  if (!dateString) return 'Aldrig';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
+const REFRESH_MS = 30_000;
 
-  if (diffMins < 1) return 'Just nu';
-  if (diffMins < 60) return `${diffMins} min sedan`;
-  if (diffHours < 24) return `${diffHours} tim sedan`;
-  if (diffDays < 7) return `${diffDays} dagar sedan`;
-  return date.toLocaleDateString('sv-SE');
+/**
+ * One number, what it means, and whether it is a problem.
+ *
+ * The old page had four different grids of `.stat` tiles carrying four
+ * different kinds of thing (health percentages, lifetime counters, import
+ * state, table sizes) in identical boxes. A tile here always answers the same
+ * question: is this figure all right, and what is it measured against.
+ */
+function Metric({
+  label,
+  value,
+  note,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: Tone;
+}) {
+  return (
+    <div className={`ops-metric${tone === 'neutral' ? '' : ` ops-metric--${tone}`}`}>
+      <span className="ops-metric-label">{label}</span>
+      <span className="ops-metric-value">{value}</span>
+      {note && <span className="ops-metric-note">{note}</span>}
+    </div>
+  );
 }
 
-function formatDateTime(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleString('sv-SE', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function Row({ label, value, tone }: { label: string; value: React.ReactNode; tone?: Tone }) {
+  return (
+    <div className="info-row">
+      <span className="info-label">{label}</span>
+      <span className={`info-value${tone && tone !== 'neutral' ? ` info-value--${tone}` : ''}`}>
+        {value}
+      </span>
+    </div>
+  );
 }
 
-type Health = 'healthy' | 'warning' | 'error';
+/**
+ * Fetch outcomes by hour over the last day.
+ *
+ * The previous chart counted attempts, which on a working schedule is exactly
+ * six every hour: twenty-four identical bars saying nothing. Splitting the
+ * column by outcome makes an outage the one shape on the chart that is not a
+ * full bar.
+ */
+function FetchTimeline({ hours }: { hours: HourlyFetches[] }) {
+  const peak = Math.max(...hours.map((h) => h.ok + h.failed), 1);
+  const totalFailed = hours.reduce((sum, h) => sum + h.failed, 0);
 
-/** Domain health words -> the design system's three status modifiers. */
-const TONE: Record<Health, 'ok' | 'warn' | 'alert'> = {
-  healthy: 'ok',
-  warning: 'warn',
-  error: 'alert',
-};
+  return (
+    <>
+      <div className="ops-timeline" role="img" aria-label={ariaSummary(hours)}>
+        {hours.map((hour, index) => {
+          const total = hour.ok + hour.failed;
+          return (
+            <div key={index} className="ops-timeline-col">
+              <div
+                className="ops-timeline-track"
+                title={`kl ${String(index).padStart(2, '0')}: ${hour.ok} lyckade, ${hour.failed} misslyckade`}
+              >
+                <div
+                  className="ops-timeline-bar ops-timeline-bar--failed"
+                  style={{ height: `${(hour.failed / peak) * 100}%` }}
+                />
+                <div
+                  className="ops-timeline-bar ops-timeline-bar--ok"
+                  style={{ height: `${(hour.ok / peak) * 100}%` }}
+                />
+              </div>
+              <span className="ops-timeline-hour">
+                {index % 6 === 0 ? String(index).padStart(2, '0') : ''}
+              </span>
+              <span className="sr-only">
+                {`kl ${index}: ${total} hämtningar, varav ${hour.failed} misslyckade`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="ops-legend">
+        <span className="ops-legend-key ops-legend-key--ok" aria-hidden="true" /> Lyckade
+        <span className="ops-legend-key ops-legend-key--failed" aria-hidden="true" /> Misslyckade
+        <span className="ops-legend-note">
+          {totalFailed === 0 ? 'inga fel det senaste dygnet' : `${formatNumber(totalFailed)} fel`}
+        </span>
+      </p>
+    </>
+  );
+}
 
-function StatusIndicator({ status }: { status: Health }) {
-  return <span className={`dot dot--${TONE[status]}`} title={status} />;
+function ariaSummary(hours: HourlyFetches[]): string {
+  const ok = hours.reduce((sum, h) => sum + h.ok, 0);
+  const failed = hours.reduce((sum, h) => sum + h.failed, 0);
+  return `Hämtningar per timme det senaste dygnet: ${ok} lyckade, ${failed} misslyckade.`;
 }
 
 export default function OperationalDashboard({
   operationalStats,
   fetchLogs,
   databaseHealth,
-  eventStats,
+  system,
+  fetchBudget,
+  generatedAt,
 }: OperationalDashboardProps) {
-  const getSystemStatus = (): 'healthy' | 'warning' | 'error' => {
-    if (operationalStats.successRate < 80 || operationalStats.uptimeScore < 50) return 'error';
-    if (operationalStats.successRate < 95 || operationalStats.uptimeScore < 80) return 'warning';
-    return 'healthy';
-  };
+  const router = useRouter();
+  const mounted = useMounted();
+  const [refreshing, setRefreshing] = useState(false);
+  const [auto, setAuto] = useState(true);
 
-  const getFreshnessStatus = (): 'healthy' | 'warning' | 'error' => {
-    if (databaseHealth.dataFreshnessMinutes > 120) return 'error';
-    if (databaseHealth.dataFreshnessMinutes > 60) return 'warning';
-    return 'healthy';
-  };
+  // Everything here is a server render, so the only way to keep it current is
+  // to ask for a new one. Without this the page was a snapshot wearing a
+  // timestamp that never moved: the numbers aged silently while the header
+  // still claimed the moment the tab was opened.
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    router.refresh();
+  }, [router]);
 
-  const systemStatus = getSystemStatus();
-  const freshnessStatus = getFreshnessStatus();
-
-  const [updatedAt, setUpdatedAt] = useState<string>('');
   useEffect(() => {
-    setUpdatedAt(new Date().toLocaleString('sv-SE'));
+    setRefreshing(false);
+  }, [generatedAt]);
+
+  useEffect(() => {
+    if (!auto) return;
+    const timer = setInterval(refresh, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [auto, refresh]);
+
+  // A clock the header can count with, so "för 2 min sedan" ages in place
+  // between refreshes instead of freezing until the next one lands.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
   }, []);
 
-  // Clock- and timezone-dependent strings render as a placeholder on the server
-  // and are filled in on mount, so hydration never sees two different values.
-  const mounted = useMounted();
-  const timeAgo = (value: string | null) => (mounted ? formatTimeAgo(value) : '–');
-  const dateTime = (value: string) => (mounted ? formatDateTime(value) : '–');
-  const dateOnly = (value: string | null) =>
-    !value ? 'N/A' : mounted ? new Date(value).toLocaleDateString('sv-SE') : '–';
+  const verdict = assessSystem(operationalStats);
 
-  const maxHourlyFetches = Math.max(...operationalStats.hourlyFetches, 1);
-  const maxDailyEventCount = Math.max(...eventStats.daily.map(d => d.count), 1);
-  const maxHourlyEventCount = Math.max(...eventStats.hourly, 1);
+  // Imported rows the cutoff is keeping out of every view.
+  const hiddenArchive = Math.max(0, system.archive.stored - system.archive.events);
+  const archiveTone: Tone =
+    system.archive.stored === 0
+      ? 'neutral'
+      : hiddenArchive > system.archive.stored * 0.1
+        ? 'warn'
+        : 'neutral';
+  const ageTone = fetchAgeTone(operationalStats.minutesSinceLastSuccess);
+
+  // Timezone- and clock-dependent strings differ between the server render and
+  // the viewer's browser, so they only appear after mount.
+  const local = <T,>(render: () => T, fallback: T): T => (mounted ? render() : fallback);
 
   return (
     <div className="ops-container">
       <header className="ops-header">
-        <div className="ops-title">
-          <StatusIndicator status={systemStatus} />
-          <div>
-            <h1>Systemstatus</h1>
-            <p>Driftöversikt</p>
-          </div>
+        {/* The page used to have no link off it at all. You arrived by typing
+            the URL and left the same way. */}
+        <Link className="ops-brand" href="/">
+          <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" aria-hidden="true">
+            <circle cx="20" cy="20" r="13" strokeWidth="2.5" opacity="0.35" />
+            <circle cx="20" cy="20" r="8" strokeWidth="2.5" />
+            <circle cx="20" cy="20" r="3.4" fill="currentColor" stroke="none" />
+          </svg>
+          <span>Sambandscentralen</span>
+          <span className="ops-brand-sep">/</span>
+          <span className="ops-brand-page">Systemstatus</span>
+        </Link>
+
+        <div className="ops-header-actions">
+          <span className="ops-timestamp" aria-live="polite">
+            {local(() => `Uppdaterad ${formatAgo(generatedAt, now)}`, ' ')}
+          </span>
+          <label className="ops-toggle">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            Uppdatera automatiskt
+          </label>
+          <button type="button" className="btn-ghost" onClick={refresh} disabled={refreshing}>
+            {refreshing ? 'Uppdaterar…' : 'Uppdatera'}
+          </button>
         </div>
-        <span className="ops-timestamp">{updatedAt && `Uppdaterad ${updatedAt}`}</span>
       </header>
 
-      {/* The skip link in the root layout points here. Without the id it landed
-          on nothing, so the first thing a keyboard user reached on this page was
-          a dead anchor. */}
-      <main id="main-content" tabIndex={-1}>
-        {/* Systemhälsa */}
-        <section className="ops-section">
-          <h2 className="ops-section-title">Systemhälsa</h2>
-          <div className="stats-grid">
-            <div className={`stat stat--${TONE[systemStatus]}`}>
-              <span className="stat-value">{operationalStats.uptimeScore}%</span>
-              <span className="stat-label">Drifttid (24h)</span>
-            </div>
-            <div className={`stat stat--${operationalStats.successRate >= 95 ? 'ok' : operationalStats.successRate >= 80 ? 'warn' : 'alert'}`}>
-              <span className="stat-value">{operationalStats.successRate}%</span>
-              <span className="stat-label">Lyckade hämtningar (7d)</span>
-            </div>
-            <div className={`stat stat--${TONE[freshnessStatus]}`}>
-              <span className="stat-value">{databaseHealth.dataFreshnessMinutes}m</span>
-              <span className="stat-label">Datafärskhet</span>
-            </div>
+      <main id="main-content">
+        <section className={`ops-verdict ops-verdict--${verdict.tone}`}>
+          <span className={`dot dot--${verdict.tone === 'neutral' ? 'warn' : verdict.tone}`} />
+          <div>
+            <h1 className="ops-verdict-title">{verdict.title}</h1>
+            <p className="ops-verdict-detail">{verdict.detail}</p>
           </div>
         </section>
 
-        {/* Hämtningsstatistik */}
         <section className="ops-section">
-          <h2 className="ops-section-title">Hämtningar</h2>
-          <div className="stats-grid">
-            <div className="stat">
-              <span className="stat-value">{operationalStats.totalFetches.toLocaleString('sv-SE')}</span>
-              <span className="stat-label">Totalt</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value stat-value--ok">{operationalStats.successfulFetches.toLocaleString('sv-SE')}</span>
-              <span className="stat-label">Lyckade</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value stat-value--alert">{operationalStats.failedFetches}</span>
-              <span className="stat-label">Misslyckade</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{operationalStats.avgFetchInterval}m</span>
-              <span className="stat-label">Snittintervall</span>
-            </div>
+          <h2 className="ops-section-title">Hämtning från polisen.se</h2>
+          <div className="ops-metrics">
+            <Metric
+              label="Senaste lyckade hämtning"
+              value={local(() => formatMinutes(operationalStats.minutesSinceLastSuccess), '–')}
+              note="var tionde minut normalt"
+              tone={ageTone}
+            />
+            <Metric
+              label="Lyckade hämtningar, 24h"
+              value={formatPercent(operationalStats.successRate24h)}
+              note={`${formatNumber(operationalStats.successfulFetches24h)} av ${formatNumber(operationalStats.fetches24h)} försök`}
+              tone={successRateTone(operationalStats.successRate24h)}
+            />
+            <Metric
+              label="Drifttid, 24h"
+              value={`${operationalStats.uptimeScore} %`}
+              note={`${formatNumber(operationalStats.successfulFetches24h)} av 144 väntade`}
+              tone={uptimeTone(operationalStats.uptimeScore)}
+            />
+            <Metric
+              label="Hämtningsbudget, 24h"
+              value={`${formatNumber(fetchBudget.used)} / ${formatNumber(fetchBudget.limit)}`}
+              note="tak mot att en omvalidering blir en skrapning"
+              tone={budgetTone(fetchBudget.used, fetchBudget.limit)}
+            />
           </div>
 
           <div className="card-grid">
-            <div className="card">
-              <h3 className="card-title">Hämtningar (24h)</h3>
-              <div className="chart">
-                {operationalStats.hourlyFetches.map((count, hour) => {
-                  const height = (count / maxHourlyFetches) * 100;
-                  return (
-                    <div key={hour} className="chart-col">
-                      <div className="chart-track">
-                        <div
-                          className="chart-bar"
-                          style={{ height: `${height}%` }}
-                          title={`${hour}:00 - ${count} hämtningar`}
-                        />
-                      </div>
-                      {hour % 6 === 0 && <span className="chart-label">{hour}</span>}
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="card card--chart">
+              <h3 className="card-title">Per timme, senaste dygnet</h3>
+              <FetchTimeline hours={operationalStats.hourlyFetches} />
             </div>
 
             <div className="card">
-              <h3 className="card-title">Senaste aktivitet</h3>
+              <h3 className="card-title">Takt</h3>
               <div className="info-list">
-                <div className="info-row">
-                  <span className="info-label">Senast lyckad</span>
-                  <span className="info-value info-value--ok">
-                    {timeAgo(operationalStats.lastSuccessfulFetch)}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Senast misslyckad</span>
-                  <span className="info-value info-value--muted">
-                    {timeAgo(operationalStats.lastFailedFetch)}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Hämtningar idag</span>
-                  <span className="info-value">{operationalStats.fetches24h}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Hämtningar (7d)</span>
-                  <span className="info-value">{operationalStats.fetches7d}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Snitt händelser/hämtning</span>
-                  <span className="info-value">{operationalStats.avgEventsPerFetch}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Nya händelser idag</span>
-                  <span className="info-value">{operationalStats.eventsAddedToday}</span>
-                </div>
+                <Row
+                  label="Faktiskt intervall"
+                  value={`${operationalStats.avgFetchInterval} min`}
+                />
+                <Row
+                  label="Nya händelser per hämtning"
+                  value={operationalStats.avgEventsPerFetch.toLocaleString('sv-SE')}
+                />
+                <Row
+                  label="Nya händelser idag"
+                  value={formatNumber(operationalStats.eventsAddedToday)}
+                />
+                <Row
+                  label="Senaste misslyckade"
+                  value={local(() => formatAgo(operationalStats.lastFailedFetch, now), '–')}
+                  tone={operationalStats.lastFailedFetch ? 'warn' : 'neutral'}
+                />
+                <Row
+                  label="Hämtningar, 7 dygn"
+                  value={formatNumber(operationalStats.fetches7d)}
+                />
+                <Row
+                  label="Sedan start"
+                  value={`${formatNumber(operationalStats.totalFetches)} (${formatPercent(operationalStats.successRate)} lyckade)`}
+                />
               </div>
             </div>
           </div>
-        </section>
 
-        {/* Importstatus: live, se ImportPanel */}
-        <ImportPanel />
-
-        {/* Databashälsa */}
-        <section className="ops-section">
-          <h2 className="ops-section-title">Databas</h2>
-          <div className="stats-grid">
-            <div className="stat">
-              <span className="stat-value">{databaseHealth.totalEvents.toLocaleString('sv-SE')}</span>
-              <span className="stat-label">Totalt antal händelser</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{databaseHealth.uniqueLocations}</span>
-              <span className="stat-label">Platser</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{databaseHealth.uniqueTypes}</span>
-              <span className="stat-label">Händelsetyper</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{databaseHealth.eventsWithGpsPercent}%</span>
-              <span className="stat-label">Med GPS</span>
-            </div>
-          </div>
-
-          <div className="card-grid">
-            <div className="card">
-              <h3 className="card-title">Datatäckning</h3>
-              <div className="info-list">
-                <div className="info-row">
-                  <span className="info-label">Äldsta händelse</span>
-                  <span className="info-value">
-                    {dateOnly(databaseHealth.oldestEvent)}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Nyaste händelse</span>
-                  <span className="info-value">
-                    {dateOnly(databaseHealth.newestEvent)}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Uppdaterade händelser</span>
-                  <span className="info-value">
-                    {databaseHealth.updatedEvents.toLocaleString('sv-SE')} ({databaseHealth.updatedEventsPercent}%)
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Hämtningsloggar</span>
-                  <span className="info-value">{databaseHealth.totalFetchLogs.toLocaleString('sv-SE')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="card-title">Händelser per typ</h3>
-              <ul className="top-list">
-                {(() => {
-                  const rows = databaseHealth.eventsByType.slice(0, 8);
-                  const max = Math.max(...rows.map((r) => r.count), 1);
-                  return rows.map((item, index) => (
-                    <li key={item.type}>
-                      <div className="top-item top-item--static">
-                        <span className="top-rank">{index + 1}</span>
-                        <span className="top-name">{item.type}</span>
-                        <span className="top-track">
-                          <span className="top-bar" style={{ width: `${(item.count / max) * 100}%` }} />
-                        </span>
-                        <span className="top-count">{item.count.toLocaleString('sv-SE')}</span>
-                      </div>
-                    </li>
-                  ));
-                })()}
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {/* Händelsestatistik */}
-        <section className="ops-section">
-          <h2 className="ops-section-title">Händelsestatistik</h2>
-          <div className="stats-grid">
-            <div className="stat">
-              <span className="stat-value">{eventStats.last24h}</span>
-              <span className="stat-label">Senaste 24h</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{eventStats.last7d}</span>
-              <span className="stat-label">Senaste 7d</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{eventStats.last30d}</span>
-              <span className="stat-label">Senaste 30d</span>
-            </div>
-            <div className="stat">
-              <span className="stat-value">{eventStats.avgPerDay}</span>
-              <span className="stat-label">Snitt/dag</span>
-            </div>
-          </div>
-
-          <div className="card-grid">
-            <div className="card">
-              <h3 className="card-title">Daglig trend (7d)</h3>
-              <div className="chart">
-                {eventStats.daily.map((day) => {
-                  const height = (day.count / maxDailyEventCount) * 100;
-                  return (
-                    <div key={day.date} className="chart-col">
-                      <div className="chart-track">
-                        <div
-                          className="chart-bar"
-                          style={{ height: `${height}%` }}
-                          title={`${day.date}: ${day.count} händelser`}
-                        />
-                      </div>
-                      <span className="chart-value">{day.count}</span>
-                      <span className="chart-label">{day.day}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="card-title">Fördelning per timme (24h)</h3>
-              <div className="chart chart--sm">
-                {eventStats.hourly.map((count, hour) => {
-                  const height = (count / maxHourlyEventCount) * 100;
-                  return (
-                    <div key={hour} className="chart-col">
-                      <div className="chart-track">
-                        <div
-                          className="chart-bar chart-bar--strong"
-                          style={{ height: `${height}%` }}
-                          title={`${hour}:00 - ${count} händelser`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="chart-axis">
-                <span>00:00</span>
-                <span>12:00</span>
-                <span>23:00</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Senaste fel */}
-        {operationalStats.recentErrors.length > 0 && (
-          <section className="ops-section">
-            <h2 className="ops-section-title">Senaste fel</h2>
-            <div className="card">
-              <div className="ops-error-list">
-                {operationalStats.recentErrors.map((error, index) => (
-                  <div key={index} className="ops-error-item">
-                    <span className="ops-error-type">{error.error_type}</span>
-                    <span className="ops-error-time">{dateTime(error.fetched_at)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Hämtningslogg */}
-        <section className="ops-section">
-          <h2 className="ops-section-title">Senaste hämtningslogg</h2>
+          {/* One table, not a table plus a separate error list built from the
+              same rows. The failures are the reason to look, so they are
+              marked rather than filed somewhere else on the page. */}
           <div className="panel">
             <div className="ops-table-wrap">
               <table className="ops-table">
+                <caption className="sr-only">
+                  De {fetchLogs.length} senaste hämtningarna från polisen.se
+                </caption>
                 <thead>
                   <tr>
-                    <th>Tid</th>
-                    <th>Status</th>
-                    <th>Hämtade</th>
-                    <th>Nya</th>
-                    <th>Anteckningar</th>
+                    <th scope="col">Tid</th>
+                    <th scope="col">Utfall</th>
+                    <th scope="col" className="ops-table-num">Hämtade</th>
+                    <th scope="col" className="ops-table-num">Nya</th>
+                    <th scope="col">Fel</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {fetchLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="ops-table-empty">
+                        Inga hämtningar loggade ännu.
+                      </td>
+                    </tr>
+                  )}
                   {fetchLogs.map((log) => (
-                    <tr key={log.id}>
-                      <td className="ops-table-time">{dateTime(log.fetchedAt)}</td>
+                    <tr key={log.id} className={log.success ? undefined : 'ops-table-row--failed'}>
+                      <td className="ops-table-time">
+                        {local(() => formatStamp(log.fetchedAt), '–')}
+                      </td>
                       <td>
-                        <span className={`badge ${log.success ? 'badge--neutral' : 'badge--alert'}`}>
-                          {log.success ? 'OK' : 'FEL'}
+                        <span className={`badge ${log.success ? 'badge--ok' : 'badge--alert'}`}>
+                          {log.success ? 'OK' : log.errorType || 'FEL'}
                         </span>
                       </td>
-                      <td>{log.eventsFetched}</td>
-                      <td>
-                        {log.eventsNew > 0 ? `+${log.eventsNew}` : '0'}
+                      <td className="ops-table-num">{formatNumber(log.eventsFetched)}</td>
+                      <td className="ops-table-num">
+                        {log.eventsNew > 0 ? `+${formatNumber(log.eventsNew)}` : '0'}
                       </td>
-                      <td className="ops-note">{log.errorType || '-'}</td>
+                      <td className="ops-table-message" title={log.errorMessage ?? undefined}>
+                        {log.errorMessage ?? ''}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="ops-note">
+              De {fetchLogs.length} senaste av {formatNumber(databaseHealth.totalFetchLogs)} loggade
+              hämtningar. Loggen rensas efter 30 dygn.
+            </p>
           </div>
         </section>
-      </main>
 
-      <footer className="ops-footer">
-        <p>Sambandscentralen Driftöversikt</p>
-      </footer>
+        <ImportPanel />
+
+        <section className="ops-section">
+          <h2 className="ops-section-title">Databas och lagring</h2>
+          <div className="ops-metrics">
+            <Metric
+              label="Live-händelser"
+              value={formatNumber(databaseHealth.totalEvents)}
+              note="från polisen.se, ungefär en vecka djupt"
+            />
+            {/* Stored against shown. The archive is served strictly below the
+                cutoff, and the cutoff is the oldest live event, so one stale
+                notice in the live table hides everything above it. A finished
+                import could leave the statistics looking untouched with nothing
+                anywhere saying why. */}
+            <Metric
+              label="Arkivhändelser"
+              value={
+                system.archive.stored > 0
+                  ? `${formatNumber(system.archive.events)} / ${formatNumber(system.archive.stored)}`
+                  : '0'
+              }
+              note={
+                system.archive.stored === 0
+                  ? 'ingen import gjord'
+                  : hiddenArchive > 0
+                    ? `${formatNumber(hiddenArchive)} rader ligger ovanför brytpunkten och visas inte`
+                    : 'hela arkivet visas'
+              }
+              tone={archiveTone}
+            />
+            <Metric
+              label="Databasfil"
+              value={formatBytes(system.databaseBytes)}
+              note={
+                system.walBytes > 0
+                  ? `plus ${formatBytes(system.walBytes)} WAL`
+                  : 'ingen väntande WAL'
+              }
+            />
+            <Metric
+              label="Med koordinater"
+              value={`${databaseHealth.eventsWithGpsPercent} %`}
+              note={`${formatNumber(databaseHealth.eventsWithGps)} av live-raderna hamnar på kartan`}
+            />
+          </div>
+
+          <div className="card-grid">
+            <div className="card">
+              <h3 className="card-title">Täckning</h3>
+              <div className="info-list">
+                <Row
+                  label="Äldsta live-händelse"
+                  value={local(() => formatDay(databaseHealth.oldestEvent), '–')}
+                />
+                <Row
+                  label="Nyaste live-händelse"
+                  value={local(
+                    () =>
+                      `${formatDay(databaseHealth.newestEvent)} (${formatMinutes(databaseHealth.dataFreshnessMinutes)} gammal)`,
+                    '–'
+                  )}
+                />
+                <Row
+                  label="Brytpunkt mot arkivet"
+                  value={
+                    system.archive.cutoff
+                      ? local(() => formatDay(system.archive.cutoff), '–')
+                      : 'inget arkiv'
+                  }
+                  tone={archiveTone}
+                />
+                {system.archive.stored > 0 && (
+                  <Row
+                    label="Arkivets egen period"
+                    value={local(
+                      () =>
+                        `${formatDay(system.archive.oldest)} – ${formatDay(system.archive.newest)}`,
+                      '–'
+                    )}
+                  />
+                )}
+                {hiddenArchive > 0 && (
+                  <p className="ops-hint ops-hint--alert">
+                    Brytpunkten är den äldsta live-händelsen, och arkivet visas bara under den.
+                    En enda gammal notis i live-tabellen drar alltså gränsen bakåt och gömmer
+                    resten. Äldsta live-händelse:{' '}
+                    {local(() => formatDay(system.archive.liveOldest), '–')}.
+                  </p>
+                )}
+                <Row
+                  label="Uppdaterade i efterhand"
+                  value={`${formatNumber(databaseHealth.updatedEvents)} (${databaseHealth.updatedEventsPercent} %)`}
+                />
+                <Row label="Platser / typer" value={`${databaseHealth.uniqueLocations} / ${databaseHealth.uniqueTypes}`} />
+                <Row label="Rader i hämtningsloggen" value={formatNumber(databaseHealth.totalFetchLogs)} />
+              </div>
+            </div>
+
+            {/* The answers to "is it the container or is it the code", which
+                previously all needed a shell on the host. */}
+            <div className="card">
+              <h3 className="card-title">Miljö</h3>
+              <div className="info-list">
+                <Row
+                  label="Tidszon"
+                  value={system.timeZone}
+                  tone={system.timeZoneCorrect ? 'ok' : 'alert'}
+                />
+                {!system.timeZoneCorrect && (
+                  <p className="ops-hint ops-hint--alert">
+                    Appen tolkar svenska klockslag ur notistexten. Allt utom Europe/Stockholm
+                    förskjuter varje händelse med en till två timmar.
+                  </p>
+                )}
+                <Row label="Datakatalog" value={<code>{system.dataDir}</code>} />
+                <Row
+                  label="Sökindex"
+                  value={
+                    system.searchTokenizer.matches
+                      ? system.searchTokenizer.configured
+                      : `${system.searchTokenizer.built} (byggs om till ${system.searchTokenizer.configured})`
+                  }
+                  tone={system.searchTokenizer.matches ? 'neutral' : 'warn'}
+                />
+                <Row label="Processen har levt" value={local(() => formatUptime(system.processUptimeSeconds), '–')} />
+                <Row label="Node" value={system.nodeVersion} />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Trends over the events themselves are a reader's question, and the
+            app already answers it. The dashboard used to carry its own copy of
+            the daily and hourly charts, which is a second thing to keep right
+            for no operational gain. */}
+        <p className="ops-outro">
+          Statistik över händelserna själva finns i appen under{' '}
+          <Link href="/?vy=statistik">Statistik</Link>.
+        </p>
+      </main>
     </div>
   );
 }

@@ -12,10 +12,24 @@
  */
 export const QUERY = {
   view: 'vy',
+  county: 'lan',
   location: 'plats',
   type: 'typ',
   search: 'sok',
   event: 'handelse',
+  /**
+   * How far back the map is looking, in days.
+   *
+   * This was deliberately kept out of the URL, on the reasoning that it is a
+   * way of looking at the filters rather than part of what is being looked at.
+   * That distinction is not one a reader makes: it survives neither a refresh
+   * nor a shared link, so a map of the last month reverted to the last day
+   * under someone who had just set it, and a link to what they were looking at
+   * did not show what they were looking at.
+   */
+  mapDays: 'dagar',
+  /** Which type of notice the county map on the statistics page is showing. */
+  regionType: 'lantyp',
 } as const;
 
 export type QueryKey = keyof typeof QUERY;
@@ -23,10 +37,17 @@ export type QueryKey = keyof typeof QUERY;
 /** What each parameter used to be called. */
 const LEGACY_QUERY: Record<QueryKey, string> = {
   view: 'view',
+  // New in the same release as the parameter itself, so there is no older
+  // spelling to accept. Kept in the map so the shape stays exhaustive.
+  county: 'lan',
   location: 'location',
   type: 'type',
   search: 'search',
   event: 'event',
+  // Both new in the same release as the parameters themselves, so there is no
+  // older spelling to accept. Kept in the map so the shape stays exhaustive.
+  mapDays: 'dagar',
+  regionType: 'lantyp',
 };
 
 export type ViewId = 'list' | 'map' | 'vma' | 'stats';

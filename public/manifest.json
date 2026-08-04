@@ -6,11 +6,18 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#165a9b",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#f2f5f9",
+  "theme_color": "#f2f5f9",
   "lang": "sv-SE",
   "dir": "ltr",
-  "categories": ["news", "utilities"],
+  "categories": [
+    "news",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -35,6 +42,36 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/narrow-lista.png",
+      "sizes": "412x915",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Senaste händelserna i listan"
+    },
+    {
+      "src": "/screenshots/narrow-karta.png",
+      "sizes": "412x915",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Händelser på karta"
+    },
+    {
+      "src": "/screenshots/wide-lista.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Senaste händelserna i listan"
+    },
+    {
+      "src": "/screenshots/wide-statistik.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Statistik för hela landet"
     }
   ],
   "shortcuts": [

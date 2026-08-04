@@ -20,19 +20,12 @@ const nextConfig = {
   transpilePackages: ['leaflet'],
   // Allow Turbopack (default in Next.js 16) with empty config
   turbopack: {},
+  // Next sends `X-Powered-By: Next.js` on every response by default, which
+  // names the framework to anyone scanning for one. It buys nothing.
+  poweredByHeader: false,
   // Security headers
   async headers() {
-    // React's development build and the dev server's HMR client both use
-    // eval(). Without this, `npm run dev` serves a page whose client bundle
-    // never hydrates (no filters, no import panel, no theme toggle) while
-    // the production build is fine, which is a confusing way to lose an hour.
-    // Production keeps the strict policy.
     const isProduction = process.env.NODE_ENV === 'production';
-    const scriptSrc = isProduction
-      ? "script-src 'self' 'unsafe-inline'"
-      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
-    // Same story for hot reload, which talks over a websocket.
-    const devConnectSrc = isProduction ? '' : ' ws: wss:';
 
     return [
       {
@@ -42,32 +35,41 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Nothing here asks for a camera, a microphone, a location or a
+          // payment handler, and the browser default is to allow the page to
+          // request them. Denying them outright means an injected script
+          // cannot prompt for one in the site's name.
           {
-            key: 'Content-Security-Policy',
+            key: 'Permissions-Policy',
             value: [
-              "default-src 'self'",
-              // 'unsafe-inline' is required by the inline theme bootstrap in
-              // layout.tsx, which must run before first paint to avoid a flash.
-              scriptSrc,
-              // Fonts are self-hosted via next/font, so no third-party style or
-              // font origins are needed. unpkg.com was allowed but never used.
-              "style-src 'self' 'unsafe-inline'",
-              // The OSM fallback layer requests the bare host
-              // tile.openstreetmap.org, which a '*.' wildcard does NOT match:
-              // so it has to be listed separately or the fallback is blocked
-              // exactly when CartoDB is down and it is needed.
-              "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
-              "font-src 'self'",
-              `connect-src 'self' https://polisen.se https://*.basemaps.cartocdn.com https://tile.openstreetmap.org${devConnectSrc}`,
-              "frame-ancestors 'self'",
-              // Nothing here embeds a plugin, posts to another origin, or wants
-              // a <base> tag, and each of those is a way to work around the
-              // directives above if left at the default.
-              "object-src 'none'",
-              "base-uri 'none'",
-              "form-action 'self'",
-            ].join('; '),
+              'accelerometer=()',
+              'camera=()',
+              'display-capture=()',
+              'geolocation=()',
+              'gyroscope=()',
+              'magnetometer=()',
+              'microphone=()',
+              'payment=()',
+              'usb=()',
+            ].join(', '),
           },
+          // Content-Security-Policy is deliberately NOT here. It carries a
+          // per-request nonce so the page's inline scripts can be allowed by
+          // name instead of by `'unsafe-inline'`, and a static header cannot
+          // hold a value that changes per request. See src/proxy.ts.
+          //
+          // Only meaningful over TLS: browsers ignore HSTS on a plain-HTTP
+          // origin, so it costs a local `npm start` nothing. A reverse proxy
+          // that already sets this wins, since it terminates TLS and answers
+          // the first request on the domain.
+          ...(isProduction
+            ? [
+                {
+                  key: 'Strict-Transport-Security',
+                  value: 'max-age=31536000; includeSubDomains',
+                },
+              ]
+            : []),
         ],
       },
       {
@@ -85,6 +87,7 @@ const nextConfig = {
       },
     ];
   },
+
   // Webpack fallback config (used with next build --webpack)
   webpack: (config, { isServer }) => {
     if (!isServer) {

@@ -49,6 +49,8 @@ export interface FormattedEvent {
 }
 
 export interface EventFilters {
+  /** One of Sweden's twenty-one counties, resolved at write time. */
+  county?: string;
   location?: string;
   type?: string;
   search?: string;
@@ -74,19 +76,137 @@ export interface YearlyStats {
   count: number;
 }
 
-export interface MonthlyStats {
-  /** "2026-07", for keys and tooltips. */
-  month: string;
-  /** "jul", for the axis. */
-  label: string;
+/**
+ * One year of the record as twelve cells.
+ *
+ * A decade of history drawn as a single row of 120 bars is a hairline per
+ * month, and it can only be read for trend. Laid out as a grid, one row per
+ * year, the same numbers also read down the columns, which is where the
+ * seasons are.
+ */
+export interface MonthGridRow {
+  year: number;
+  /** Twelve counts, January first. Null outside the record. */
+  months: (number | null)[];
+  total: number;
+  /** True for the year in progress: its later months are not missing, just unlived. */
+  running: boolean;
+}
+
+/** The shape of a year, averaged over the years that finished. */
+export interface SeasonProfile {
+  /** Mean count per calendar month, January first. Empty when nothing is complete. */
+  average: number[];
+  /** How many whole years the mean is over. Below two it is not a season. */
+  years: number;
+  busiestMonth: number | null;
+  quietestMonth: number | null;
+}
+
+/**
+ * This year against the same stretch of last year.
+ *
+ * A running year always looks small beside finished ones, which is why the
+ * year chart cannot answer "is it worse this year". Cutting both at the same
+ * day of the year can.
+ */
+export interface YearToDate {
   year: number;
   count: number;
+  previousYear: number;
+  previousCount: number;
+  /** The day both are counted through, as MM-DD. */
+  throughDay: string;
+}
+
+/** How one year's incidents split across the type families. */
+export interface FamilyYear {
+  year: string;
+  total: number;
+  shares: Array<{ family: string; label: string; count: number; share: number }>;
 }
 
 /** The single busiest calendar day in the record. */
 export interface DailyPeak {
   date: string;
   count: number;
+}
+
+/**
+ * A notice as the map needs it, which is far less than the feed needs.
+ *
+ * The map view was handed the same object the list renders: the full notice
+ * text, the formatted date parts, the relative time, the emoji, the update
+ * stamp. It reads six fields and ignored the rest, at 43 gzipped bytes per
+ * notice against 15 — nearly three times the payload for a view that opens on
+ * a phone, and the difference between a month fitting in the response and not.
+ *
+ * `iso` rather than a date object: the map computes its own relative times
+ * against the moment of rendering, so a preformatted one would be frozen at
+ * whatever it said when the response was built.
+ */
+export interface MapEvent {
+  /** "lat,lng", or empty when the notice carries no position. */
+  gps: string;
+  type: string;
+  /** Municipality, when the notice's title named one. */
+  place: string;
+  /** Whatever the feed's location field said, usually a county. */
+  location: string;
+  /** Path under polisen.se, for the popup's link. */
+  url: string;
+  iso: string;
+}
+
+/** One county's share of the record, and which way it is going. */
+export interface RegionStat {
+  county: string;
+  /** Notices over the whole record. */
+  total: number;
+  /** That county's share of everything that could be placed in one. */
+  share: number;
+  /** The last twelve complete months. */
+  recent: number;
+  /** The twelve before those. */
+  previous: number;
+  /**
+   * Change between the two windows, as a fraction. Null where the earlier
+   * window is too thin for a percentage to say anything.
+   */
+  change: number | null;
+}
+
+export interface RegionBreakdown {
+  rows: RegionStat[];
+  /** Notices whose place could not be resolved to a county, so shares are honest. */
+  unplaced: number;
+  /** Notices that could. */
+  placed: number;
+  /** First month of the recent window, as YYYY-MM. Null when there is no comparison. */
+  trendFrom: string | null;
+}
+
+/**
+ * The county breakdown, but per type of notice.
+ *
+ * Small enough to send with the page: twenty-one counties by a couple of dozen
+ * types is a few hundred triples, and gzip finds it very repetitive. That is
+ * deliberate — the alternative is a request per selection, and the whole point
+ * of the control is that a reader flicks through types looking for one whose
+ * map does not look like the population map.
+ */
+export interface RegionTypeCube {
+  /** The types the filter offers, most notices first. */
+  types: string[];
+  /**
+   * county -> type -> [total, recent, previous]. A missing entry is zero, which
+   * is most of the cube once it is narrowed to one type.
+   */
+  cells: Record<string, Record<string, [number, number, number]>>;
+  /** type -> notices of that type with no county, so the shares stay honest. */
+  unplaced: Record<string, number>;
+  /** First month of the recent window, as YYYY-MM. */
+  recentStart: string;
 }
 
 export interface Statistics {
@@ -98,13 +218,23 @@ export interface Statistics {
   avgPerDay: number;
   topTypes: TopItem[];
   topLocations: TopItem[];
+  /** The whole record folded into Sweden's twenty-one counties. */
+  regions: RegionBreakdown;
+  /** The same breakdown per type, so the map can be narrowed to one of them. */
+  regionTypes: RegionTypeCube;
   hourly: number[];
   weekdays: number[];
   daily: DailyStats[];
   /** Every year the dataset covers, oldest first. */
   yearly: YearlyStats[];
-  /** The last 24 calendar months, oldest first. */
-  monthly: MonthlyStats[];
+  /** The whole record as a year-by-month grid, oldest year first. */
+  monthGrid: MonthGridRow[];
+  /** The average shape of a year, over the years that finished. */
+  season: SeasonProfile;
+  /** This year against the same stretch of last year. Null with under two years. */
+  yearToDate: YearToDate | null;
+  /** Type-family mix per year, oldest first. Empty with under two years. */
+  familyByYear: FamilyYear[];
   /** The busiest single day on record, across both sources. */
   busiestDay: DailyPeak | null;
   /** Days between the oldest event and now, for "one every N minutes". */
@@ -498,27 +628,43 @@ export interface VmaAlert {
 }
 
 // Operational monitoring types
+
+/** One hour of the last 24, split by outcome so a failure is visible. */
+export interface HourlyFetches {
+  ok: number;
+  failed: number;
+}
+
+export interface FetchError {
+  fetchedAt: string;
+  /** Coarse bucket, for scanning a column of them. */
+  errorType: string;
+  /** What the upstream actually said. The page is behind a login. */
+  message: string | null;
+}
+
 export interface OperationalStats {
   totalFetches: number;
   successfulFetches: number;
   failedFetches: number;
   fetches24h: number;
+  successfulFetches24h: number;
+  failedFetches24h: number;
   fetches7d: number;
-  /**
-   * Percentage of fetches that succeeded over the last 7 days.
-   *
-   * Windowed on purpose: computed over the whole table it was really a rolling
-   * 30-day figure (the retention pruneFetchLog applies) wearing no label, and it
-   * is what decides the dashboard's health colour.
-   */
+  /** Over the whole log. Barely moves once a container has been up a while. */
   successRate: number;
+  /** Over 24 hours, which is the one that reacts to an outage in progress. */
+  successRate24h: number;
   avgFetchInterval: number;
   lastSuccessfulFetch: string | null;
   lastFailedFetch: string | null;
-  recentErrors: Array<{ fetched_at: string; error_type: string }>;
-  hourlyFetches: number[];
+  /** Minutes since the last fetch that worked. Null if none ever has. */
+  minutesSinceLastSuccess: number | null;
+  recentErrors: FetchError[];
+  hourlyFetches: HourlyFetches[];
   avgEventsPerFetch: number;
   eventsAddedToday: number;
+  /** Successful fetches in 24h against the 144 a 10-minute schedule expects. */
   uptimeScore: number;
 }
 
@@ -529,6 +675,7 @@ export interface FetchLogEntry {
   eventsNew: number;
   success: boolean;
   errorType: string | null;
+  errorMessage: string | null;
 }
 
 export interface DatabaseHealth {
@@ -541,9 +688,51 @@ export interface DatabaseHealth {
   oldestEvent: string | null;
   newestEvent: string | null;
   eventsByType: Array<{ type: string; count: number }>;
+  /** Age of the newest stored event. A quiet night raises it legitimately. */
   dataFreshnessMinutes: number;
   updatedEvents: number;
   updatedEventsPercent: number;
+}
+
+/**
+ * What the container is, as opposed to what it has fetched.
+ *
+ * Every field here answers a question that used to need a shell on the host:
+ * where the database actually is, how big it has grown, whether TZ survived
+ * the deploy, and whether the search index matches the setting it was built
+ * from.
+ */
+export interface SystemSnapshot {
+  dataDir: string;
+  databaseBytes: number;
+  /** The -wal sidecar. A large one means a checkpoint is overdue. */
+  walBytes: number;
+  timeZone: string;
+  /** The app parses Swedish wall-clock times; anything else shifts them. */
+  timeZoneCorrect: boolean;
+  nodeVersion: string;
+  processUptimeSeconds: number;
+  searchTokenizer: {
+    configured: string;
+    built: string | null;
+    /** False while a rebuild is still pending after the setting changed. */
+    matches: boolean;
+  };
+  archive: {
+    /** Rows the app actually serves: those below the cutoff. */
+    events: number;
+    /** Rows in the table. Far above `events` means most of the import is hidden. */
+    stored: number;
+    cutoff: string | null;
+    /** The archive's own span, which is not the same as what is shown. */
+    oldest: string | null;
+    newest: string | null;
+    /**
+     * Oldest live event. The cutoff is this, so a single stale row here drags
+     * the boundary back years and hides everything above it.
+     */
+    liveOldest: string | null;
+  };
 }
 
 // Brottsplatskartan import types

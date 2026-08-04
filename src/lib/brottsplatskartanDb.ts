@@ -1,5 +1,6 @@
 import { getDatabase } from './db';
 import { paragraphsToText } from './policeApi';
+import { countyOf } from './regions';
 import type { BpkEvent, BpkImportState } from '@/types';
 
 // Persistence for imported brottsplatskartan.se events.
@@ -71,7 +72,18 @@ export function insertBpkEvents(events: BpkEventInput[]): InsertResult {
         e.description,
         e.content,
         e.locationString,
-        e.county,
+        /*
+         * Canonicalised on the way in, not left as the API wrote it.
+         *
+         * `county` is a filtered, indexed column that the feed matches with
+         * `county = ?` against one of the twenty-one canonical names, so a row
+         * stored as "Skåne" or "Blekinge County" is a row the county filter and
+         * the regional breakdown silently skip. Migration 5 normalised what was
+         * already stored, but it runs once: without this, every import after it
+         * would reintroduce whatever spelling the upstream feed happens to use.
+         * Null rather than a guess when it resolves to nothing.
+         */
+        countyOf(e.county) ?? countyOf(e.titleLocation) ?? null,
         e.lat,
         e.lng,
         e.externalSourceLink,

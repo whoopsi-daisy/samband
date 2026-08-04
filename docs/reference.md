@@ -110,8 +110,11 @@ per day) apply SQLite's `'localtime'` modifier at query time.
 |----------|---------|-------------|
 | `TZ` | system | Process timezone. Must be `Europe/Stockholm`; event time parsing and local-time statistics depend on it. Set in the image |
 | `SAMBAND_DATA_DIR` | `<cwd>/data` | Directory holding `events.db` and any NDJSON dump. The image sets `/app/data` |
+| `SITE_URL` | a built-in default | The address this deployment answers on. Used for the Open Graph image, the canonical link, `robots.txt` and the sitemap. Unset on a custom domain means link previews point at the wrong host; the container warns at startup |
 | `RATE_LIMIT_PROXY_HOPS` | `1` | Trusted reverse-proxy hops. The client IP is read this many positions from the right of `X-Forwarded-For`, so a client cannot spoof it |
-| `STATS_USER` / `STATS_PASSWORD` | unset | Both set puts HTTP Basic auth on `/stats` and the import API. Unset leaves them public |
+| `STATS_USER` / `STATS_PASSWORD` | unset | Both set fixes the HTTP Basic login for `/stats` and the import API at deploy time, and takes precedence over an account created at `/stats/setup`. Unset sends the first visitor to that setup page |
+| `ADMIN_SETUP_OPEN` | unset | `true` drops the installation key `/stats/setup` asks for. Only for a deployment nothing else can reach while you set it up |
+| `STATS_PUBLIC` | unset | `true` leaves `/stats` and the import API reachable with no login at all. Ignored once an account exists |
 | `BPK_IMPORT_ON_START` | unset | `ndjson`, `full`, `incremental`. See [import.md](import.md) |
 | `BPK_IMPORT_SOURCE` | unset | Dump path or URL for `ndjson` |
 | `BPK_IMPORT_CONCURRENCY` | `4` | Requests in flight for an API walk, 1–8 |

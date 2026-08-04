@@ -6,12 +6,13 @@ import Header from './Header';
 import BottomNav from './BottomNav';
 import Filters from './Filters';
 import EventList from './EventList';
-import EventMap from './EventMap';
+import EventMap, { MAP_WINDOW_DAYS } from './EventMap';
 import StatsView from './StatsView';
 import VmaView from './VmaView';
 import VmaRibbon from './VmaRibbon';
 import Footer from './Footer';
 import ScrollToTop from './ScrollToTop';
+import RadioCheck from './RadioCheck';
 import MapModal from './MapModal';
 import ErrorBoundary from './ErrorBoundary';
 import { VIEWS } from './views';
@@ -19,17 +20,20 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
 import { FormattedEvent, Statistics } from '@/types';
-import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { QUERY, ViewId, readParam, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { isCountyName } from '@/lib/regions';
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
   /** Every event matching the current filters, not just the first page. */
   totalEvents: number;
   hasMore: boolean;
+  counties: string[];
   locations: string[];
   types: string[];
   stats: Statistics;
   filters: {
+    county: string;
     location: string;
     type: string;
     search: string;
@@ -47,7 +51,7 @@ interface ClientAppProps {
  * arriving on any of the three states up front says what is being looked at
  * rather than opening straight onto a control strip.
  */
-const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
+const VIEW_INTRO: Record<string, { title: string; lede: string; quietTitle?: boolean }> = {
   list: {
     title: 'Senaste händelserna',
     lede: 'Polisens händelsenotiser från hela Sverige, nyast först. Tryck på en händelse för att läsa hela texten.',
@@ -62,7 +66,15 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   stats: {
     title: 'Statistik',
-    lede: 'Vad som händer, när det händer och var. Räknat på allt som finns lagrat.',
+    // Off the page, not out of it. Every block below is an h2, so deleting the
+    // h1 outright would leave the view with no top-level heading at all: a
+    // screen reader's heading list would start midway down and the browser tab
+    // would be the only thing naming the page.
+    quietTitle: true,
+    // No lede: every block on this view opens with its own, and a page-level
+    // one on top of "Den senaste tiden" said the same thing twice before the
+    // reader reached a single number.
+    lede: '',
   },
 };
 
@@ -70,6 +82,7 @@ function ClientAppContent({
   initialEvents,
   totalEvents,
   hasMore,
+  counties,
   locations,
   types,
   stats,
@@ -82,6 +95,22 @@ function ClientAppContent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentView, setCurrentView] = useState(initialView);
+
+  /*
+   * Follow the URL when something other than a click changes it.
+   *
+   * Kept as state rather than read from the URL directly so that pressing a
+   * view button switches immediately instead of after the server round trip
+   * that navigation starts. The cost of that is this effect: every view is the
+   * same route with a different query, so the component never unmounts, and
+   * seeding the state once from the prop meant it was seeded on first load and
+   * never again. Back out of the statistics and the URL said the feed while the
+   * page still showed the statistics, which is the browser's own control
+   * appearing not to work.
+   *
+   * Same pattern, and the same reason, as the filter selects in Filters.tsx.
+   */
+  useEffect(() => setCurrentView(initialView), [initialView]);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [mapModal, setMapModal] = useState<{
     isOpen: boolean;
@@ -111,11 +140,23 @@ function ClientAppContent({
   }, []);
 
   const handleFacetClick = useCallback(
-    (key: 'type' | 'location', value: string) => {
+    (key: 'type' | 'location' | 'county', value: string) => {
       setCurrentView('list');
       const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
       params.set(QUERY.view, viewSlug('list'));
-      params.set(QUERY[key], value);
+
+      /*
+       * "Vanligaste platser" lists the location strings the notices carry, and
+       * a great many of them are the county alone, so a row there can read
+       * "Blekinge län". Sent as a place it would set a second filter beside the
+       * county one and return only the notices where an officer typed the
+       * county. The filters collapse it on read either way; doing it here means
+       * the URL that gets shared says what was actually applied.
+       */
+      const facet = key === 'location' && isCountyName(value) ? 'county' : key;
+      if (facet === 'county') params.delete(QUERY.location);
+      params.set(QUERY[facet], value);
+
       router.push(`/?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
@@ -128,6 +169,11 @@ function ClientAppContent({
 
   const handleLocationClick = useCallback(
     (location: string) => handleFacetClick('location', location),
+    [handleFacetClick]
+  );
+
+  const handleCountyClick = useCallback(
+    (county: string) => handleFacetClick('county', county),
     [handleFacetClick]
   );
 
@@ -172,15 +218,72 @@ function ClientAppContent({
 
   useKeyboardShortcuts(shortcutHandlers);
 
+  /*
+   * Clears the filters, and only the filters.
+   *
+   * This built a fresh query from nothing, which also threw away the map's
+   * period and the county map's type: "Rensa alla" sits under an empty feed and
+   * offers to widen the search, and it was silently resetting what the reader
+   * was looking at as well. The same control inside Filters already deleted
+   * only the four filter parameters; these two now agree.
+   */
   const clearFilters = useCallback(() => {
-    const params = new URLSearchParams();
+    const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
     params.set(QUERY.view, viewSlug(currentView as ViewId));
+    params.delete(QUERY.county);
+    params.delete(QUERY.location);
+    params.delete(QUERY.type);
+    params.delete(QUERY.search);
     router.push(`/?${params.toString()}`, { scroll: false });
-  }, [currentView, router]);
+  }, [currentView, router, searchParams]);
 
-  // How far back the map is looking. Not in the URL: it is a way of looking at
-  // the current filters rather than part of what is being looked at.
-  const [mapWindowDays, setMapWindowDays] = useState(1);
+  /*
+   * How far back the map is looking, and which type the county map is showing.
+   *
+   * Both read from the URL rather than from component state. They were state,
+   * on the reasoning that they are ways of looking at the filters rather than
+   * part of what is being looked at, and that distinction is not one a reader
+   * makes: neither survived a refresh, the back button or a shared link, so a
+   * map set to the last month snapped back to the last day and a link to what
+   * someone was looking at did not show it.
+   *
+   * Reading them straight from `searchParams` rather than mirroring them into
+   * state is what makes back and forward work: the URL is the only copy, so
+   * history navigation cannot leave a control disagreeing with it.
+   */
+  const mapWindowDays = useMemo(() => {
+    const days = Number(readParam((name) => searchParams.get(name), 'mapDays'));
+    return MAP_WINDOW_DAYS.includes(days) ? days : 1;
+  }, [searchParams]);
+
+  const regionType = useMemo(() => {
+    const value = readParam((name) => searchParams.get(name), 'regionType');
+    // Only a type the breakdown actually offers. A stale or hand-typed one
+    // would otherwise leave the select showing a value it has no option for.
+    return stats.regionTypes.types.includes(value) ? value : '';
+  }, [searchParams, stats.regionTypes.types]);
+
+  // Narrowing a view is not navigation, so neither of these gets its own
+  // history entry: `replace`, as the filter controls already do.
+  const setMapWindowDays = useCallback(
+    (days: number) => {
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      if (days === 1) params.delete(QUERY.mapDays);
+      else params.set(QUERY.mapDays, String(days));
+      router.replace(`/?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
+
+  const handleRegionTypeChange = useCallback(
+    (type: string) => {
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      if (type) params.set(QUERY.regionType, type);
+      else params.delete(QUERY.regionType);
+      router.replace(`/?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   // Map data loads on demand the first time the map view is opened.
   const map = useMapEvents(filters, currentView === 'map', mapWindowDays);
@@ -213,19 +316,26 @@ function ClientAppContent({
       {/* Above the header, so it is the first thing on the page whatever view
           the reader is on and wherever they navigate next. */}
       <VmaRibbon alerts={vma.live} onOpen={showVma} />
+      <RadioCheck />
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
         <div className="view-header">
-          <h1>{intro.title}</h1>
-          <p>{intro.lede}</p>
+          <h1 className={intro.quietTitle ? 'sr-only' : undefined}>{intro.title}</h1>
+          {intro.lede && <p>{intro.lede}</p>}
         </div>
 
         {/* The map reads the same filters as the list, so the controls belong
             on both. Without them a filter set on the list silently narrowed the
             map, with nothing on screen saying so or able to undo it. */}
         {(currentView === 'list' || currentView === 'map') && (
-          <Filters locations={locations} types={types} currentView={currentView} filters={filters} />
+          <Filters
+            counties={counties}
+            locations={locations}
+            types={types}
+            currentView={currentView}
+            filters={filters}
+          />
         )}
 
         {currentView === 'list' && (
@@ -248,6 +358,7 @@ function ClientAppContent({
             loaded tiles survive a trip to the list and back. */}
         <EventMap
           events={map.events}
+          total={map.total}
           isActive={currentView === 'map'}
           windowDays={mapWindowDays}
           onWindowChange={setMapWindowDays}
@@ -255,6 +366,7 @@ function ClientAppContent({
           error={map.error}
           onRetry={map.retry}
           onShowList={showList}
+          isFiltered={Boolean(filters.county || filters.location || filters.type || filters.search)}
         />
 
         {currentView === 'vma' && (
@@ -263,13 +375,19 @@ function ClientAppContent({
             live={vma.live}
             failed={vma.failed}
             loading={vma.loading}
-            checkedAt={vma.checkedAt}
             onRetry={vma.refresh}
           />
         )}
 
         {currentView === 'stats' && (
-          <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />
+          <StatsView
+            stats={stats}
+            onTypeClick={handleTypeClick}
+            onLocationClick={handleLocationClick}
+            onCountyClick={handleCountyClick}
+            regionType={regionType}
+            onRegionTypeChange={handleRegionTypeChange}
+          />
         )}
       </main>
 

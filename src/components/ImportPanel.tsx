@@ -175,24 +175,48 @@ export default function ImportPanel() {
         <span className={`dot dot--sm${live ? ' dot--ok is-pulsing' : ''}`} title={live ? 'Direktström' : 'Pollning'} />
       </h2>
 
-      <div className="stats-grid">
-        <div className="stat">
-          <span className="stat-value">{(state?.storedEvents ?? 0).toLocaleString('sv-SE')}</span>
-          <span className="stat-label">Lagrade händelser</span>
+      {/* The same tile as the rest of the dashboard: label above, figure below,
+          and what it is measured against under that. This section used to use
+          .stat, which puts the number first and carries no note, so the import
+          block read as a different product from the two sections around it. */}
+      <div className="ops-metrics">
+        <div className="ops-metric">
+          <span className="ops-metric-label">Lagrade händelser</span>
+          <span className="ops-metric-value">{(state?.storedEvents ?? 0).toLocaleString('sv-SE')}</span>
+          <span className="ops-metric-note">i arkivtabellen</span>
         </div>
-        <div className={`stat stat--${running ? 'warn' : state?.status === 'failed' ? 'alert' : 'ok'}`}>
-          <span className="stat-value">{STATUS_LABEL[state?.status ?? 'idle'] ?? state?.status}</span>
-          <span className="stat-label">
-            {running && progress ? MODE_LABEL[progress.mode] : state?.mode ? MODE_LABEL[state.mode] : 'Status'}
+        <div
+          className={`ops-metric ops-metric--${running ? 'warn' : state?.status === 'failed' ? 'alert' : 'ok'}`}
+        >
+          <span className="ops-metric-label">Status</span>
+          <span className="ops-metric-value">
+            {STATUS_LABEL[state?.status ?? 'idle'] ?? state?.status}
+          </span>
+          <span className="ops-metric-note">
+            {running && progress
+              ? MODE_LABEL[progress.mode]
+              : state?.mode
+                ? `senast: ${MODE_LABEL[state.mode]}`
+                : 'ingen körning gjord'}
           </span>
         </div>
-        <div className="stat">
-          <span className="stat-value">{(progress?.imported ?? state?.imported ?? 0).toLocaleString('sv-SE')}</span>
-          <span className="stat-label">Nya i körningen</span>
+        <div className="ops-metric">
+          <span className="ops-metric-label">Nya i körningen</span>
+          <span className="ops-metric-value">
+            {(progress?.imported ?? state?.imported ?? 0).toLocaleString('sv-SE')}
+          </span>
+          <span className="ops-metric-note">
+            {running ? 'pågår' : 'från den senaste körningen'}
+          </span>
         </div>
-        <div className="stat">
-          <span className="stat-value">{snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined ? `${snapshot.coveragePercent}%` : '–'}</span>
-          <span className="stat-label">Täckning mot API</span>
+        <div className="ops-metric">
+          <span className="ops-metric-label">Täckning mot API</span>
+          <span className="ops-metric-value">
+            {snapshot?.coveragePercent !== null && snapshot?.coveragePercent !== undefined
+              ? `${snapshot.coveragePercent} %`
+              : '–'}
+          </span>
+          <span className="ops-metric-note">av vad brottsplatskartan uppger</span>
         </div>
       </div>
 

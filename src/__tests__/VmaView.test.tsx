@@ -30,7 +30,6 @@ const view = (props: Partial<React.ComponentProps<typeof VmaView>> = {}) =>
       live={[]}
       failed={false}
       loading={false}
-      checkedAt={null}
       onRetry={jest.fn()}
       {...props}
     />
@@ -125,6 +124,37 @@ describe('VmaView', () => {
 
     expect(screen.getByRole('link', { name: /sverigesradio\.se\/vma/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /krisinformation\.se/i })).toBeInTheDocument();
-    expect(screen.getByText(/ring 112/i)).toBeInTheDocument();
+  });
+
+  // Asked for, and only in the resting state. On a page whose normal answer is
+  // "nothing is happening", an emergency number is standing instruction rather
+  // than information, and the authorities' own channels are named beside it.
+  it('does not tell a reader to call 112 when there is nothing to report', () => {
+    view();
+    expect(screen.queryByText(/ring 112/i)).not.toBeInTheDocument();
+
+    view({ alerts: [alert()], live: [alert()] });
+    expect(screen.queryByText(/ring 112/i)).not.toBeInTheDocument();
+  });
+
+  /*
+   * The exception, and it is deliberate.
+   *
+   * This block is the page's role="alert" and fires only when Sveriges Radio
+   * cannot be reached: the one state where the site cannot say whether an
+   * emergency is running. Everything a reader needs while that is true has to
+   * be inside the thing a screen reader announces, and "we cannot tell you"
+   * without a way to act is worse than saying nothing.
+   */
+  it('keeps it in the one state where the page cannot answer', () => {
+    view({ failed: true });
+    expect(screen.getByRole('alert')).toHaveTextContent(/112/);
+  });
+
+  // No warning is the normal state and should read as one at a glance, rather
+  // than as a card a reader has to finish before knowing nothing is happening.
+  it('shows the all-clear as a resting state, not as a notice', () => {
+    const { container } = view();
+    expect(container.querySelector('.vma-clear--quiet')).toBeInTheDocument();
   });
 });

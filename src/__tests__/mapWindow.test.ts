@@ -1,0 +1,155 @@
+/**
+ * @jest-environment node
+ */
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import type { RawEvent } from '@/types';
+
+let tempDir: string;
+let db: typeof import('@/lib/db');
+
+/**
+ * The map used to ask for the newest 500 notices in the window and then say
+ * "500 händelser den senaste månaden" about them. The feed runs near 45 a day,
+ * so a month is roughly 1,300-1,700: the label was exactly the cap, looked
+ * like a total, and hid the older two thirds of the period with nothing on the
+ * page saying so.
+ */
+const MONTHS = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
+
+/**
+ * n notices spread evenly back over the given number of days.
+ *
+ * The title has to carry the real date and time: insertEvent parses event_time
+ * out of it rather than from `datetime`, and the window filter reads
+ * event_time. A fixed title puts every row on one day, and the identical text
+ * then collapses them all to a handful through the content-hash dedup — which
+ * is exactly what a first attempt at this test did.
+ */
+function seed(count: number, spreadDays: number): void {
+  for (let i = 0; i < count; i++) {
+    const at = new Date(Date.now() - ((i + 0.5) / count) * spreadDays * 24 * 60 * 60 * 1000);
+    const stamp =
+      `${at.getDate()} ${MONTHS[at.getMonth()]} ` +
+      `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    db.insertEvent({
+      id: i + 1,
+      name: `${stamp}, Stöld, Ljungby`,
+      summary: `Notis nummer ${i + 1}.`,
+      url: `/e/${i + 1}/`,
+      type: 'Stöld',
+      datetime: at.toISOString(),
+      location: { name: 'Kronobergs län', gps: '56.75,14.50' },
+    } as RawEvent);
+  }
+  db.invalidateAggregateCaches();
+}
+
+beforeEach(async () => {
+  jest.resetModules();
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'samband-mapwin-'));
+  process.env.SAMBAND_DATA_DIR = tempDir;
+  db = await import('@/lib/db');
+});
+
+afterEach(() => {
+  delete process.env.SAMBAND_DATA_DIR;
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+const monthAgo = () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+describe('what the map is given for a window', () => {
+  it('returns every notice in the window when they fit', () => {
+    seed(400, 30);
+
+    const { rows, total } = db.getMapEvents({}, monthAgo());
+    expect(rows).toHaveLength(400);
+    expect(total).toBe(400);
+  });
+
+  // A month at the feed's real rate has to arrive whole. This is the number
+  // the old cap of 500 was cutting into a third.
+  it('carries a full month at the rate the feed actually runs', () => {
+    seed(1700, 30);
+
+    const { rows, total } = db.getMapEvents({}, monthAgo());
+    expect(rows).toHaveLength(1700);
+    expect(total).toBe(1700);
+  });
+
+  it('still refuses to answer without a bound', () => {
+    seed(3200, 30);
+
+    const { rows, total } = db.getMapEvents({}, monthAgo());
+    // Capped, because this endpoint is public and unauthenticated and an
+    // unbounded query is how the feed's paging became a denial of service.
+    expect(rows.length).toBe(3000);
+    // But the true size of the window comes back with it, which is what lets
+    // the map say it is showing a slice instead of implying a total.
+    expect(total).toBe(3200);
+    expect(total).toBeGreaterThan(rows.length);
+  });
+
+  it('keeps the window, so a day is a day and not the newest of everything', () => {
+    seed(1200, 30);
+
+    const day = db.getMapEvents({}, new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const month = db.getMapEvents({}, monthAgo());
+
+    expect(day.rows.length).toBeGreaterThan(0);
+    expect(day.rows.length).toBeLessThan(month.rows.length);
+    expect(day.total).toBe(day.rows.length);
+  });
+});
+
+/**
+ * Whether an import shows up on the map.
+ *
+ * Asked directly, and the answer is "it depends", so it is pinned here. The
+ * archive is served strictly below the cutoff, and the cutoff is the oldest
+ * live event. A container that has only been collecting for a few days has a
+ * cutoff a few days back, which leaves the rest of the map's thirty-day window
+ * open for imported notices to fill. Once the live feed reaches past thirty
+ * days the window is entirely live and an import cannot change the map at all,
+ * however much it adds to the statistics.
+ */
+describe('whether importing fills the map', () => {
+  function archive(count: number, fromDaysAgo: number, toDaysAgo: number): void {
+    const insert = db.getDatabase().prepare(
+      `INSERT INTO bpk_events (id, pubdate, pubdate_unix, title_type, title_location,
+       headline, description, content, location_string, county, lat, lng,
+       external_source_link, permalink, imported_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    for (let i = 0; i < count; i++) {
+      const days = fromDaysAgo + ((toDaysAgo - fromDaysAgo) * i) / count;
+      const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      insert.run(i + 1, at, 0, 'Stöld', 'Lund', 'Stöld, Lund', `Notis ${i}`, '', 'Lund',
+        'Skåne län', 55.7, 13.19, '', '', new Date().toISOString());
+    }
+    db.invalidateAggregateCaches();
+  }
+
+  it('fills the older part of the window while the live feed is still young', () => {
+    seed(100, 4); // four days of live notices, as after a fresh boot
+    const before = db.getMapEvents({}, monthAgo()).rows.length;
+
+    archive(600, 30, 5); // imported notices covering days 5-30
+    const after = db.getMapEvents({}, monthAgo()).rows.length;
+
+    expect(before).toBe(100);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('changes nothing once the live feed already reaches past the window', () => {
+    seed(900, 40); // forty days of live notices
+    const before = db.getMapEvents({}, monthAgo()).rows.length;
+
+    archive(600, 30, 5); // the same import, now entirely above the cutoff
+    const after = db.getMapEvents({}, monthAgo()).rows.length;
+
+    expect(after).toBe(before);
+  });
+});
