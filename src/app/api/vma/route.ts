@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getVmaAlerts, liveAlerts } from '@/lib/vmaApi';
+import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
 /**
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   const { alerts, failed } = await getVmaAlerts();
 
-  const response = NextResponse.json({
+  const response = jsonResponse(request, {
     // Everything the API returned, for the page.
     alerts,
     // The subset that is a live emergency, for the ribbon.

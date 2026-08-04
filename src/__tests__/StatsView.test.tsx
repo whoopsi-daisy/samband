@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import StatsView from '@/components/StatsView';
 import { Statistics } from '@/types';
 
@@ -218,15 +218,25 @@ describe('StatsView', () => {
       expect(screen.getByText(/875 till saknar en plats/)).toBeInTheDocument();
     });
 
-    // A county row cannot filter the feed: the notices under it are labelled
-    // with municipalities, so the filter would return a fraction of what the
-    // row had just counted.
-    it('does not present the rows as filters', () => {
-      render(<StatsView stats={createStats()} />);
+    /*
+     * The rows are filters now.
+     *
+     * They deliberately were not: the feed matched the place string on the
+     * notice, and no notice is labelled "Västra Götalands län" unless an
+     * officer wrote exactly that, so a clickable row would have returned a
+     * fraction of what it had just counted. The county is a resolved, indexed
+     * column on both tables now, so the row can mean what it looks like.
+     */
+    it('lets a county row filter the feed', () => {
+      const onCountyClick = jest.fn();
+      render(<StatsView stats={createStats()} onCountyClick={onCountyClick} />);
 
-      const table = document.querySelector('.region-table');
-      expect(table).not.toBeNull();
-      expect(table?.querySelectorAll('button')).toHaveLength(0);
+      const row = screen.getByRole('button', { name: /Visa händelser i Stockholms län/ });
+      fireEvent.click(row);
+
+      // The canonical name, not the shortened label the cell displays: that is
+      // what the filter matches against.
+      expect(onCountyClick).toHaveBeenCalledWith('Stockholms län');
     });
 
     it('stays away with nothing to break down', () => {

@@ -62,6 +62,7 @@ interface EventListProps {
   initialTotal: number;
   initialHasMore: boolean;
   filters: {
+    county: string;
     location: string;
     type: string;
     search: string;
@@ -113,8 +114,8 @@ export default function EventList({
 
   // Stable key so a filter change resets the list
   const filterKey = useMemo(
-    () => `${filters.location}|${filters.type}|${filters.search}`,
-    [filters.location, filters.type, filters.search]
+    () => `${filters.county}|${filters.location}|${filters.type}|${filters.search}`,
+    [filters.county, filters.location, filters.type, filters.search]
   );
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function EventList({
       try {
         const params = new URLSearchParams({
           page: '1',
+          county: filters.county,
           location: filters.location,
           type: filters.type,
           search: filters.search,
@@ -191,6 +193,7 @@ export default function EventList({
     async (pageNumber: number) => {
       const params = new URLSearchParams({
         page: String(pageNumber),
+        county: filters.county,
         location: filters.location,
         type: filters.type,
         search: filters.search,

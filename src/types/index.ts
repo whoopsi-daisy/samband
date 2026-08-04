@@ -49,6 +49,8 @@ export interface FormattedEvent {
 }
 
 export interface EventFilters {
+  /** One of Sweden's twenty-one counties, resolved at write time. */
+  county?: string;
   location?: string;
   type?: string;
   search?: string;

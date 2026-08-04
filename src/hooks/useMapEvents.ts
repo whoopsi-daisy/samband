@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MapEvent } from '@/types';
 
 interface Filters {
+  county: string;
   location: string;
   type: string;
   search: string;
@@ -34,7 +35,7 @@ export function useMapEvents(filters: Filters, isActive: boolean, windowDays: nu
   });
   const [attempt, setAttempt] = useState(0);
 
-  const filterKey = `${filters.location}|${filters.type}|${filters.search}|${windowDays}`;
+  const filterKey = `${filters.county}|${filters.location}|${filters.type}|${filters.search}|${windowDays}`;
   // Which filter set we have already loaded, so re-opening the map does not
   // refetch data we still hold.
   const loadedKeyRef = useRef<string | null>(null);
@@ -53,6 +54,7 @@ export function useMapEvents(filters: Filters, isActive: boolean, windowDays: nu
     setState((prev) => ({ ...prev, loading: true, error: false }));
 
     const params = new URLSearchParams({
+      county: filters.county,
       location: filters.location,
       type: filters.type,
       search: filters.search,
@@ -89,7 +91,7 @@ export function useMapEvents(filters: Filters, isActive: boolean, windowDays: nu
       cancelled = true;
       controller.abort();
     };
-  }, [isActive, filterKey, filters.location, filters.type, filters.search, windowDays, attempt]);
+  }, [isActive, filterKey, filters.county, filters.location, filters.type, filters.search, windowDays, attempt]);
 
   return { ...state, retry };
 }

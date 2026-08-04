@@ -3459,6 +3459,25 @@ main {
   min-width: 11rem;
 }
 
+/* The county cell is a filter now. A button that fills its cell, carries the
+   name and the bar, and reads as a row rather than as a control bolted into
+   one. */
+.region-pick {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.region-pick:hover .region-name { color: var(--accent); }
+.region-pick:hover .region-bar { background: var(--accent-strong); }
+
 .region-name {
   display: block;
   margin-bottom: 3px;
