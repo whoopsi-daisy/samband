@@ -186,6 +186,29 @@ export interface RegionBreakdown {
   trendFrom: string | null;
 }
 
+/**
+ * The county breakdown, but per type of notice.
+ *
+ * Small enough to send with the page: twenty-one counties by a couple of dozen
+ * types is a few hundred triples, and gzip finds it very repetitive. That is
+ * deliberate — the alternative is a request per selection, and the whole point
+ * of the control is that a reader flicks through types looking for one whose
+ * map does not look like the population map.
+ */
+export interface RegionTypeCube {
+  /** The types the filter offers, most notices first. */
+  types: string[];
+  /**
+   * county -> type -> [total, recent, previous]. A missing entry is zero, which
+   * is most of the cube once it is narrowed to one type.
+   */
+  cells: Record<string, Record<string, [number, number, number]>>;
+  /** type -> notices of that type with no county, so the shares stay honest. */
+  unplaced: Record<string, number>;
+  /** First month of the recent window, as YYYY-MM. */
+  recentStart: string;
+}
+
 export interface Statistics {
   total: number;
   totalStored: number;
@@ -197,6 +220,8 @@ export interface Statistics {
   topLocations: TopItem[];
   /** The whole record folded into Sweden's twenty-one counties. */
   regions: RegionBreakdown;
+  /** The same breakdown per type, so the map can be narrowed to one of them. */
+  regionTypes: RegionTypeCube;
   hourly: number[];
   weekdays: number[];
   daily: DailyStats[];

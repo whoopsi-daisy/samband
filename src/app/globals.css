@@ -3391,6 +3391,49 @@ main {
   text-wrap: pretty;
 }
 
+/* Narrows the county map and its table to one type of notice. Sits above both,
+   because it governs both: put beside the map alone it reads as a map control
+   and leaves the table underneath looking like it disagrees. */
+.region-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.region-filter-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+.region-filter-select {
+  /* Type names run from "Rån" to "Stöld/inbrott, försök", and a select sized
+     to its widest option jumps the row every time the selection changes. */
+  flex: 1 1 14rem;
+  max-width: 22rem;
+  height: var(--control-lg);
+  font-size: var(--text-sm);
+}
+
+/* Pushed to the far end on a row wide enough to hold it, and wrapping under the
+   select rather than squeezing it on a phone. */
+.region-filter-count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .region-filter-count { margin-left: 0; }
+}
+
 /* The map is an overview and the table below is the data. On a phone there is
    no second column to put the key in, and a full-height Sweden would push the
    table most of a screen down, so both shrink. */

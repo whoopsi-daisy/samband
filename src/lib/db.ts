@@ -1,9 +1,10 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
+import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, RegionTypeCube, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
 import { escapeLikeWildcards, placeFromTitle } from './utils';
 import { countyOf } from './regions';
+import { buildRegionBreakdown } from './regionRows';
 import { memoizeWithTtl } from './cache';
 
 // Database configuration. SAMBAND_DATA_DIR lets the container mount the SQLite
@@ -1239,6 +1240,8 @@ interface StatsSource {
   /** Type as the breakdown groups it: the bare column, so an index answers it. */
   typeLabel: string;
   location: string;
+  /** The resolved county column. Both tables carry one; see migration 5. */
+  county: string;
   hasGps: string;
   wasUpdated: string;
   /** Extra always-on condition, e.g. the archive cutoff. */
@@ -1252,6 +1255,7 @@ const LIVE_STATS_SOURCE: StatsSource = {
   type: "COALESCE(e.type, '')",
   typeLabel: 'e.type',
   location: 'e.location_name',
+  county: 'e.county',
   hasGps: "e.location_gps != ''",
   wasUpdated: 'e.last_updated != e.publish_time',
   where: '',
@@ -1265,6 +1269,7 @@ function archiveStatsSource(): StatsSource {
     type: "COALESCE(b.title_type, '')",
     typeLabel: 'b.title_type',
     location: ARCHIVE_LOCATION,
+    county: 'b.county',
     hasGps: 'b.lat IS NOT NULL AND b.lng IS NOT NULL',
     // Brottsplatskartan does not republish corrections, so nothing here is
     // ever a revision of something already stored.
@@ -1311,13 +1316,37 @@ interface SourceStats {
    * already collected, so nothing here is asked twice.
    */
   regionMonths: Array<{ month: string; label: string; total: number }>;
+  /**
+   * County by type, over the whole source, with both trend windows counted.
+   *
+   * `county` is the resolved column rather than the place name on the notice,
+   * so a type filter counts the same rows the county filter on the feed would
+   * return. A null county is the source's unplaceable rows, kept rather than
+   * dropped so the filtered table can say how many it is leaving out.
+   */
+  countyTypes: Array<{
+    county: string | null;
+    label: string;
+    total: number;
+    recent: number;
+    previous: number;
+  }>;
   withGps: number;
   updated: number;
 }
 
 function collectSourceStats(
   source: StatsSource,
-  windows: { since24h: string; since7d: string; since30d: string; since24m: string }
+  windows: {
+    since24h: string;
+    since7d: string;
+    since30d: string;
+    since24m: string;
+    /** Month boundaries as YYYY-MM, shared with regionBreakdown. */
+    openMonth: string;
+    recentStart: string;
+    previousStart: string;
+  }
 ): SourceStats {
   const pdo = getDatabase();
   const excludePattern = '%Sammanfattning%';
@@ -1438,6 +1467,41 @@ function collectSourceStats(
     byType.set(row.label, (byType.get(row.label) ?? 0) + row.total);
   }
 
+  /*
+   * County by type, with both trend windows counted in the same pass.
+   *
+   * One grouped scan for the whole cube: twenty-one counties by however many
+   * types the source carries, which is a few hundred rows out. Asking it per
+   * type instead would be a scan each, and the control it feeds is built for
+   * flicking between types.
+   *
+   * The window comparisons are string prefixes against the ISO timestamp, the
+   * same trick the year and month groupings above use: '2026-08-04T09:00:00Z'
+   * sorts after '2026-08' and before '2026-09', so a YYYY-MM boundary bounds a
+   * month without a datetime parse per row.
+   */
+  const countyTypeRows = pdo
+    .prepare(
+      `SELECT ${source.county} AS county, ${source.typeLabel} AS label,
+              COUNT(*) AS total,
+              SUM(CASE WHEN ${time} >= ? AND ${time} < ? THEN 1 ELSE 0 END) AS recent,
+              SUM(CASE WHEN ${time} >= ? AND ${time} < ? THEN 1 ELSE 0 END) AS previous
+         ${base} GROUP BY county, label`
+    )
+    .all(
+      windows.recentStart,
+      windows.openMonth,
+      windows.previousStart,
+      windows.recentStart,
+      ...baseParams
+    ) as Array<{
+    county: string | null;
+    label: string | null;
+    total: number;
+    recent: number;
+    previous: number;
+  }>;
+
   const regionMonthRows = pdo
     .prepare(
       `SELECT substr(${time}, 1, 7) AS month, ${location} AS label, COUNT(*) AS total ${base} AND ${time} >= ? GROUP BY month, label`
@@ -1469,6 +1533,17 @@ function collectSourceStats(
       label: row.label ?? '',
       total: row.total,
     })),
+    countyTypes: countyTypeRows
+      // An untyped notice cannot be offered in a type filter, and counting it
+      // under a blank label would put an unselectable row in the cube.
+      .filter((row) => Boolean(row.label))
+      .map((row) => ({
+        county: row.county || null,
+        label: row.label as string,
+        total: row.total,
+        recent: row.recent,
+        previous: row.previous,
+      })),
     withGps: scalars.withGps ?? 0,
     updated: scalars.updated ?? 0,
   };
@@ -1714,7 +1789,23 @@ function familyMixByYear(yearTypes: Map<string, Map<string, number>>): FamilyYea
  * last completed month, and the comparison is dropped rather than shown small
  * where the record does not reach back far enough to make it mean anything.
  */
-const TREND_MIN_BASE = 100;
+/**
+ * The two comparison windows, as YYYY-MM.
+ *
+ * Exclusive of the month we are standing in: it is partial on both sides of the
+ * comparison and belongs to neither. Shared with the SQL that builds the
+ * per-type cube, because two places deciding separately where "the last twelve
+ * months" starts is two places that can drift apart.
+ */
+function monthWindows(now: Date): { openMonth: string; recentStart: string; previousStart: string } {
+  const monthKey = (year: number, month: number): string =>
+    `${year}-${String(month + 1).padStart(2, '0')}`;
+  return {
+    openMonth: monthKey(now.getFullYear(), now.getMonth()),
+    recentStart: monthKey(now.getFullYear() - 1, now.getMonth()),
+    previousStart: monthKey(now.getFullYear() - 2, now.getMonth()),
+  };
+}
 
 function regionBreakdown(
   totals: Map<string, number>,
@@ -1722,19 +1813,11 @@ function regionBreakdown(
   now: Date,
   coverage: { placed: number; unplaced: number }
 ): RegionBreakdown {
-  const monthKey = (year: number, month: number): string =>
-    `${year}-${String(month + 1).padStart(2, '0')}`;
-
-  // Exclusive: the month we are standing in is partial on both sides of the
-  // comparison and belongs to neither.
-  const openMonth = monthKey(now.getFullYear(), now.getMonth());
-  const recentStart = monthKey(now.getFullYear() - 1, now.getMonth());
-  const previousStart = monthKey(now.getFullYear() - 2, now.getMonth());
+  const { openMonth, recentStart, previousStart } = monthWindows(now);
 
   const allTime = new Map<string, number>();
   const recent = new Map<string, number>();
   const previous = new Map<string, number>();
-  const { placed, unplaced } = coverage;
 
   for (const [label, count] of totals) {
     const county = countyOf(label);
@@ -1752,33 +1835,65 @@ function regionBreakdown(
     }
   }
 
-  const previousTotal = [...previous.values()].reduce((sum, n) => sum + n, 0);
+  return buildRegionBreakdown(allTime, recent, previous, coverage, recentStart);
+}
 
-  const rows = [...allTime.entries()]
-    .map(([county, total]) => {
-      const before = previous.get(county) ?? 0;
-      const after = recent.get(county) ?? 0;
-      // A county with a handful of notices last year swings by hundreds of
-      // percent on a difference of three, which reads as a finding and is not.
-      const change = previousTotal > 0 && before >= TREND_MIN_BASE ? (after - before) / before : null;
-      return {
-        county,
-        total,
-        share: placed > 0 ? total / placed : 0,
-        recent: after,
-        previous: before,
-        change,
-      };
-    })
-    .sort((a, b) => b.total - a.total || a.county.localeCompare(b.county, 'sv'));
+/**
+ * Types too thin to map.
+ *
+ * Spread over twenty-one counties, a type with fifty notices nationwide is
+ * single digits per county, and a choropleth of single digits is four shades of
+ * noise with Stockholm at the top because Stockholm is where the people are.
+ * Offering it in the filter is offering a finding that is not there.
+ */
+export const TYPE_MAP_MIN_TOTAL = 200;
 
-  return {
-    rows,
-    unplaced,
-    placed,
-    // Only claim a comparison window when there is something in it to compare.
-    trendFrom: previousTotal > 0 ? recentStart : null,
-  };
+/** How many the filter offers. The tail below this is the long tail. */
+const TYPE_MAP_LIMIT = 20;
+
+/**
+ * The county breakdown per type, shaped for the page.
+ *
+ * Counted straight off the county column, unlike `regionBreakdown` above, which
+ * still folds the place names the notices carry. The two agree on the totals
+ * because migration 5 resolved the column from those same names; where they
+ * could disagree, the column is the one the feed's own county filter uses, so
+ * a reader who clicks through from a filtered map gets what the map counted.
+ */
+function regionTypeCube(
+  rows: Array<{ county: string | null; label: string; total: number; recent: number; previous: number }>,
+  recentStart: string
+): RegionTypeCube {
+  const totalByType = new Map<string, number>();
+  for (const row of rows) totalByType.set(row.label, (totalByType.get(row.label) ?? 0) + row.total);
+
+  const types = [...totalByType.entries()]
+    .filter(([, total]) => total >= TYPE_MAP_MIN_TOTAL)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'sv'))
+    .slice(0, TYPE_MAP_LIMIT)
+    .map(([label]) => label);
+
+  const offered = new Set(types);
+  const cells: RegionTypeCube['cells'] = {};
+  const unplaced: RegionTypeCube['unplaced'] = {};
+
+  for (const row of rows) {
+    if (!offered.has(row.label)) continue;
+
+    const county = countyOf(row.county);
+    if (!county) {
+      unplaced[row.label] = (unplaced[row.label] ?? 0) + row.total;
+      continue;
+    }
+
+    const byType = (cells[county] ??= {});
+    const cell = (byType[row.label] ??= [0, 0, 0]);
+    cell[0] += row.total;
+    cell[1] += row.recent;
+    cell[2] += row.previous;
+  }
+
+  return { types, cells, unplaced, recentStart };
 }
 
 function topItems(counts: Map<string, number>, limit = 8): TopItem[] {
@@ -1803,6 +1918,7 @@ function computeStatsSummary(): Statistics {
     // Two whole years back from the start of the current month, so the regional
     // trend has both of its windows complete.
     since24m: new Date(Date.UTC(now.getFullYear() - 2, now.getMonth(), 1)).toISOString(),
+    ...monthWindows(now),
   };
 
   const live = collectSourceStats(LIVE_STATS_SOURCE, windows);
@@ -1898,6 +2014,10 @@ function computeStatsSummary(): Statistics {
       // breakdown, so what the page reports as unplaceable is what the database
       // actually failed to place, not what a second pass over the names did.
       getCountyCoverage()
+    ),
+    regionTypes: regionTypeCube(
+      [...live.countyTypes, ...(archive?.countyTypes ?? [])],
+      windows.recentStart
     ),
     hourly,
     weekdays,

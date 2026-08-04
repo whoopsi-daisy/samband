@@ -28,6 +28,18 @@ function createStats(overrides: Partial<Statistics> = {}): Statistics {
       placed: 560,
       trendFrom: '2025-08',
     },
+    regionTypes: {
+      types: ['Trafikolycka', 'Narkotikabrott'],
+      cells: {
+        // Trafik follows the population, narkotika does not: Kronoberg holds
+        // more of it than Stockholm despite being the smaller county overall.
+        // That contrast is what the control exists to surface.
+        'Stockholms län': { Trafikolycka: [80, 40, 30], Narkotikabrott: [20, 10, 12] },
+        'Kronobergs län': { Trafikolycka: [13, 6, 5], Narkotikabrott: [72, 35, 40] },
+      },
+      unplaced: { Trafikolycka: 4, Narkotikabrott: 9 },
+      recentStart: '2025-08',
+    },
     hourly: Array.from({ length: 24 }, (_, i) => (i === 2 ? 9 : 1)),
     weekdays: [40, 40, 44, 41, 40, 40, 41],
     daily: [
@@ -237,6 +249,77 @@ describe('StatsView', () => {
       // The canonical name, not the shortened label the cell displays: that is
       // what the filter matches against.
       expect(onCountyClick).toHaveBeenCalledWith('Stockholms län');
+    });
+
+    /*
+     * The control that makes the block worth having.
+     *
+     * Unfiltered, the map is close to a population map and says so in its own
+     * note. Narrowed to one type it can show something the population does not
+     * predict, which is the thing markers on the incident map cannot show.
+     */
+    it('narrows the map and the table to one type of notice', () => {
+      render(<StatsView stats={createStats()} />);
+
+      // Stockholm leads the whole record.
+      expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('Stockholms');
+
+      fireEvent.change(screen.getByLabelText('Händelsetyp'), {
+        target: { value: 'Narkotikabrott' },
+      });
+
+      // Under this type it does not, which is the finding.
+      expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('Kronobergs');
+    });
+
+    // Shares of the whole record would leave a filtered table summing to a few
+    // per cent, with every county at the bottom of the colour scale.
+    it('restates the shares against the selected type', () => {
+      render(<StatsView stats={createStats()} />);
+
+      fireEvent.change(screen.getByLabelText('Händelsetyp'), {
+        target: { value: 'Narkotikabrott' },
+      });
+
+      // 72 + 20 placed, not the 560 of the whole record.
+      expect(screen.getByText(/92 notiser om narkotikabrott/)).toBeInTheDocument();
+      expect(screen.getByText(/9 till saknar en plats/)).toBeInTheDocument();
+      expect(screen.queryByText(/560 notiser/)).not.toBeInTheDocument();
+    });
+
+    it('goes back to the whole record', () => {
+      render(<StatsView stats={createStats()} />);
+      const select = screen.getByLabelText('Händelsetyp');
+
+      fireEvent.change(select, { target: { value: 'Narkotikabrott' } });
+      fireEvent.change(select, { target: { value: '' } });
+
+      expect(screen.getByText(/560 notiser som går att placera/)).toBeInTheDocument();
+    });
+
+    // A type with a handful of notices spread over twenty-one counties is four
+    // shades of noise, so the cube leaves it out and the control must not
+    // invent an entry for it.
+    it('offers only the types the breakdown carries', () => {
+      render(<StatsView stats={createStats()} />);
+
+      const options = screen
+        .getAllByRole('option')
+        .map((option) => (option as HTMLOptionElement).value);
+      expect(options).toEqual(['', 'Trafikolycka', 'Narkotikabrott']);
+    });
+
+    it('leaves the control out entirely when no type has enough behind it', () => {
+      render(
+        <StatsView
+          stats={createStats({
+            regionTypes: { types: [], cells: {}, unplaced: {}, recentStart: '2025-08' },
+          })}
+        />
+      );
+
+      expect(screen.queryByLabelText('Händelsetyp')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: 'Län för län' })).toBeInTheDocument();
     });
 
     it('stays away with nothing to break down', () => {
