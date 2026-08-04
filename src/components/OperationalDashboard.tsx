@@ -104,7 +104,10 @@ export default function OperationalDashboard({
         <span className="ops-timestamp">{updatedAt && `Uppdaterad ${updatedAt}`}</span>
       </header>
 
-      <main>
+      {/* The skip link in the root layout points here. Without the id it landed
+          on nothing, so the first thing a keyboard user reached on this page was
+          a dead anchor. */}
+      <main id="main-content" tabIndex={-1}>
         {/* Systemhälsa */}
         <section className="ops-section">
           <h2 className="ops-section-title">Systemhälsa</h2>
@@ -115,7 +118,7 @@ export default function OperationalDashboard({
             </div>
             <div className={`stat stat--${operationalStats.successRate >= 95 ? 'ok' : operationalStats.successRate >= 80 ? 'warn' : 'alert'}`}>
               <span className="stat-value">{operationalStats.successRate}%</span>
-              <span className="stat-label">Lyckade hämtningar</span>
+              <span className="stat-label">Lyckade hämtningar (7d)</span>
             </div>
             <div className={`stat stat--${TONE[freshnessStatus]}`}>
               <span className="stat-value">{databaseHealth.dataFreshnessMinutes}m</span>
@@ -129,11 +132,11 @@ export default function OperationalDashboard({
           <h2 className="ops-section-title">Hämtningar</h2>
           <div className="stats-grid">
             <div className="stat">
-              <span className="stat-value">{operationalStats.totalFetches.toLocaleString()}</span>
+              <span className="stat-value">{operationalStats.totalFetches.toLocaleString('sv-SE')}</span>
               <span className="stat-label">Totalt</span>
             </div>
             <div className="stat">
-              <span className="stat-value stat-value--ok">{operationalStats.successfulFetches.toLocaleString()}</span>
+              <span className="stat-value stat-value--ok">{operationalStats.successfulFetches.toLocaleString('sv-SE')}</span>
               <span className="stat-label">Lyckade</span>
             </div>
             <div className="stat">
@@ -212,7 +215,7 @@ export default function OperationalDashboard({
           <h2 className="ops-section-title">Databas</h2>
           <div className="stats-grid">
             <div className="stat">
-              <span className="stat-value">{databaseHealth.totalEvents.toLocaleString()}</span>
+              <span className="stat-value">{databaseHealth.totalEvents.toLocaleString('sv-SE')}</span>
               <span className="stat-label">Totalt antal händelser</span>
             </div>
             <div className="stat">
@@ -248,12 +251,12 @@ export default function OperationalDashboard({
                 <div className="info-row">
                   <span className="info-label">Uppdaterade händelser</span>
                   <span className="info-value">
-                    {databaseHealth.updatedEvents.toLocaleString()} ({databaseHealth.updatedEventsPercent}%)
+                    {databaseHealth.updatedEvents.toLocaleString('sv-SE')} ({databaseHealth.updatedEventsPercent}%)
                   </span>
                 </div>
                 <div className="info-row">
                   <span className="info-label">Hämtningsloggar</span>
-                  <span className="info-value">{databaseHealth.totalFetchLogs.toLocaleString()}</span>
+                  <span className="info-value">{databaseHealth.totalFetchLogs.toLocaleString('sv-SE')}</span>
                 </div>
               </div>
             </div>

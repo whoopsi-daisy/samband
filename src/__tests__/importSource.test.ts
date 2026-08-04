@@ -86,4 +86,33 @@ describe('listLocalDumps', () => {
     expect(dumps.map((d) => d.name)).toEqual(['new.jsonl', 'old.ndjson']);
     expect(dumps[0].bytes).toBe(1);
   });
+
+  it('returns nothing rather than throwing when the directory is unreadable', () => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+
+    expect(importSource.listLocalDumps()).toEqual([]);
+  });
+
+  /**
+   * A dump can be swapped out between the readdir and the stat, and an operator
+   * doing exactly that is when this endpoint gets polled. Unguarded, the stat
+   * threw and took the whole dashboard panel down with it.
+   */
+  it('skips a dump that disappears between listing and measuring it', () => {
+    fs.writeFileSync(path.join(tempDir, 'stable.ndjson'), 'a');
+    fs.writeFileSync(path.join(tempDir, 'vanishing.ndjson'), 'b');
+
+    const realStat = fs.statSync;
+    jest.spyOn(fs, 'statSync').mockImplementation(((target: fs.PathLike, options?: object) => {
+      if (String(target).endsWith('vanishing.ndjson')) {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      }
+      return realStat(target, options as never);
+    }) as typeof fs.statSync);
+
+    const dumps = importSource.listLocalDumps();
+
+    expect(dumps.map((d) => d.name)).toEqual(['stable.ndjson']);
+    jest.restoreAllMocks();
+  });
 });

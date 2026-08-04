@@ -1628,8 +1628,25 @@ export function getOperationalStats(): OperationalStats {
   // Fetches in last 7d
   const fetches7d = (pdo.prepare('SELECT COUNT(*) as count FROM fetch_log WHERE fetched_at >= ?').get(since7d) as { count: number }).count;
 
-  // Success rate
-  const successRate = totalFetches > 0 ? Math.round((successfulFetches / totalFetches) * 1000) / 10 : 100;
+  /**
+   * Success rate over a stated window.
+   *
+   * This divided the successes by the failures across the whole fetch_log
+   * table, which pruneFetchLog truncates at 30 days: so it was a rolling
+   * 30-day figure wearing no label, drifting silently as old rows aged out, and
+   * it is what colours the dashboard's red/amber/green. A bad afternoon three
+   * weeks ago still tinted today. Naming the window makes the number mean
+   * something and makes the health verdict answer for a period a reader can
+   * hold in their head.
+   */
+  const windowed = pdo
+    .prepare(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(success), 0) AS ok
+         FROM fetch_log WHERE fetched_at >= ?`
+    )
+    .get(since7d) as { total: number; ok: number };
+  const successRate =
+    windowed.total > 0 ? Math.round((windowed.ok / windowed.total) * 1000) / 10 : 100;
 
   // Average fetch interval (in minutes)
   let avgFetchInterval = 30; // default

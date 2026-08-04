@@ -92,9 +92,18 @@ export function listLocalDumps(): Array<{ name: string; bytes: number; modified:
 
   return entries
     .filter((entry) => entry.isFile() && /\.(ndjson|jsonl)(\.txt)?$/i.test(entry.name))
-    .map((entry) => {
-      const stat = fs.statSync(path.join(dataDir, entry.name));
-      return { name: entry.name, bytes: stat.size, modified: stat.mtime.toISOString() };
+    .flatMap((entry) => {
+      // A dump can be moved or deleted between the readdir above and this stat
+      // — an operator swapping one in is exactly when this endpoint gets
+      // polled. Unguarded, that threw and took the whole dashboard panel with
+      // it; the file is simply not there any more, which is not an error worth
+      // failing a listing over.
+      try {
+        const stat = fs.statSync(path.join(dataDir, entry.name));
+        return [{ name: entry.name, bytes: stat.size, modified: stat.mtime.toISOString() }];
+      } catch {
+        return [];
+      }
     })
     .sort((a, b) => b.modified.localeCompare(a.modified));
 }

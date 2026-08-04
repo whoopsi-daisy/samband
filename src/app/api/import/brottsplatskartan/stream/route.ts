@@ -25,16 +25,11 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (data: unknown): void => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          // The client went away between the check and the write.
-          closed = true;
-        }
-      };
-
+      // Declared before `send` so the failure path below can reach it. A write
+      // that throws means the client is gone, which is the same thing an abort
+      // means, so it has to run the same teardown: setting `closed` alone left
+      // this subscriber in the runner's module-level listener set for the life
+      // of the process, and every progress tick went on walking it.
       const close = (): void => {
         if (closed) return;
         closed = true;
@@ -44,6 +39,16 @@ export async function GET(request: NextRequest) {
           controller.close();
         } catch {
           // Already closed by the runtime.
+        }
+      };
+
+      const send = (data: unknown): void => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // The client went away between the check and the write.
+          close();
         }
       };
 

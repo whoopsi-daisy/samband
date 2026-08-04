@@ -1,6 +1,7 @@
 'use client';
 
 import { useMounted } from '@/hooks/useMounted';
+import { VIEWS } from './views';
 
 interface FooterProps {
   lastChecked: Date;
@@ -20,9 +21,11 @@ export default function Footer({ lastChecked }: FooterProps) {
         {mounted ? lastChecked.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
       </span>
       {/* The app has had keyboard shortcuts since it was built and has never
-          said so anywhere. Shown only where there is a keyboard to press. */}
+          said so anywhere. Shown only where there is a keyboard to press.
+          Counted off the nav rather than written out: it said "1 2 3" for a
+          four-view nav, and the missing key was VMA's. */}
       <span className="footer-keys">
-        <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> byter vy · <kbd>/</kbd> söker
+        <kbd>1</kbd>–<kbd>{VIEWS.length}</kbd> byter vy · <kbd>/</kbd> söker
       </span>
     </footer>
   );

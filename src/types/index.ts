@@ -504,6 +504,13 @@ export interface OperationalStats {
   failedFetches: number;
   fetches24h: number;
   fetches7d: number;
+  /**
+   * Percentage of fetches that succeeded over the last 7 days.
+   *
+   * Windowed on purpose: computed over the whole table it was really a rolling
+   * 30-day figure (the retention pruneFetchLog applies) wearing no label, and it
+   * is what decides the dashboard's health colour.
+   */
   successRate: number;
   avgFetchInterval: number;
   lastSuccessfulFetch: string | null;
