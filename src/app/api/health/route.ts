@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, getLastFetchTime, countTrailingEmptyFetches } from '@/lib/db';
+import { logger } from '@/lib/log';
+
+const log = logger('api:health');
 
 // Liveness/readiness probe for the container healthcheck and any external
 // monitoring. Kept free of rate limiting so a probe can never lock itself out.
@@ -56,7 +59,7 @@ export async function GET() {
       { status: degraded ? 503 : 200 }
     );
   } catch (error) {
-    console.error('Health check failed:', error);
+    log.error('health check failed', error);
     return NextResponse.json({ status: 'error' }, { status: 503 });
   }
 }

@@ -8,8 +8,22 @@ import { parseView, readParam } from '@/lib/urlParams';
 
 const EVENTS_PER_PAGE = 40;
 
-// Revalidate every 10 minutes to match the polisen.se API fetch interval
-export const revalidate = 600;
+/*
+ * This page is dynamic, and deliberately so.
+ *
+ * There used to be an `export const revalidate = 600` here, commented as
+ * matching the polisen.se fetch interval. It never did anything: the component
+ * awaits `searchParams`, which opts the route out of static rendering entirely,
+ * so there was no cached render for a revalidation window to apply to. Every
+ * request already re-ran the queries, and the comment claimed a caching layer
+ * that was not there for anyone reading the file afterwards.
+ *
+ * What actually keeps this cheap is the TTL memoisation in lib/cache: the
+ * statistics, the filter options and the archive counts are computed once and
+ * shared across requests, and both paths that change the data invalidate them
+ * explicitly. That is the caching, and it lives where it can be seen.
+ */
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   // Loosely typed on purpose: the same value can arrive under a Swedish name

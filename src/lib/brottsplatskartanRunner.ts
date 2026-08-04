@@ -4,6 +4,9 @@ import { getBpkImportState, updateBpkImportState } from './brottsplatskartanDb';
 import { invalidateAggregateCaches, warmAggregateCaches } from './db';
 import { resolveImportSource } from './importSource';
 import type { BpkImportMode, BpkImportState } from '@/types';
+import { logger } from './log';
+
+const trace = logger('bpk');
 
 // Owns the single in-flight import for this process, and everything needed to
 // watch it happen: a live progress snapshot, a rolling log, and a subscriber
@@ -133,7 +136,7 @@ export function getImportSnapshot(): ImportSnapshot {
 function record(text: string, options: { console?: boolean } = {}): void {
   const entry: ImportLogEntry = { at: new Date().toISOString(), text };
   log = [...log, entry].slice(-LOG_LIMIT);
-  if (options.console !== false) console.log(`[bpk] ${text}`);
+  if (options.console !== false) trace.info(text);
   publish(true);
 }
 
@@ -177,7 +180,7 @@ function updateProgress(next: LiveImportProgress): void {
   if (now - lastConsoleAt >= CONSOLE_INTERVAL_MS) {
     lastConsoleAt = now;
     log = [...log, { at: new Date().toISOString(), text: next.message }].slice(-LOG_LIMIT);
-    console.log(`[bpk] ${next.message}`);
+    trace.info(next.message);
   }
 
   publish(!publishedProgress);
@@ -336,7 +339,7 @@ function begin(handle: RunHandle): void {
       } else {
         const message = (error as { message?: string })?.message ?? String(error);
         record(`${handle.mode} import failed: ${message}`, { console: false });
-        console.error(`[bpk] ${handle.mode} import failed:`, message);
+        trace.error('import failed', message, { mode: handle.mode });
       }
     })
     .finally(() => {
@@ -380,6 +383,6 @@ export function reconcileImportState(): void {
       status: 'idle',
       lastError: 'Interrupted by a restart; resume to continue',
     });
-    console.log('[bpk] cleared stale running state from a previous process');
+    trace.info('cleared stale running state from a previous process');
   }
 }

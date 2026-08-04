@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, ReactNode } from 'react';
+import { reportClientError } from '@/lib/reportClientError';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -22,8 +23,12 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, info.componentStack);
+  componentDidCatch(error: Error) {
+    // Reported to the server, not just to the visitor's console. This was a
+    // `console.error` in a client component, so nobody who could act on it ever
+    // saw it: a crash in production looked, from the operator's side, exactly
+    // like a quiet afternoon.
+    reportClientError(error);
   }
 
   handleRetry = () => {

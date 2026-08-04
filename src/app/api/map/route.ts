@@ -4,6 +4,9 @@ import { formatEventForMap, sanitizeLocation, sanitizeType, sanitizeSearch } fro
 import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
+import { logger } from '@/lib/log';
+
+const log = logger('api:map');
 
 // Events for the map view, fetched when the user actually opens the map.
 //
@@ -60,7 +63,7 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store');
     return addRateLimitHeaders(response, rateLimitResult);
   } catch (error) {
-    console.error('Error fetching map events:', error);
+    log.error('could not read map events', error);
     return NextResponse.json({ error: 'Failed to fetch map events' }, { status: 500 });
   }
 }

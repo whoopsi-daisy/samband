@@ -442,19 +442,6 @@ main:focus { outline: none; }
   flex-shrink: 0;
 }
 
-/* Incident types read as words, not as shouted labels: sentence case at a
-   readable size, because the emoji beside them is doing the fast recognition
-   and the pair should look like a category, not a system tag. */
-.badge--type {
-  height: 22px;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semi);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
 .badge--accent {
   color: var(--pill-accent-ink);
   background: var(--accent-wash);
@@ -2069,11 +2056,6 @@ main {
   font-weight: var(--weight-semi);
 }
 
-.map-status-live {
-  color: var(--ok);
-  font-weight: var(--weight-semi);
-}
-
 /* What the window holds but the map cannot draw. Its own line, because it is a
    caveat on the number beside it rather than part of it. */
 .map-status-missing {
@@ -2483,46 +2465,12 @@ main {
   line-height: var(--leading-normal) !important;
 }
 
-/* Marker popups. Type colour survives here only, with hundreds of pins in a
-   small area, hue is the one fast discriminator. */
-.map-popup h3 {
-  margin: var(--space-2) 0 var(--space-1);
-  font-size: var(--text-ui);
-  font-weight: var(--weight-semi);
-  letter-spacing: var(--tracking-tight);
-}
-
+/* Marker popups. Built as an HTML string for Leaflet, so these compose the
+   app's primitives by class name rather than by component. */
 .map-popup p {
   margin: 0 0 var(--space-1);
   font-size: var(--text-sm);
   color: var(--fg-secondary);
-}
-
-.popup-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-/* Popup markup is built as a string for Leaflet, so it composes the same
-   primitives by class name rather than by component. */
-.map-popup .badge { max-width: 100%; overflow: hidden; }
-
-.popup-time {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-  font-size: var(--text-2xs);
-  color: var(--muted);
-}
-
-.popup-live {
-  width: var(--dot-sm);
-  height: var(--dot-sm);
-  border-radius: var(--radius-full);
-  background: var(--alert);
 }
 
 .popup-place {
@@ -2718,18 +2666,11 @@ main {
   box-shadow: var(--shadow-sm);
 }
 
-.stat--primary { grid-column: span 2; }
-
 .stat-value {
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
-}
-
-.stat--primary .stat-value {
-  font-size: var(--text-2xl);
-  color: var(--accent);
 }
 
 .stat-value--ok { color: var(--ok); }
