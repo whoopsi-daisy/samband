@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
-import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
+import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getCountiesWithEvents, getStatsSummary } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
+import { countyOf } from '@/lib/regions';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
 import { parseView, readParam } from '@/lib/urlParams';
@@ -30,6 +31,10 @@ async function HomeContent({ searchParams }: PageProps) {
   };
 
   const filters = {
+    // countyOf is the sanitiser: it only ever returns one of the twenty-one
+    // canonical names, and it forgives the spellings a hand-typed or shared
+    // link might carry ("Skåne", "skane län", a municipality inside it).
+    county: countyOf(readParam(get, 'county')) ?? '',
     location: sanitizeLocation(readParam(get, 'location')),
     type: sanitizeType(readParam(get, 'type')),
     search: sanitizeSearch(readParam(get, 'search')),
@@ -51,6 +56,7 @@ async function HomeContent({ searchParams }: PageProps) {
   const formattedEvents = events.map(formatEventForUi);
 
   // Get filter options and stats
+  const counties = getCountiesWithEvents();
   const locations = getFilterOptions('location_name');
   const types = getFilterOptions('type');
   const stats = getStatsSummary();
@@ -66,6 +72,7 @@ async function HomeContent({ searchParams }: PageProps) {
 
   return (
     <ClientApp
+      counties={counties}
       initialEvents={formattedEvents}
       totalEvents={totalEvents}
       hasMore={hasMore}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEventsFromDb, countEventsInDb } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
+import { countyOf } from '@/lib/regions';
+import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
 const EVENTS_PER_PAGE = 40;
@@ -43,6 +45,9 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * EVENTS_PER_PAGE;
 
   const filters = {
+    // countyOf is the sanitiser: only ever one of the twenty-one canonical
+    // names, and forgiving of the spellings a shared link may carry.
+    county: countyOf(searchParams.get('county')) ?? undefined,
     location: searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : undefined,
     type: searchParams.get('type') ? sanitizeType(searchParams.get('type')!) : undefined,
     search: searchParams.get('search') ? sanitizeSearch(searchParams.get('search')!) : undefined,
@@ -53,7 +58,7 @@ export async function GET(request: NextRequest) {
     const total = countEventsInDb(filters);
     const formattedEvents = events.map(formatEventForUi);
 
-    const response = NextResponse.json({
+    const response = jsonResponse(request, {
       events: formattedEvents,
       // False at the cap, or the feed's infinite scroll would ask for page 501,
       // be handed page 500 again, and append the same forty rows for ever.

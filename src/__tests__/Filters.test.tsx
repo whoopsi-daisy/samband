@@ -10,9 +10,10 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }));
 
-function renderFilters(filters = { location: '', type: '', search: '' }) {
+function renderFilters(filters = { county: '', location: '', type: '', search: '' }) {
   return render(
     <Filters
+      counties={['Skåne län', 'Stockholms län']}
       locations={['Stockholm', 'Borås']}
       types={['Trafikolycka', 'Rån']}
       currentView="list"
@@ -33,12 +34,13 @@ beforeEach(() => {
 describe('Filters', () => {
   // The search box and both selects share one grid, so they can sit on a
   // single row on a wide screen instead of costing two.
-  it('puts all three controls in one group', () => {
+  it('puts every control in one group', () => {
     const { container } = renderFilters();
 
     const group = container.querySelector('.filters');
     expect(group?.querySelector(':scope > .search-form')).toBeInTheDocument();
-    expect(group?.querySelectorAll(':scope > select.field')).toHaveLength(2);
+    expect(group?.querySelector(':scope > select[name="county"]')).toBeInTheDocument();
+    expect(group?.querySelectorAll(':scope > select.field')).toHaveLength(3);
   });
 
   it('applies a place without waiting for a debounce', () => {
@@ -69,7 +71,7 @@ describe('Filters', () => {
   // A ?location= from a shared link can name a place the dropdown does not
   // list. Without this the control sits blank next to an active filter chip.
   it('carries a place from a shared link that the dropdown does not list', () => {
-    renderFilters({ location: 'Kiruna', type: '', search: '' });
+    renderFilters({ county: '', location: 'Kiruna',  type: '', search: '' });
 
     const select = screen.getByLabelText('Välj plats') as HTMLSelectElement;
     expect([...select.options].map((o) => o.value)).toContain('Kiruna');
@@ -79,7 +81,7 @@ describe('Filters', () => {
   // A bare "Borås" said nothing about whether it was a place, a type or free
   // text.
   it('says which control each active filter came from', () => {
-    renderFilters({ location: 'Borås', type: 'Rån', search: 'fönster' });
+    renderFilters({ county: '', location: 'Borås',  type: 'Rån', search: 'fönster' });
 
     expect(screen.getByText('Plats:')).toBeInTheDocument();
     expect(screen.getByText('Typ:')).toBeInTheDocument();
@@ -88,7 +90,7 @@ describe('Filters', () => {
 
   it('removes one filter without touching the others', () => {
     searchParams = new URLSearchParams({ [QUERY.location]: 'Borås', [QUERY.type]: 'Rån' });
-    renderFilters({ location: 'Borås', type: 'Rån', search: '' });
+    renderFilters({ county: '', location: 'Borås',  type: 'Rån', search: '' });
 
     fireEvent.click(screen.getByRole('button', { name: /ta bort filtret plats/i }));
 
@@ -103,7 +105,7 @@ describe('Filters', () => {
       [QUERY.type]: 'Rån',
       [QUERY.search]: 'fönster',
     });
-    renderFilters({ location: 'Borås', type: 'Rån', search: 'fönster' });
+    renderFilters({ county: '', location: 'Borås',  type: 'Rån', search: 'fönster' });
 
     fireEvent.click(screen.getByRole('button', { name: /rensa alla/i }));
 
@@ -117,7 +119,7 @@ describe('Filters', () => {
   // and should not leave the app writing a URL in two languages.
   it('rewrites an old English query when anything changes', () => {
     searchParams = new URLSearchParams({ view: 'map', location: 'Borås' });
-    renderFilters({ location: 'Borås', type: '', search: '' });
+    renderFilters({ county: '', location: 'Borås',  type: '', search: '' });
 
     fireEvent.change(screen.getByLabelText('Välj händelsetyp'), { target: { value: 'Rån' } });
 
@@ -134,5 +136,49 @@ describe('Filters', () => {
     fireEvent.change(screen.getByLabelText('Välj händelsetyp'), { target: { value: 'Rån' } });
 
     expect(lastUrl().searchParams.get(QUERY.view)).toBe('lista');
+  });
+});
+
+/**
+ * The controls have to follow the filters, not only set them.
+ *
+ * They started from props and were never told again, which is fine while the
+ * selects are the only thing that changes them. They are not: the statistics
+ * page links into a county or a place and this component stays mounted across
+ * that navigation, so the chip read "Län: Stockholms län" while the select
+ * beside it still said "Alla län".
+ */
+describe('when something else sets a filter', () => {
+  it('shows the county the page was navigated to', () => {
+    const { rerender } = renderFilters();
+    expect(screen.getByLabelText('Välj län')).toHaveValue('');
+
+    rerender(
+      <Filters
+        counties={['Skåne län', 'Stockholms län']}
+        locations={['Stockholm', 'Borås']}
+        types={['Trafikolycka', 'Rån']}
+        currentView="list"
+        filters={{ county: 'Stockholms län', location: '', type: '', search: '' }}
+      />
+    );
+
+    expect(screen.getByLabelText('Välj län')).toHaveValue('Stockholms län');
+  });
+
+  it('does the same for a place, which had the same bug', () => {
+    const { rerender } = renderFilters();
+
+    rerender(
+      <Filters
+        counties={['Skåne län', 'Stockholms län']}
+        locations={['Stockholm', 'Borås']}
+        types={['Trafikolycka', 'Rån']}
+        currentView="list"
+        filters={{ county: '', location: 'Borås', type: '', search: '' }}
+      />
+    );
+
+    expect(screen.getByLabelText('Välj plats')).toHaveValue('Borås');
   });
 });

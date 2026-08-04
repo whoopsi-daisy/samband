@@ -19,6 +19,7 @@ interface StatsViewProps {
   stats: Statistics;
   onTypeClick?: (type: string) => void;
   onLocationClick?: (location: string) => void;
+  onCountyClick?: (county: string) => void;
 }
 
 const WEEKDAY_NAMES = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -156,12 +157,20 @@ function signedPercent(change: number): string {
  * country. Folded into the twenty-one counties it answers where in Sweden the
  * notices are written, and against the year before, which way it is going.
  *
- * Deliberately not clickable. The filter behind the feed matches the place
- * string on the notice, and no notice is labelled "Västra Götalands län" unless
- * an officer wrote exactly that, so a row that looked like a filter would
- * return a fraction of what it had just counted.
+ * Clickable now, which it deliberately was not. The filter behind the feed
+ * matched the place string on the notice, and no notice is labelled "Västra
+ * Götalands län" unless an officer wrote exactly that, so a row that looked
+ * like a filter would have returned a fraction of what it had just counted.
+ * The county is a resolved, indexed column on both tables now, so the row can
+ * mean what it looks like it means.
  */
-function RegionTable({ regions }: { regions: RegionBreakdown }) {
+function RegionTable({
+  regions,
+  onSelect,
+}: {
+  regions: RegionBreakdown;
+  onSelect?: (county: string) => void;
+}) {
   const max = Math.max(...regions.rows.map((row) => row.total), 1);
   const hasTrend = regions.trendFrom !== null && regions.rows.some((row) => row.change !== null);
 
@@ -188,10 +197,24 @@ function RegionTable({ regions }: { regions: RegionBreakdown }) {
           {regions.rows.map((row) => (
             <tr key={row.county}>
               <th scope="row">
-                <span className="region-name">{row.county.replace(/ län$/, '')}</span>
-                <span className="region-track" aria-hidden="true">
-                  <span className="region-bar" style={{ width: `${(row.total / max) * 100}%` }} />
-                </span>
+                {/* A button rather than a link: it narrows what is on screen
+                    and switches view, which the app does through the router
+                    with the reader's other filters kept. */}
+                <button
+                  type="button"
+                  className="region-pick"
+                  onClick={() => onSelect?.(row.county)}
+                  title={`Visa händelser i ${row.county}`}
+                  /* The visible text is the county without "län", which the
+                     column heading supplies. On its own, out of the table, it
+                     is "Stockholms" and says nothing about what clicking does. */
+                  aria-label={`Visa händelser i ${row.county}`}
+                >
+                  <span className="region-name">{row.county.replace(/ län$/, '')}</span>
+                  <span className="region-track" aria-hidden="true">
+                    <span className="region-bar" style={{ width: `${(row.total / max) * 100}%` }} />
+                  </span>
+                </button>
               </th>
               <td className="region-num">{(row.share * 100).toFixed(1).replace('.', ',')} %</td>
               <td className="region-num">{sv(row.total)}</td>
@@ -483,7 +506,7 @@ function YearOnYear({ ytd }: { ytd: YearToDate }) {
   );
 }
 
-function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
+function StatsView({ stats, onTypeClick, onLocationClick, onCountyClick }: StatsViewProps) {
   const mounted = useMounted();
   const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '–');
 
@@ -661,7 +684,7 @@ function StatsView({ stats, onTypeClick, onLocationClick }: StatsViewProps) {
                 the country" at a glance and answers nothing precisely; the
                 table under it is where every value actually lives. */}
             <CountyMap regions={stats.regions} />
-            <RegionTable regions={stats.regions} />
+            <RegionTable regions={stats.regions} onSelect={onCountyClick} />
             <p className="chart-caption">
               Andelen är av de {sv(stats.regions.placed)} notiser som går att placera i ett län.
               {stats.regions.unplaced > 0 && (

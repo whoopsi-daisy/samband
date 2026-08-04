@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
-import { escapeLikeWildcards } from './utils';
+import { escapeLikeWildcards, placeFromTitle } from './utils';
 import { countyOf } from './regions';
 import { memoizeWithTtl } from './cache';
 
@@ -21,7 +21,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -42,6 +42,9 @@ function initializeDatabase(database: Database.Database): void {
       type TEXT,
       location_name TEXT,
       location_gps TEXT,
+      -- Resolved from the location field, or from the municipality in the
+      -- notice's title. See migration 5.
+      county TEXT,
       raw_data TEXT,
       fetched_at TEXT,
       content_hash TEXT
@@ -308,6 +311,80 @@ function reconcileSearchTokenizer(database: Database.Database): void {
   buildSearchIndex(database, wanted);
 }
 
+/**
+ * Migration 5: which county each notice is in, as a column.
+ *
+ * The county was derived on the fly, in JavaScript, out of whatever the
+ * location field happened to say — which made the regional breakdown possible
+ * and a county filter impossible. The feed filters on the place string an
+ * officer typed, and no notice is labelled "Skåne län" unless somebody wrote
+ * exactly that, so a filter on the county name would have returned a fraction
+ * of what the same page had just counted.
+ *
+ * Resolved once, at write time, into an indexed column on both tables. Nothing
+ * about the source rows changes: `location_name` still holds what the feed
+ * said, and this sits beside it.
+ *
+ * The archive already carried a `county`, from Brottsplatskartan's own
+ * geocoding, in the same "Skåne län" form. It is normalised through the same
+ * lookup here so the two sources cannot disagree about spelling, and anything
+ * the lookup does not recognise becomes NULL rather than staying as a value
+ * only one of the two tables would ever match.
+ */
+function migrateCountyColumn(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'county')) {
+    database.exec('ALTER TABLE events ADD COLUMN county TEXT');
+  }
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_events_county ON events(county, event_time);
+  `);
+
+  // Live rows: the county comes from the location field, or from the
+  // municipality in the notice's own title where the location is only a county.
+  const live = database
+    .prepare('SELECT id, name, location_name FROM events WHERE county IS NULL')
+    .all() as Array<{ id: number; name: string | null; location_name: string | null }>;
+
+  const setLive = database.prepare('UPDATE events SET county = ? WHERE id = ?');
+  const fillLive = database.transaction((rows: typeof live) => {
+    for (const row of rows) {
+      const location = row.location_name ?? '';
+      const place = placeFromTitle(row.name ?? '', location);
+      setLive.run(countyOf(location) ?? countyOf(place), row.id);
+    }
+  });
+  fillLive(live);
+
+  // Archive rows: normalise whatever the import wrote into the same vocabulary.
+  const archiveExists = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bpk_events'")
+    .get();
+
+  let normalised = 0;
+  if (archiveExists) {
+    const rows = database
+      .prepare('SELECT DISTINCT county FROM bpk_events WHERE county IS NOT NULL')
+      .all() as Array<{ county: string }>;
+    const rename = database.prepare('UPDATE bpk_events SET county = ? WHERE county = ?');
+    const fixAll = database.transaction((values: typeof rows) => {
+      for (const { county } of values) {
+        const canonical = countyOf(county);
+        if (canonical !== county) {
+          normalised += rename.run(canonical, county).changes;
+        }
+      }
+    });
+    fixAll(rows);
+  }
+
+  console.log(
+    `[db] migration: placed ${live.length} live notices in a county` +
+      (normalised > 0 ? `, normalised ${normalised} imported ones` : '')
+  );
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
   if (current >= SCHEMA_VERSION) {
@@ -329,6 +406,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 4) {
     migrateSearchIndex(database);
+  }
+
+  if (current < 5) {
+    migrateCountyColumn(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -533,6 +614,17 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
   const normalizedDatetime = normalizeDateTime(event.datetime);
   const now = new Date().toISOString();
   const contentHash = generateContentHash(event);
+  /*
+   * Which county this is in, resolved once here rather than per query.
+   *
+   * The location field is usually a county already; where it is not, the
+   * municipality in the notice's own title is, and that is the same pair
+   * positionFor uses to place the pin. Null when neither resolves, which is
+   * honest: "Nationellt" is not a county.
+   */
+  const location = event.location.name ?? '';
+  const county =
+    countyOf(location) ?? countyOf(placeFromTitle(event.name ?? '', location));
 
   // Check if event already exists
   const existing = pdo.prepare('SELECT content_hash, event_time FROM events WHERE id = ?').get(event.id) as { content_hash: string; event_time: string } | undefined;
@@ -554,6 +646,7 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
         type = ?,
         location_name = ?,
         location_gps = ?,
+        county = ?,
         raw_data = ?,
         last_updated = ?,
         content_hash = ?
@@ -567,6 +660,7 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
       event.type,
       event.location.name,
       event.location.gps || '',
+      county,
       JSON.stringify(event),
       now,
       contentHash,
@@ -581,8 +675,8 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
   pdo.prepare(`
     INSERT INTO events
     (id, datetime, event_time, publish_time, last_updated, name, summary, url, type,
-     location_name, location_gps, raw_data, fetched_at, content_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     location_name, location_gps, county, raw_data, fetched_at, content_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.id,
     normalizedDatetime,
@@ -595,6 +689,7 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
     event.type,
     event.location.name,
     event.location.gps || '',
+    county,
     JSON.stringify(event),
     now,
     contentHash
@@ -792,6 +887,10 @@ function liveFilterSql(filters: EventFilters): SqlFragment {
   sql += " AND COALESCE(e.summary, '') NOT LIKE ?";
   params.push(PRESS_DESK_PATTERN);
 
+  if (filters.county) {
+    sql += ' AND e.county = ?';
+    params.push(filters.county);
+  }
   if (filters.location) {
     sql += ' AND e.location_name = ?';
     params.push(filters.location);
@@ -848,6 +947,10 @@ function archiveFilterSql(filters: EventFilters): SqlFragment {
   sql += " AND COALESCE(b.description, '') NOT LIKE ?";
   params.push(PRESS_DESK_PATTERN);
 
+  if (filters.county) {
+    sql += ' AND b.county = ?';
+    params.push(filters.county);
+  }
   if (filters.location) {
     sql += ` AND ${ARCHIVE_LOCATION} = ?`;
     params.push(filters.location);
@@ -1032,7 +1135,12 @@ const getMapEventRows = memoizeWithTtl(
     return { rows, total };
   },
   MAP_CACHE_TTL_MS,
-  (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
+  // Every filter that changes the answer has to be in the key. County was
+  // missing from it for the length of one test run: a map filtered to Skåne and
+  // an unfiltered one shared a cache entry, so whichever was asked for first
+  // was served to both for the next minute.
+  (filters, since) =>
+    `${filters.county ?? ''}|${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
 );
 
 /**
@@ -1611,7 +1719,8 @@ const TREND_MIN_BASE = 100;
 function regionBreakdown(
   totals: Map<string, number>,
   months: Array<{ month: string; label: string; total: number }>,
-  now: Date
+  now: Date,
+  coverage: { placed: number; unplaced: number }
 ): RegionBreakdown {
   const monthKey = (year: number, month: number): string =>
     `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -1625,16 +1734,11 @@ function regionBreakdown(
   const allTime = new Map<string, number>();
   const recent = new Map<string, number>();
   const previous = new Map<string, number>();
-  let unplaced = 0;
-  let placed = 0;
+  const { placed, unplaced } = coverage;
 
   for (const [label, count] of totals) {
     const county = countyOf(label);
-    if (!county) {
-      unplaced += count;
-      continue;
-    }
-    placed += count;
+    if (!county) continue;
     allTime.set(county, (allTime.get(county) ?? 0) + count);
   }
 
@@ -1786,7 +1890,15 @@ function computeStatsSummary(): Statistics {
     avgPerDay,
     topTypes: topItems(typeCounts),
     topLocations: topItems(locationCounts),
-    regions: regionBreakdown(locationCounts, [...live.regionMonths, ...(archive?.regionMonths ?? [])], now),
+    regions: regionBreakdown(
+      locationCounts,
+      [...live.regionMonths, ...(archive?.regionMonths ?? [])],
+      now,
+      // Straight from the county column rather than folded out of the location
+      // breakdown, so what the page reports as unplaceable is what the database
+      // actually failed to place, not what a second pass over the names did.
+      getCountyCoverage()
+    ),
     hourly,
     weekdays,
     daily,
@@ -1806,6 +1918,78 @@ function computeStatsSummary(): Statistics {
     archiveEvents: coverage.events,
     archiveCutoff: coverage.cutoff,
   };
+}
+
+/**
+ * Counties that actually have notices, for the filter's own list.
+ *
+ * All twenty-one would be simpler and would offer dead ends: a fresh
+ * deployment has a few days of data and not every county in it, and a select
+ * whose options return nothing is a select that lies about what is there.
+ */
+function computeCountiesWithEvents(): string[] {
+  const pdo = getDatabase();
+  const found = new Set<string>();
+
+  for (const row of pdo
+    .prepare("SELECT DISTINCT county FROM events WHERE county IS NOT NULL AND county != ''")
+    .all() as Array<{ county: string }>) {
+    found.add(row.county);
+  }
+
+  if (hasArchiveEvents()) {
+    for (const row of pdo
+      .prepare(
+        "SELECT DISTINCT county FROM bpk_events WHERE county IS NOT NULL AND county != '' AND pubdate < ?"
+      )
+      .all(getArchiveCutoff()) as Array<{ county: string }>) {
+      found.add(row.county);
+    }
+  }
+
+  // Sorted the way a Swedish reader expects a list of counties, not by code.
+  return [...found].sort((a, b) => a.localeCompare(b, 'sv'));
+}
+
+export const getCountiesWithEvents = memoizeWithTtl(
+  computeCountiesWithEvents,
+  AGGREGATE_CACHE_TTL_MS,
+  () => 'counties'
+);
+
+/**
+ * How many notices could be placed in a county and how many could not.
+ *
+ * A straight query now that the county is a column. It used to be derivable
+ * only by folding the whole location breakdown in JavaScript, which is why the
+ * number lived in a caption and nowhere an operator could read it.
+ */
+export function getCountyCoverage(): { placed: number; unplaced: number } {
+  const pdo = getDatabase();
+  const live = pdo
+    .prepare(
+      `SELECT SUM(CASE WHEN county IS NOT NULL AND county != '' THEN 1 ELSE 0 END) AS placed,
+              SUM(CASE WHEN county IS NULL OR county = '' THEN 1 ELSE 0 END) AS unplaced
+         FROM events`
+    )
+    .get() as { placed: number | null; unplaced: number | null };
+
+  let placed = live.placed ?? 0;
+  let unplaced = live.unplaced ?? 0;
+
+  if (hasArchiveEvents()) {
+    const archive = pdo
+      .prepare(
+        `SELECT SUM(CASE WHEN county IS NOT NULL AND county != '' THEN 1 ELSE 0 END) AS placed,
+                SUM(CASE WHEN county IS NULL OR county = '' THEN 1 ELSE 0 END) AS unplaced
+           FROM bpk_events WHERE pubdate < ?`
+      )
+      .get(getArchiveCutoff()) as { placed: number | null; unplaced: number | null };
+    placed += archive.placed ?? 0;
+    unplaced += archive.unplaced ?? 0;
+  }
+
+  return { placed, unplaced };
 }
 
 export const getFilterOptions = memoizeWithTtl(

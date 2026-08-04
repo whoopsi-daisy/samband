@@ -12,6 +12,7 @@
  */
 export const QUERY = {
   view: 'vy',
+  county: 'lan',
   location: 'plats',
   type: 'typ',
   search: 'sok',
@@ -23,6 +24,9 @@ export type QueryKey = keyof typeof QUERY;
 /** What each parameter used to be called. */
 const LEGACY_QUERY: Record<QueryKey, string> = {
   view: 'view',
+  // New in the same release as the parameter itself, so there is no older
+  // spelling to accept. Kept in the map so the shape stays exhaustive.
+  county: 'lan',
   location: 'location',
   type: 'type',
   search: 'search',

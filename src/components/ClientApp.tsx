@@ -26,10 +26,12 @@ interface ClientAppProps {
   /** Every event matching the current filters, not just the first page. */
   totalEvents: number;
   hasMore: boolean;
+  counties: string[];
   locations: string[];
   types: string[];
   stats: Statistics;
   filters: {
+    county: string;
     location: string;
     type: string;
     search: string;
@@ -78,6 +80,7 @@ function ClientAppContent({
   initialEvents,
   totalEvents,
   hasMore,
+  counties,
   locations,
   types,
   stats,
@@ -119,7 +122,7 @@ function ClientAppContent({
   }, []);
 
   const handleFacetClick = useCallback(
-    (key: 'type' | 'location', value: string) => {
+    (key: 'type' | 'location' | 'county', value: string) => {
       setCurrentView('list');
       const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
       params.set(QUERY.view, viewSlug('list'));
@@ -136,6 +139,11 @@ function ClientAppContent({
 
   const handleLocationClick = useCallback(
     (location: string) => handleFacetClick('location', location),
+    [handleFacetClick]
+  );
+
+  const handleCountyClick = useCallback(
+    (county: string) => handleFacetClick('county', county),
     [handleFacetClick]
   );
 
@@ -226,7 +234,13 @@ function ClientAppContent({
             on both. Without them a filter set on the list silently narrowed the
             map, with nothing on screen saying so or able to undo it. */}
         {(currentView === 'list' || currentView === 'map') && (
-          <Filters locations={locations} types={types} currentView={currentView} filters={filters} />
+          <Filters
+            counties={counties}
+            locations={locations}
+            types={types}
+            currentView={currentView}
+            filters={filters}
+          />
         )}
 
         {currentView === 'list' && (
@@ -257,7 +271,7 @@ function ClientAppContent({
           error={map.error}
           onRetry={map.retry}
           onShowList={showList}
-          isFiltered={Boolean(filters.location || filters.type || filters.search)}
+          isFiltered={Boolean(filters.county || filters.location || filters.type || filters.search)}
         />
 
         {currentView === 'vma' && (
@@ -271,7 +285,12 @@ function ClientAppContent({
         )}
 
         {currentView === 'stats' && (
-          <StatsView stats={stats} onTypeClick={handleTypeClick} onLocationClick={handleLocationClick} />
+          <StatsView
+            stats={stats}
+            onTypeClick={handleTypeClick}
+            onLocationClick={handleLocationClick}
+            onCountyClick={handleCountyClick}
+          />
         )}
       </main>
 
