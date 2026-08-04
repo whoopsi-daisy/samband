@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMapEvents } from '@/lib/db';
-import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
+import { formatEventForMap, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
 // Events for the map view, fetched when the user actually opens the map.
@@ -35,8 +35,11 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    const events = getMapEvents(filters, since);
-    const response = NextResponse.json({ events: events.map(formatEventForUi) });
+    const { rows, total } = getMapEvents(filters, since);
+    // `total` is every notice in the window; `events` may be fewer, because the
+    // query is capped. The map says so rather than presenting a slice as the
+    // whole period, which is what "500 händelser den senaste månaden" did.
+    const response = NextResponse.json({ events: rows.map(formatEventForMap), total });
     // Deliberately uncacheable over HTTP. The payload carries relative times
     // and a "new events" banner depends on this endpoint answering with the
     // current rows, so a browser or proxy holding a copy would show a feed

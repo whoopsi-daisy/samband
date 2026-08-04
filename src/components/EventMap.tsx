@@ -7,7 +7,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 // the augmentation is only visible in a file that imports that module by name;
 // this one otherwise only reaches Leaflet through a dynamic import.
 import type { MarkerClusterGroup } from 'leaflet';
-import { FormattedEvent, TYPE_FAMILIES, TypeFamilyKey, getTypeStyle } from '@/types';
+import { MapEvent, TYPE_FAMILIES, TypeFamilyKey, getTypeStyle } from '@/types';
 import { markerInk } from '@/lib/markerInk';
 import {
   MarkerGroup,
@@ -19,7 +19,13 @@ import {
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
-  events: FormattedEvent[];
+  events: MapEvent[];
+  /**
+   * Notices in the window, which is more than `events` when the query hit its
+   * cap. The two being different is the only way the map can tell the reader
+   * it is showing a slice.
+   */
+  total?: number;
   isActive: boolean;
   /** How far back the map is currently looking. */
   windowDays: number;
@@ -89,7 +95,7 @@ function escapeHtml(str: string): string {
 }
 
 /** How a position is named, taken from one of the incidents filed at it. */
-function placeLabel(event: FormattedEvent): string {
+function placeLabel(event: MapEvent): string {
   return event.place ? `${event.place}, ${event.location}` : event.location || 'Okänd plats';
 }
 
@@ -105,6 +111,7 @@ function relativeTime(ageMs: number): string {
 
 function EventMapInner({
   events,
+  total,
   isActive,
   windowDays,
   onWindowChange,
@@ -140,6 +147,8 @@ function EventMapInner({
    * simply cannot be drawn. That share is a fact the map can state.
    */
   const missing = events.length - mappable;
+  // Only when the server actually reported more than it sent.
+  const truncated = typeof total === 'number' && total > events.length;
   const activeWindow = WINDOWS.find((w) => w.days === windowDays) ?? WINDOWS[0];
 
   // --- Build the map once, when the view is first opened ---
@@ -285,13 +294,26 @@ function EventMapInner({
           const { fill, ink } = markerInk(TYPE_FAMILIES[summary.family].color);
           const label = summary.count.toLocaleString('sv-SE');
 
+          /*
+           * The sr-only line is the cluster's accessible name.
+           *
+           * markercluster builds these markers itself, so there is no options
+           * object to hand a `title` to the way the position markers get one.
+           * Left alone, the focusable element's only text content is the bare
+           * number, and a screen reader announces a cluster of two hundred
+           * incidents as "24". The digits are hidden from the tree and the
+           * sentence stands in for them.
+           */
           return L.divIcon({
             className: 'map-pin-icon',
             html:
               `<span class="map-pin map-pin--many map-pin--cluster` +
               `${summary.recent ? ' map-pin--recent' : ''}" ` +
               `style="--pin-fill:${fill};--pin-ink:${ink};--pin-size:${size}px">` +
-              `${escapeHtml(label)}</span>`,
+              `<span aria-hidden="true">${escapeHtml(label)}</span>` +
+              `<span class="sr-only">${escapeHtml(label)} händelser på flera platser. ` +
+              `Zooma in för att dela upp.</span>` +
+              `</span>`,
             iconSize: [size, size],
             iconAnchor: [size / 2, size / 2],
           });
@@ -301,6 +323,7 @@ function EventMapInner({
 
     const layer = markersLayerRef.current;
     const now = Date.now();
+    const pins: L.Marker[] = [];
 
     for (const group of groups) {
       const family = familyOfGroup(group);
@@ -344,8 +367,18 @@ function EventMapInner({
       (marker as L.Marker & { sambandGroup?: MarkerGroup }).sambandGroup = group;
 
       marker.bindPopup(buildPopup(group, now), { maxWidth: 300 });
-      layer.addLayer(marker);
+      pins.push(marker);
     }
+
+    /*
+     * Added in one call, not one at a time.
+     *
+     * markercluster rebuilds its whole cluster tree on every addLayer, so a
+     * loop of them is that work repeated once per marker. At 500 positions
+     * nobody noticed; the cap is 3,000 now, and addLayers takes the bulk path
+     * that the plugin's own documentation says to use for exactly this.
+     */
+    layer.addLayers(pins);
 
     // Frame the markers once per selection, then leave the reader's own
     // panning and zooming alone.
@@ -488,6 +521,16 @@ function EventMapInner({
               ? `, på ${groups.length.toLocaleString('sv-SE')} platser`
               : ''}
           </span>
+          {/* The count above is what is drawn. When the query hit its cap that
+              is not the whole period, and saying "500 händelser den senaste
+              månaden" about the newest 500 of 1,700 is a number that looks
+              like a total and is not one. */}
+          {truncated && (
+            <span className="map-status-capped">
+              Visar de senaste av {total.toLocaleString('sv-SE')} händelser{' '}
+              {activeWindow.phrase}
+            </span>
+          )}
           {/* Why parts of the country are blank. Only when there is something
               to account for: on a quiet day the whole window is drawable and
               the line would be noise. */}
@@ -505,36 +548,36 @@ function EventMapInner({
           <h2 className="map-key-title">Så läser du kartan</h2>
 
           <ul className="map-key-marks">
-            {/* Short enough that the three sit on one row rather than two and a
-                half. A key is glanced at beside its sample, not read. */}
+            {/* Each label is three or four words and the sample demonstrates
+                it: the middle one really is a 7, so "7 på samma plats" is read
+                rather than worked out. The previous wording explained the
+                marks in sentences, which is a paragraph nobody finishes above
+                a map they came to look at. */}
             <li className="map-key-mark">
               <span className="map-key-sample map-key-sample--single" aria-hidden="true" />
-              <span>En anmälan</span>
+              <span>1 anmälan</span>
             </li>
             <li className="map-key-mark">
               <span className="map-key-sample map-key-sample--group" aria-hidden="true">
                 7
               </span>
-              <span>Antal på samma plats</span>
+              <span>7 på samma plats</span>
             </li>
-            {/* The one mark whose meaning changes when you zoom, so it says so:
-                a reader who does not know these split apart reads a busy south
-                as one enormous incident. */}
             <li className="map-key-mark">
               <span className="map-key-sample map-key-sample--cluster" aria-hidden="true">
                 24
               </span>
-              <span>Flera platser, zooma för att dela upp</span>
+              <span>Zooma in för att dela upp</span>
             </li>
             <li className="map-key-mark">
               <span className="map-key-sample map-key-sample--recent" aria-hidden="true" />
-              <span>Inom senaste timmen</span>
+              <span>Senaste timmen</span>
             </li>
           </ul>
 
           {legend.rows.length > 0 && (
             <>
-              <h3 className="map-key-subtitle">Färgen visar typ av händelse</h3>
+              <h3 className="map-key-subtitle">Typ av händelse</h3>
               <ul className="map-key-colors">
                 {legend.rows.map((item) => (
                   <li className="map-key-color" key={item.key}>
@@ -558,10 +601,11 @@ function EventMapInner({
             </>
           )}
 
-          <p className="map-key-note">
-            Punkten sitter där anmälan skrevs, inte nödvändigtvis där något hände. Polisen anger
-            ofta en kommun eller en ort snarare än en adress, så anmälningar samlas i tätorterna.
-          </p>
+          {/* One line. This was two sentences explaining that the police file
+              against a municipality rather than an address; the part a reader
+              has to know is that the pin is not the address, and that fits in
+              six words. */}
+          <p className="map-key-note">Punkten visar kommunen, inte exakt adress.</p>
         </div>
       </div>
     </div>
@@ -571,8 +615,8 @@ function EventMapInner({
 /** The popup for one position, listing what happened there. */
 function buildPopup(group: MarkerGroup, now: number): string {
   const sorted = [...group.events].sort((a, b) => {
-    const ta = new Date(a.date?.iso || a.datetime).getTime();
-    const tb = new Date(b.date?.iso || b.datetime).getTime();
+    const ta = new Date(a.iso).getTime();
+    const tb = new Date(b.iso).getTime();
     return tb - ta;
   });
 
@@ -586,7 +630,7 @@ function buildPopup(group: MarkerGroup, now: number): string {
   const rows = shown
     .map((e) => {
       const style = getTypeStyle(e.type);
-      const ts = new Date(e.date?.iso || e.datetime).getTime();
+      const ts = new Date(e.iso).getTime();
       const when = isNaN(ts) ? '' : relativeTime(now - ts);
       const link = e.url
         ? `<a href="https://polisen.se${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(e.type)}</a>`

@@ -76,7 +76,7 @@ describe('the press desk boilerplate', () => {
 
   it('stays off the map, where it would land on a county centroid', () => {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const summaries = db.getMapEvents({}, dayAgo).map((e) => e.summary);
+    const summaries = db.getMapEvents({}, dayAgo).rows.map((e) => e.summary);
     expect(summaries.some((s) => s?.includes('presstalesperson'))).toBe(false);
   });
 

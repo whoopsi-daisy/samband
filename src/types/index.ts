@@ -130,6 +130,32 @@ export interface DailyPeak {
   count: number;
 }
 
+/**
+ * A notice as the map needs it, which is far less than the feed needs.
+ *
+ * The map view was handed the same object the list renders: the full notice
+ * text, the formatted date parts, the relative time, the emoji, the update
+ * stamp. It reads six fields and ignored the rest, at 43 gzipped bytes per
+ * notice against 15 — nearly three times the payload for a view that opens on
+ * a phone, and the difference between a month fitting in the response and not.
+ *
+ * `iso` rather than a date object: the map computes its own relative times
+ * against the moment of rendering, so a preformatted one would be frozen at
+ * whatever it said when the response was built.
+ */
+export interface MapEvent {
+  /** "lat,lng", or empty when the notice carries no position. */
+  gps: string;
+  type: string;
+  /** Municipality, when the notice's title named one. */
+  place: string;
+  /** Whatever the feed's location field said, usually a county. */
+  location: string;
+  /** Path under polisen.se, for the popup's link. */
+  url: string;
+  iso: string;
+}
+
 /** One county's share of the record, and which way it is going. */
 export interface RegionStat {
   county: string;

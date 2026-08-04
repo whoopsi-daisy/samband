@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FormattedEvent } from '@/types';
+import { MapEvent } from '@/types';
 
 interface Filters {
   location: string;
@@ -10,7 +10,9 @@ interface Filters {
 }
 
 interface MapEventsState {
-  events: FormattedEvent[];
+  events: MapEvent[];
+  /** Notices in the window, which is more than `events` when the cap bit. */
+  total: number;
   loading: boolean;
   error: boolean;
   /** Retry the fetch in place. The map's error state used to reload the page. */
@@ -26,6 +28,7 @@ interface MapEventsState {
 export function useMapEvents(filters: Filters, isActive: boolean, windowDays: number): MapEventsState {
   const [state, setState] = useState<Omit<MapEventsState, 'retry'>>({
     events: [],
+    total: 0,
     loading: false,
     error: false,
   });
@@ -67,13 +70,19 @@ export function useMapEvents(filters: Filters, isActive: boolean, windowDays: nu
         if (cancelled) return;
         if (!Array.isArray(data.events)) throw new Error('Malformed response');
         loadedKeyRef.current = filterKey;
-        setState({ events: data.events, loading: false, error: false });
+        setState({
+          events: data.events,
+          // Older deployments answered without it; the length is then the truth.
+          total: typeof data.total === 'number' ? data.total : data.events.length,
+          loading: false,
+          error: false,
+        });
       })
       .catch((err) => {
         // An abort is this effect being superseded, not a failure to report.
         if (cancelled || err.name === 'AbortError') return;
         console.error('Failed to load map events:', err);
-        setState({ events: [], loading: false, error: true });
+        setState({ events: [], total: 0, loading: false, error: true });
       });
 
     return () => {
