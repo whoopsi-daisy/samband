@@ -48,14 +48,14 @@ describe('getMapEvents', () => {
   // The shift handover the police publish on a schedule is not an incident,
   // and its marker lands on a county centroid where nothing happened.
   it('leaves the scheduled summary posts off the map', () => {
-    const types = db.getMapEvents({}, dayAgo()).map((e) => e.type);
+    const types = db.getMapEvents({}, dayAgo()).rows.map((e) => e.type);
 
     expect(types).toEqual(expect.arrayContaining(['Trafikolycka', 'Misshandel']));
     expect(types.filter((t) => t.includes('Sammanfattning'))).toEqual([]);
   });
 
   it("still applies the reader's own filters", () => {
-    expect(db.getMapEvents({ type: 'Misshandel' }, dayAgo()).map((e) => e.id)).toEqual([4]);
+    expect(db.getMapEvents({ type: 'Misshandel' }, dayAgo()).rows.map((e) => e.id)).toEqual([4]);
   });
 
   // The feed used to be the exception, which had the app saying two things at
@@ -93,7 +93,7 @@ describe('getMapEvents', () => {
     const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     // Fixtures are minutes old, so an hour reaches them and a year ago does not
     // reach anything newer than itself.
-    expect(db.getMapEvents({}, anHourAgo).length).toBeGreaterThan(0);
-    expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000))).toEqual([]);
+    expect(db.getMapEvents({}, anHourAgo).rows.length).toBeGreaterThan(0);
+    expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000)).rows).toEqual([]);
   });
 });

@@ -992,12 +992,45 @@ export function getEventsFromDb(
  * stamps a relative time ("2 timmar sedan") that would be frozen at whatever it
  * said when the entry was created. Formatting is cheap; the query is not.
  */
-const MAP_EVENT_LIMIT = 500;
+/*
+ * How many notices the map will draw.
+ *
+ * This was 500, and 500 is roughly what the live feed produces in three weeks.
+ * The map's own status line therefore read "500 händelser den senaste
+ * månaden" — a number that looks like a total, is exactly the cap, and is the
+ * newest 500 of them, because the query orders by time descending. The older
+ * third of the month was silently missing and nothing on the page said so.
+ *
+ * Raised, and affordable now that the map is sent a notice shaped for the map
+ * rather than the one the feed renders: about 15 gzipped bytes each instead of
+ * 43. The feed runs near 45 notices a day, so a month is roughly 1,300-1,700
+ * and three thousand is about twice that — enough headroom for a busy month
+ * without becoming an unbounded query. It lands near 25 kB on the wire.
+ *
+ * Still a cap and not "all of them": this endpoint is public and unauthenticated,
+ * and an unbounded query is how the feed's paging turned into a denial of
+ * service. Where it does bite, `total` below is what lets the map say so
+ * instead of quietly showing a slice.
+ */
+const MAP_EVENT_LIMIT = 3000;
 const MAP_CACHE_TTL_MS = 60_000;
 
+export interface MapEventPage {
+  rows: EventWithMetadata[];
+  /** Every notice in the window, whether or not it fit under the cap. */
+  total: number;
+}
+
 const getMapEventRows = memoizeWithTtl(
-  (filters: EventFilters, since: string): EventWithMetadata[] =>
-    getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0),
+  (filters: EventFilters, since: string): MapEventPage => {
+    const scoped = { ...filters, since };
+    const rows = getEventsFromDb(scoped, MAP_EVENT_LIMIT, 0);
+    // Only counted when the cap was actually reached. Under it the rows are
+    // the whole answer, and a second scan of the window would be work done to
+    // learn something already known.
+    const total = rows.length < MAP_EVENT_LIMIT ? rows.length : countEventsInDb(scoped);
+    return { rows, total };
+  },
   MAP_CACHE_TTL_MS,
   (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
 );
@@ -1010,7 +1043,7 @@ const getMapEventRows = memoizeWithTtl(
  * which meant a filter whose incidents were all in the archive fetched five
  * hundred rows and drew none of them.
  */
-export function getMapEvents(filters: EventFilters = {}, since: Date): EventWithMetadata[] {
+export function getMapEvents(filters: EventFilters = {}, since: Date): MapEventPage {
   return getMapEventRows(filters, since.toISOString());
 }
 

@@ -1,4 +1,4 @@
-import { EventWithMetadata, FormattedEvent, getTypeStyle } from '@/types';
+import { EventWithMetadata, FormattedEvent, MapEvent, getTypeStyle } from '@/types';
 import { MUNICIPALITY_CENTROIDS } from './municipalityCentroids';
 
 // Which Swedish calendar day an instant falls on, as "YYYY-MM-DD".
@@ -157,6 +157,29 @@ export function positionFor(location: string, place: string, gps: string): strin
   if (!centroid) return gps;
 
   return `${centroid[0]},${centroid[1]}`;
+}
+
+/**
+ * The same notice, cut down to what the map draws with.
+ *
+ * Shares positionFor with the feed, so a pin and its row never disagree about
+ * where a notice happened.
+ */
+export function formatEventForMap(event: EventWithMetadata): MapEvent {
+  const name = event.name || '';
+  const location = event.location?.name || '';
+  const place = placeFromTitle(name, location);
+  const when = event.event_time || event.datetime || '';
+  const parsed = new Date(when);
+
+  return {
+    gps: positionFor(location, place, event.location?.gps || ''),
+    type: event.type || 'Okänd',
+    place,
+    location,
+    url: event.url || '',
+    iso: isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString(),
+  };
 }
 
 export function formatEventForUi(event: EventWithMetadata): FormattedEvent {

@@ -8,31 +8,22 @@ import {
   summariseCluster,
   type MarkerGroup,
 } from '@/lib/markerGroups';
-import type { FormattedEvent } from '@/types';
+import type { MapEvent } from '@/types';
 
 const RECENT_MS = 60 * 60 * 1000;
 const NOW = Date.parse('2026-08-03T12:00:00.000Z');
 
 const at = (minutesAgo: number) => new Date(NOW - minutesAgo * 60_000).toISOString();
 
-function event(type: string, gps: string, minutesAgo = 120): FormattedEvent {
-  const iso = at(minutesAgo);
+function event(type: string, gps: string, minutesAgo = 120): MapEvent {
   return {
-    id: Math.round(Math.random() * 1e9),
-    datetime: iso,
-    name: `x, ${type}, Ljungby`,
-    summary: '',
-    url: '',
-    type,
-    location: 'Kronobergs län',
-    place: 'Ljungby',
     gps,
-    color: '#000000',
-    emoji: '',
-    date: { day: '03', month: 'Aug', time: '12:00', relative: '', iso },
-    wasUpdated: false,
-    updated: '',
-  } as unknown as FormattedEvent;
+    type,
+    place: 'Ljungby',
+    location: 'Kronobergs län',
+    url: '',
+    iso: at(minutesAgo),
+  };
 }
 
 describe('grouping incidents by position', () => {

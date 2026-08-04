@@ -1,4 +1,4 @@
-import { FormattedEvent, TypeFamilyKey, getTypeStyle } from '@/types';
+import { MapEvent, TypeFamilyKey, getTypeStyle } from '@/types';
 
 /**
  * Two different kinds of grouping, and they are not the same thing.
@@ -21,17 +21,17 @@ import { FormattedEvent, TypeFamilyKey, getTypeStyle } from '@/types';
 export interface MarkerGroup {
   lat: number;
   lng: number;
-  events: FormattedEvent[];
+  events: MapEvent[];
   /** Most recent incident here, as epoch ms. */
   newest: number;
 }
 
-export function timeOf(event: FormattedEvent): number {
-  const ts = new Date(event.date?.iso || event.datetime).getTime();
+export function timeOf(event: MapEvent): number {
+  const ts = new Date(event.iso).getTime();
   return isNaN(ts) ? 0 : ts;
 }
 
-export function groupByPosition(events: FormattedEvent[]): MarkerGroup[] {
+export function groupByPosition(events: MapEvent[]): MarkerGroup[] {
   const groups = new Map<string, MarkerGroup>();
 
   for (const e of events) {

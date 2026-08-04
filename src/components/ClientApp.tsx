@@ -244,6 +244,7 @@ function ClientAppContent({
             loaded tiles survive a trip to the list and back. */}
         <EventMap
           events={map.events}
+          total={map.total}
           isActive={currentView === 'map'}
           windowDays={mapWindowDays}
           onWindowChange={setMapWindowDays}
