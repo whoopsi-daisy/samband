@@ -163,8 +163,14 @@ function VmaView({ alerts, live, failed, loading, onRetry }: VmaViewProps) {
       {!failed && live.length === 0 && (
         /* No warning is the normal state, and the page has to say so plainly
            rather than looking like it failed to load. */
-        <div className="vma-clear">
-          <p className="vma-clear-title">Inget VMA är utfärdat just nu</p>
+        <div className="vma-clear vma-clear--quiet">
+          {/* The normal state, and it should look like one. A card styled the
+              same as a live warning makes a reader check twice to work out
+              that nothing is happening. */}
+          <p className="vma-clear-title">
+            <span className="dot dot--sm" aria-hidden="true" />
+            Inget VMA är utfärdat just nu
+          </p>
           {/* The state this page is in almost always, so it is a line and not
               a paragraph. The examples that used to be here explained what a
               VMA is to someone who is not currently in one. */}
@@ -209,7 +215,7 @@ function VmaView({ alerts, live, failed, loading, onRetry }: VmaViewProps) {
         <a href="https://www.krisinformation.se" target="_blank" rel="noopener noreferrer">
           krisinformation.se
         </a>
-        . Ring 112 vid akut fara.
+        .
       </p>
     </section>
   );

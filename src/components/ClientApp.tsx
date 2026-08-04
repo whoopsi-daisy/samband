@@ -47,7 +47,7 @@ interface ClientAppProps {
  * arriving on any of the three states up front says what is being looked at
  * rather than opening straight onto a control strip.
  */
-const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
+const VIEW_INTRO: Record<string, { title: string; lede: string; quietTitle?: boolean }> = {
   list: {
     title: 'Senaste händelserna',
     lede: 'Polisens händelsenotiser från hela Sverige, nyast först. Tryck på en händelse för att läsa hela texten.',
@@ -62,6 +62,11 @@ const VIEW_INTRO: Record<string, { title: string; lede: string }> = {
   },
   stats: {
     title: 'Statistik',
+    // Off the page, not out of it. Every block below is an h2, so deleting the
+    // h1 outright would leave the view with no top-level heading at all: a
+    // screen reader's heading list would start midway down and the browser tab
+    // would be the only thing naming the page.
+    quietTitle: true,
     // No lede: every block on this view opens with its own, and a page-level
     // one on top of "Den senaste tiden" said the same thing twice before the
     // reader reached a single number.
@@ -213,7 +218,7 @@ function ClientAppContent({
 
       <main id="main-content" tabIndex={-1}>
         <div className="view-header">
-          <h1>{intro.title}</h1>
+          <h1 className={intro.quietTitle ? 'sr-only' : undefined}>{intro.title}</h1>
           {intro.lede && <p>{intro.lede}</p>}
         </div>
 
