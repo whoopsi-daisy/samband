@@ -359,22 +359,55 @@ function assertDataDirWritable(): void {
   }
 }
 
+/**
+ * The database handle, opened and migrated on first use.
+ *
+ * The singleton is assigned only once initialisation has *succeeded*. It used
+ * to be assigned as soon as the file was opened, with the pragmas and the
+ * migrations running afterwards against the module-level variable. So anything
+ * that threw in there: a corrupt FTS index, a disk that filled during the
+ * trigram rebuild, a migration halfway applied, left `db` pointing at a
+ * half-migrated database. The `if (!db)` guard then never ran again, so every
+ * later call handed back that same broken handle, with no retry and nothing
+ * logged after the first failure. The app served SQL errors against missing
+ * tables for the rest of the process's life, while /api/health went on
+ * reporting `ok` for as long as `SELECT COUNT(*) FROM events` happened to work.
+ *
+ * Failing loudly and leaving `db` null means the next request tries again,
+ * which is the recoverable direction: a transient cause (a full disk that gets
+ * cleared) heals itself, and a permanent one keeps saying so.
+ */
 export function getDatabase(): Database.Database {
-  if (!db) {
-    assertDataDirWritable();
+  if (db) return db;
 
-    db = new Database(DB_PATH, { readonly: false });
+  assertDataDirWritable();
 
+  const opened = new Database(DB_PATH, { readonly: false });
+
+  try {
     // Enable WAL mode for better performance
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
-    db.pragma('cache_size = -64000'); // 64MB cache
-    db.pragma('temp_store = MEMORY');
-    db.pragma('foreign_keys = ON');
+    opened.pragma('journal_mode = WAL');
+    opened.pragma('synchronous = NORMAL');
+    opened.pragma('cache_size = -64000'); // 64MB cache
+    opened.pragma('temp_store = MEMORY');
+    opened.pragma('foreign_keys = ON');
 
     // Initialize tables
-    initializeDatabase(db);
+    initializeDatabase(opened);
+  } catch (error) {
+    // Close the handle we are about to drop, or the file (and its -wal) stays
+    // open for nothing on every retry.
+    try {
+      opened.close();
+    } catch {
+      // Already closed, or never fully opened. The original error is the one
+      // worth reporting.
+    }
+    console.error('[db] initialisation failed; the database was not opened:', error);
+    throw error;
   }
+
+  db = opened;
   return db;
 }
 
@@ -515,24 +548,36 @@ function generateContentHash(event: RawEvent): string {
   return hash.toString(16).padStart(8, '0');
 }
 
-// Insert or update event in database
-export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
-  const pdo = getDatabase();
-  const normalizedDatetime = normalizeDateTime(event.datetime);
-  const now = new Date().toISOString();
-  const contentHash = generateContentHash(event);
+export type InsertStatus = 'new' | 'updated' | 'unchanged';
 
-  // Check if event already exists
-  const existing = pdo.prepare('SELECT content_hash, event_time FROM events WHERE id = ?').get(event.id) as { content_hash: string; event_time: string } | undefined;
+/**
+ * The three statements a write touches, compiled once per database handle.
+ *
+ * These used to be built inside insertEvent, which the refresh loop calls once
+ * per event: a refresh of ~500 events compiled roughly a thousand statements,
+ * synchronously, inside an HTTP request. Compiling SQL is the expensive half of
+ * a small write, and better-sqlite3 is built around preparing once and running
+ * many times.
+ *
+ * Keyed on the handle rather than held in a module variable so that a database
+ * replaced after a failed open (see getDatabase) never hands back statements
+ * compiled against the old one. A WeakMap lets the dead handle be collected.
+ */
+interface EventStatements {
+  select: Database.Statement;
+  update: Database.Statement;
+  insert: Database.Statement;
+}
 
-  if (existing) {
-    if (existing.content_hash === contentHash) {
-      return 'unchanged';
-    }
+const eventStatements = new WeakMap<Database.Database, EventStatements>();
 
-    // Content changed - update the event, including recalculating event_time
-    const updatedEventTime = extractEventTime(event) || normalizedDatetime;
-    pdo.prepare(`
+function getEventStatements(pdo: Database.Database): EventStatements {
+  const held = eventStatements.get(pdo);
+  if (held) return held;
+
+  const built: EventStatements = {
+    select: pdo.prepare('SELECT content_hash, event_time FROM events WHERE id = ?'),
+    update: pdo.prepare(`
       UPDATE events SET
         datetime = ?,
         event_time = ?,
@@ -546,7 +591,36 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
         last_updated = ?,
         content_hash = ?
       WHERE id = ?
-    `).run(
+    `),
+    insert: pdo.prepare(`
+      INSERT INTO events
+      (id, datetime, event_time, publish_time, last_updated, name, summary, url, type,
+       location_name, location_gps, raw_data, fetched_at, content_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `),
+  };
+
+  eventStatements.set(pdo, built);
+  return built;
+}
+
+/** One event against already-compiled statements. Callers own the transaction. */
+function applyEvent(statements: EventStatements, event: RawEvent, now: string): InsertStatus {
+  const normalizedDatetime = normalizeDateTime(event.datetime);
+  const contentHash = generateContentHash(event);
+
+  const existing = statements.select.get(event.id) as
+    | { content_hash: string; event_time: string }
+    | undefined;
+
+  if (existing) {
+    if (existing.content_hash === contentHash) {
+      return 'unchanged';
+    }
+
+    // Content changed - update the event, including recalculating event_time
+    const updatedEventTime = extractEventTime(event) || normalizedDatetime;
+    statements.update.run(
       normalizedDatetime,
       updatedEventTime,
       event.name,
@@ -566,12 +640,7 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
   // New event - extract event_time and insert
   const eventTime = extractEventTime(event) || normalizedDatetime;
 
-  pdo.prepare(`
-    INSERT INTO events
-    (id, datetime, event_time, publish_time, last_updated, name, summary, url, type,
-     location_name, location_gps, raw_data, fetched_at, content_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  statements.insert.run(
     event.id,
     normalizedDatetime,
     eventTime,
@@ -588,6 +657,49 @@ export function insertEvent(event: RawEvent): 'new' | 'updated' | 'unchanged' {
     contentHash
   );
   return 'new';
+}
+
+// Insert or update event in database
+export function insertEvent(event: RawEvent): InsertStatus {
+  const pdo = getDatabase();
+  return applyEvent(getEventStatements(pdo), event, new Date().toISOString());
+}
+
+export interface InsertCounts {
+  new: number;
+  updated: number;
+  unchanged: number;
+}
+
+/**
+ * A whole fetch's worth of events, in one transaction.
+ *
+ * The refresh used to call insertEvent in a bare loop, which meant ~500
+ * implicit transactions per refresh: 500 separate commits to the WAL, each with
+ * its own overhead, run synchronously on the request path. One transaction
+ * commits once. The importer already does this (see insertBpkEvents); this is
+ * the same shape applied to the path that actually runs every ten minutes.
+ *
+ * All-or-nothing on purpose: a fetch that fails halfway through leaves the
+ * database exactly as it was, rather than half of a page of events with no
+ * record of which half.
+ */
+export function insertEvents(events: RawEvent[]): InsertCounts {
+  const counts: InsertCounts = { new: 0, updated: 0, unchanged: 0 };
+  if (events.length === 0) return counts;
+
+  const pdo = getDatabase();
+  const statements = getEventStatements(pdo);
+  const now = new Date().toISOString();
+
+  const run = pdo.transaction((batch: RawEvent[]) => {
+    for (const event of batch) {
+      counts[applyEvent(statements, event, now)]++;
+    }
+  });
+  run(events);
+
+  return counts;
 }
 
 // Log a fetch operation
@@ -956,11 +1068,37 @@ export function getEventsFromDb(
 const MAP_EVENT_LIMIT = 500;
 const MAP_CACHE_TTL_MS = 60_000;
 
+/**
+ * Round a window start down to the minute.
+ *
+ * The caller builds `since` as `Date.now() - days * 86400000`, which carries
+ * milliseconds and is therefore a different value on every single request. That
+ * value is part of the cache key below, so the cache this comment claimed to be
+ * a cache never once answered from itself: every /api/map request ran the full
+ * union-and-sort, and every one of them left a permanent entry holding 500 event
+ * objects behind it.
+ *
+ * A minute of slop on a window measured in days is not a difference anyone can
+ * see, and it makes the key stable for exactly as long as the entry lives.
+ * Rounding here rather than in the key function is deliberate: the query and the
+ * key must be built from the same instant, or the cache would answer with rows
+ * fetched for a slightly different window than the one it is keyed on.
+ */
+const MAP_WINDOW_BUCKET_MS = 60_000;
+
+function bucketWindowStart(since: Date): string {
+  const floored = Math.floor(since.getTime() / MAP_WINDOW_BUCKET_MS) * MAP_WINDOW_BUCKET_MS;
+  return new Date(floored).toISOString();
+}
+
 const getMapEventRows = memoizeWithTtl(
   (filters: EventFilters, since: string): EventWithMetadata[] =>
     getEventsFromDb({ ...filters, since }, MAP_EVENT_LIMIT, 0, { excludeSummaries: true }),
   MAP_CACHE_TTL_MS,
-  (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`
+  (filters, since) => `${filters.location ?? ''}|${filters.type ?? ''}|${filters.search ?? ''}|${since}`,
+  // The search term is free text from a query string, so the key space is as
+  // wide as a visitor cares to make it, and each entry here is 500 events.
+  { maxEntries: 32 }
 );
 
 /**
@@ -972,7 +1110,12 @@ const getMapEventRows = memoizeWithTtl(
  * hundred rows and drew none of them.
  */
 export function getMapEvents(filters: EventFilters = {}, since: Date): EventWithMetadata[] {
-  return getMapEventRows(filters, since.toISOString());
+  return getMapEventRows(filters, bucketWindowStart(since));
+}
+
+/** Live entry count of the map cache, for the health endpoint. */
+export function getMapCacheSize(): number {
+  return getMapEventRows.size();
 }
 
 // Count events in database with optional filters

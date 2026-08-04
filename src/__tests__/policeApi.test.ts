@@ -14,11 +14,12 @@ jest.mock('better-sqlite3', () => {
 });
 
 jest.mock('@/lib/db', () => ({
-  insertEvent: jest.fn(() => 'new'),
+  insertEvents: jest.fn(() => ({ new: 0, updated: 0, unchanged: 0 })),
   logFetch: jest.fn(),
   getLastFetchTime: jest.fn(() => null),
   countEventsInDb: jest.fn(() => 0),
   getDailyFetchCount: jest.fn(() => 0),
+  invalidateAggregateCaches: jest.fn(),
 }));
 
 import { decodeHtmlEntities, fetchDetailsText } from '@/lib/policeApi';

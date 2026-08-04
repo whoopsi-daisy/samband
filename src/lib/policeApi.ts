@@ -1,5 +1,5 @@
 import { RawEvent } from '@/types';
-import { insertEvent, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
+import { insertEvents, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
 
 const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
@@ -115,55 +115,93 @@ async function fetchEventsWithBackfill(): Promise<RawEvent[]> {
   return Array.from(allEvents.values());
 }
 
-export async function refreshEventsIfNeeded(): Promise<RefreshResult> {
+const SKIPPED: RefreshResult = { fetched: 0, new: 0, updated: 0, success: true, error: null };
+
+/**
+ * The refresh currently in flight, shared by every caller that asks for one.
+ *
+ * refreshEventsIfNeeded is awaited at the top of every home-page render and
+ * every /api/events request, as well as on a ten-minute timer. Its only guard
+ * was `getLastFetchTime()`, read from the database, and the row that moves that
+ * timestamp is written *after* the fetch completes. So for the whole duration of
+ * a fetch, every concurrent caller read the same stale timestamp, decided a
+ * refresh was due, and started its own.
+ *
+ * On a warm database that meant up to 90 seconds (a 30s timeout, three
+ * attempts) during which every arriving request duplicated the work. On a cold
+ * one it was far worse: below BACKFILL_THRESHOLD events, each of those callers
+ * ran fetchEventsWithBackfill, which is eight sequential requests with sleeps
+ * between them. A single container could put a thundering herd on polisen.se
+ * purely by being popular at the wrong moment, and each duplicate also wrote its
+ * own fetch_log row, which is what the dashboard computes the fetch interval
+ * and the daily count from.
+ *
+ * One promise, awaited by everyone. Callers block for exactly as long as they
+ * did before; they just no longer each pay for it.
+ */
+let inFlight: Promise<RefreshResult> | null = null;
+
+export function refreshEventsIfNeeded(): Promise<RefreshResult> {
+  // Someone is already doing this. Their answer is the answer.
+  if (inFlight) return inFlight;
+
   const lastFetch = getLastFetchTime();
   const shouldFetch = !lastFetch || (Date.now() - lastFetch.getTime()) > CACHE_TIME * 1000;
 
   if (!shouldFetch) {
-    return { fetched: 0, new: 0, updated: 0, success: true, error: null };
+    return Promise.resolve(SKIPPED);
   }
 
   // Check daily fetch limit (max 1440 calls per 24h)
   const dailyFetchCount = getDailyFetchCount();
   if (dailyFetchCount >= MAX_DAILY_FETCHES) {
     console.warn(`Daily fetch limit reached (${dailyFetchCount}/${MAX_DAILY_FETCHES}). Skipping fetch.`);
-    return { fetched: 0, new: 0, updated: 0, success: true, error: null };
+    return Promise.resolve(SKIPPED);
   }
 
+  const run = performRefresh().finally(() => {
+    // Cleared before the promise this returns settles, so the next caller
+    // after a completed refresh starts a fresh one rather than joining a dead
+    // handle.
+    if (inFlight === run) inFlight = null;
+  });
+  inFlight = run;
+  return run;
+}
+
+async function performRefresh(): Promise<RefreshResult> {
   // Check if we need initial backfill (database has few events)
   const dbEventCount = countEventsInDb();
   const needsBackfill = dbEventCount < BACKFILL_THRESHOLD;
 
   let eventsFetched = 0;
-  let eventsNew = 0;
-  let eventsUpdated = 0;
 
   try {
     const events = needsBackfill
       ? await fetchEventsWithBackfill()
       : await fetchWithRetry(POLICE_API_URL);
 
-    for (const event of events) {
-      eventsFetched++;
-      const status = insertEvent(event);
-      if (status === 'new') {
-        eventsNew++;
-      } else if (status === 'updated') {
-        eventsUpdated++;
-      }
-    }
+    eventsFetched = events.length;
 
-    logFetch(eventsFetched, eventsNew, true);
+    // One transaction for the whole page of events, against statements compiled
+    // once. This was a bare loop calling insertEvent per event, which compiled
+    // two statements and committed a transaction for every one of them.
+    const counts = insertEvents(events);
+
+    logFetch(eventsFetched, counts.new, true);
     // Stats and filter options are cached; drop them so the data that just
     // landed shows up on the next request instead of after the TTL.
-    if (eventsNew > 0 || eventsUpdated > 0) {
+    if (counts.new > 0 || counts.updated > 0) {
       invalidateAggregateCaches();
     }
-    return { fetched: eventsFetched, new: eventsNew, updated: eventsUpdated, success: true, error: null };
+    return { fetched: eventsFetched, new: counts.new, updated: counts.updated, success: true, error: null };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logFetch(eventsFetched, eventsNew, false, errorMessage);
-    return { fetched: eventsFetched, new: eventsNew, updated: eventsUpdated, success: false, error: errorMessage };
+    // Nothing was written: insertEvents is all-or-nothing, and a throw before it
+    // never reached the database. Reporting a partial count here would put
+    // numbers in the fetch log for rows that do not exist.
+    logFetch(eventsFetched, 0, false, errorMessage);
+    return { fetched: eventsFetched, new: 0, updated: 0, success: false, error: errorMessage };
   }
 }
 

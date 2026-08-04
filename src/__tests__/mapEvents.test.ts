@@ -76,3 +76,52 @@ describe('getMapEvents', () => {
     expect(db.getMapEvents({}, new Date(Date.now() + 60 * 60 * 1000))).toEqual([]);
   });
 });
+
+/**
+ * The cache in front of the map query.
+ *
+ * The route builds `since` as `Date.now() - days * 86400000`, which carries
+ * milliseconds, so every request produced a different cache key. The cache
+ * therefore never once answered from itself, and because expired entries were
+ * never swept, each request left a permanent entry behind holding up to 500
+ * event objects.
+ */
+describe('the map cache', () => {
+  it('treats two requests a few milliseconds apart as the same window', () => {
+    const base = Date.now() - 24 * 60 * 60 * 1000;
+
+    db.getMapEvents({}, new Date(base));
+    db.getMapEvents({}, new Date(base + 1));
+    db.getMapEvents({}, new Date(base + 37));
+
+    expect(db.getMapCacheSize()).toBe(1);
+  });
+
+  it('still separates genuinely different windows', () => {
+    db.getMapEvents({}, new Date(Date.now() - 24 * 60 * 60 * 1000));
+    db.getMapEvents({}, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
+    expect(db.getMapCacheSize()).toBe(2);
+  });
+
+  it('still separates different filters', () => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    db.getMapEvents({}, since);
+    db.getMapEvents({ type: 'Misshandel' }, since);
+
+    expect(db.getMapCacheSize()).toBe(2);
+  });
+
+  // A search term is free text off a query string, so the key space is as wide
+  // as a visitor cares to make it and each entry is 500 events.
+  it('does not grow without bound on unique search terms', () => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    for (let i = 0; i < 200; i++) {
+      db.getMapEvents({ search: `term-${i}` }, since);
+    }
+
+    expect(db.getMapCacheSize()).toBeLessThanOrEqual(32);
+  });
+});
