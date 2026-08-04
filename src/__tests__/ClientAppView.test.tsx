@@ -70,7 +70,7 @@ function renderApp(initialView: string) {
       locations={['Malmö']}
       types={['Rån']}
       stats={stats}
-      filters={{ county: '', location: '', type: '', search: '' }}
+      filters={{ county: '', location: '', type: '', search: '', from: '', to: '' }}
       initialView={initialView}
       highlightedEventId={null}
       linkedEvent={null}
@@ -116,7 +116,7 @@ describe('which view is on screen', () => {
         locations={['Malmö']}
         types={['Rån']}
         stats={stats}
-        filters={{ county: '', location: '', type: '', search: '' }}
+        filters={{ county: '', location: '', type: '', search: '', from: '', to: '' }}
         initialView="list"
         highlightedEventId={null}
         linkedEvent={null}

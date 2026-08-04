@@ -48,14 +48,45 @@ export interface FormattedEvent {
   updated: string;
 }
 
+/**
+ * The filters as the reader set them, in their own words.
+ *
+ * Distinct from EventFilters, which is what the queries compare against: the
+ * dates here are Swedish calendar days ("2019-04-01") because that is what a
+ * date input holds and what a shared URL should read as, while EventFilters
+ * carries the two UTC instants those days bound.
+ *
+ * Declared once because it was declared three times — ClientApp, Filters and
+ * EventList each had their own copy of the same four fields, so adding a fifth
+ * meant finding all three.
+ */
+export interface FeedFilters {
+  county: string;
+  location: string;
+  type: string;
+  search: string;
+  /** Swedish calendar day, or empty. */
+  from: string;
+  to: string;
+}
+
 export interface EventFilters {
   /** One of Sweden's twenty-one counties, resolved at write time. */
   county?: string;
   location?: string;
   type?: string;
   search?: string;
-  /** ISO timestamp. Only events at or after it, for the map's window. */
+  /** ISO timestamp. Only events at or after it: the map's window, and the
+   *  start of a reader's date range. */
   since?: string;
+  /**
+   * ISO timestamp. Only events at or before it.
+   *
+   * The archive reaches back to 2016 and the feed pages newest-first, so
+   * without an upper bound the only way to reach a particular week was to
+   * guess a word that appears in it. This is the other half of the date range.
+   */
+  until?: string;
 }
 
 // Statistics types

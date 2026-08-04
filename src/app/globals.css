@@ -962,6 +962,7 @@ main {
 }
 
 .filters > .search-form,
+.filters > .filter-period,
 .filters > .active-filters { grid-column: 1 / -1; }
 
 /* Same frame as the selects beside it: height, radius, border weight and
@@ -1104,6 +1105,80 @@ main {
 
   /* The clear button has to fit inside the shorter frame. */
   .filters .search-clear { width: var(--control-md); height: var(--control-md); }
+}
+
+/* ── The period ─────────────────────────────────────────────
+   Folded away by default. Most readers want the last few days, which is what
+   the feed already opens on, so two more permanently visible boxes would cost
+   every visit a row of chrome to serve the rarer question. */
+
+.filter-period > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* A real target, not just a line of text: this is the control that opens the
+     decade of archive underneath it. */
+  min-height: var(--control-sm);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  cursor: pointer;
+  /* The default triangle sits at a different size and offset in every engine;
+     the one drawn below is the app's own. */
+  list-style: none;
+}
+
+.filter-period > summary::-webkit-details-marker { display: none; }
+
+.filter-period > summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.filter-period[open] > summary::before { transform: rotate(90deg); }
+.filter-period > summary:hover { color: var(--fg); }
+
+.filter-period-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.filter-period-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+
+/* A date input carries its own picker button, which has no business being
+   stretched to the height of the row. */
+.filter-period-field .field {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--text-ui);
+  font-weight: var(--weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+}
+
+.filter-period-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  text-wrap: pretty;
 }
 
 .active-filters {

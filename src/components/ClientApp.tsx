@@ -19,7 +19,7 @@ import { VIEWS } from './views';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
-import { FormattedEvent, Statistics } from '@/types';
+import { FeedFilters, FormattedEvent, Statistics } from '@/types';
 import { QUERY, ViewId, readParam, toSwedishParams, viewSlug } from '@/lib/urlParams';
 import { isCountyName } from '@/lib/regions';
 
@@ -32,12 +32,7 @@ interface ClientAppProps {
   locations: string[];
   types: string[];
   stats: Statistics;
-  filters: {
-    county: string;
-    location: string;
-    type: string;
-    search: string;
-  };
+  filters: FeedFilters;
   initialView: string;
   highlightedEventId: number | null;
   /** A ?handelse= link whose event is not in the first page. */

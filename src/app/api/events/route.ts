@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEventsFromDb, countEventsInDb } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
-import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
+import {
+  formatEventForUi,
+  resolveDateRange,
+  sanitizeLocation,
+  sanitizeType,
+  sanitizeSearch,
+} from '@/lib/utils';
 import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
@@ -57,11 +63,17 @@ export async function GET(request: NextRequest) {
     searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : ''
   );
 
+  // The same range the page resolved, so scroll-loading page two of a filtered
+  // range does not quietly hand back page two of the whole archive.
+  const range = resolveDateRange(searchParams.get('from') ?? '', searchParams.get('to') ?? '');
+
   const filters = {
     county: region.county || undefined,
     location: region.location || undefined,
     type: searchParams.get('type') ? sanitizeType(searchParams.get('type')!) : undefined,
     search: searchParams.get('search') ? sanitizeSearch(searchParams.get('search')!) : undefined,
+    since: range.since,
+    until: range.until,
   };
 
   try {

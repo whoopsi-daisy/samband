@@ -108,6 +108,35 @@ describe('what the site says about itself', () => {
       expect(all.toLowerCase()).not.toContain(tracker);
     }
   });
+
+  /**
+   * The one thing the browser sends back on its own.
+   *
+   * A render crash is reported to the server, because otherwise nobody who
+   * could fix it ever learns it happened. That is the only unprompted call the
+   * page makes, and it is not analytics: it fires on a fault, carries no
+   * identity, and is bounded here rather than only in a comment.
+   */
+  it('keeps the crash reporter to a crash report', () => {
+    const reporter = read('src/lib/reportClientError.ts');
+
+    // The path says which view broke. The query string can hold what someone
+    // searched for, which is not ours to write into a log.
+    expect(reporter).toContain('window.location.pathname');
+    expect(reporter).not.toContain('window.location.search');
+    expect(reporter).not.toContain('window.location.href');
+
+    // No identity of any kind, and nothing persisted to recognise a return.
+    for (const forbidden of ['document.cookie', 'localStorage', 'sessionStorage', 'referrer']) {
+      expect(reporter).not.toContain(forbidden);
+    }
+
+    // It answers a fault; it is not called from a render path.
+    const callers = ['src/app/error.tsx', 'src/components/ErrorBoundary.tsx'];
+    for (const caller of callers) {
+      expect(read(caller)).toContain('reportClientError');
+    }
+  });
 });
 
 describe('map attribution', () => {
