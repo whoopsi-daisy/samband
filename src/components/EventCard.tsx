@@ -50,7 +50,10 @@ export default function EventCard({ event, onShowMap, isHighlighted, isToday = t
     setError(false);
     try {
       const params = new URLSearchParams();
-      if (isArchived) params.set('id', String(event.id));
+      // The id goes up for live notices too, not only archived ones: it is what
+      // lets the server keep the text it scraped against the row, instead of
+      // fetching polisen.se again for every reader who opens the same incident.
+      if (event.id !== null) params.set('id', String(event.id));
       if (event.url) params.set('url', event.url);
       const res = await fetch(`/api/details?${params}`);
       const data = await res.json();

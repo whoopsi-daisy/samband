@@ -26,7 +26,7 @@ export function getDataDir(): string {
 }
 
 // Bump when a migration is added below.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 // Singleton database instance
 let db: Database.Database | null = null;
@@ -424,6 +424,30 @@ function migrateFetchErrorClass(database: Database.Database): void {
   log.info('migration: classified stored fetch failures', { rows: rows.length });
 }
 
+/**
+ * Migration 7: somewhere to keep the text of a notice once we have fetched it.
+ *
+ * Expanding a card scraped polisen.se, every time, for every reader. Two people
+ * opening the same incident meant two scrapes; one person opening it, collapsing
+ * it and opening it again meant two more. Nothing was kept, even though the
+ * imported half of the dataset has always answered the identical question out of
+ * this same database in microseconds.
+ *
+ * The text of a published notice barely changes, and when it does the source
+ * says so: `was_updated` is already tracked, and the write path clears this
+ * column whenever it sees a notice change, so a correction is never served from
+ * a stale copy.
+ */
+function migrateDetailTextColumn(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'detail_text')) {
+    database.exec('ALTER TABLE events ADD COLUMN detail_text TEXT');
+  }
+  if (!columns.some((column) => column.name === 'detail_fetched_at')) {
+    database.exec('ALTER TABLE events ADD COLUMN detail_fetched_at TEXT');
+  }
+}
+
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
   if (current >= SCHEMA_VERSION) {
@@ -453,6 +477,10 @@ function runMigrations(database: Database.Database): void {
 
   if (current < 6) {
     migrateFetchErrorClass(database);
+  }
+
+  if (current < 7) {
+    migrateDetailTextColumn(database);
   }
 
   setSchemaVersion(database, SCHEMA_VERSION);
@@ -726,7 +754,13 @@ function getEventStatements(pdo: Database.Database): EventStatements {
         county = ?,
         raw_data = ?,
         last_updated = ?,
-        content_hash = ?
+        content_hash = ?,
+        -- The notice changed, so whatever full text we scraped for the old
+        -- wording is no longer the notice. Dropped rather than refetched: the
+        -- next reader who opens the row will fetch it, and most corrections are
+        -- never opened again.
+        detail_text = NULL,
+        detail_fetched_at = NULL
       WHERE id = ?
     `),
     insert: pdo.prepare(`
@@ -869,6 +903,31 @@ export function logFetch(eventsFetched: number, eventsNew: number, success: bool
     INSERT INTO fetch_log (fetched_at, events_fetched, events_new, success, error_message, error_class)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(new Date().toISOString(), eventsFetched, eventsNew, success ? 1 : 0, error || null, errorClass);
+}
+
+/**
+ * The stored full text of a live notice, if it has been fetched before.
+ *
+ * Null means "not fetched yet", not "no text": a notice whose scrape genuinely
+ * yielded nothing is not stored, so it is retried rather than being remembered
+ * as empty forever.
+ */
+export function getEventDetailText(id: number): string | null {
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const pdo = getDatabase();
+  const row = pdo.prepare('SELECT detail_text FROM events WHERE id = ?').get(id) as
+    | { detail_text: string | null }
+    | undefined;
+  return row?.detail_text ?? null;
+}
+
+/** Keep what a scrape returned, so the next reader does not pay for it again. */
+export function saveEventDetailText(id: number, text: string): void {
+  if (!Number.isInteger(id) || id <= 0 || text === '') return;
+  const pdo = getDatabase();
+  pdo
+    .prepare('UPDATE events SET detail_text = ?, detail_fetched_at = ? WHERE id = ?')
+    .run(text, new Date().toISOString(), id);
 }
 
 // Prune fetch_log entries older than the retention window to keep the
