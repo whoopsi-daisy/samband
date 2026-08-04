@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, ReactNode } from 'react';
+import { memo, useMemo, useState, ReactNode } from 'react';
 import {
   Statistics,
   TYPE_FAMILIES,
@@ -13,6 +13,7 @@ import {
   getTypeStyle,
 } from '@/types';
 import { useMounted } from '@/hooks/useMounted';
+import { regionsForType } from '@/lib/regionRows';
 import CountyMap from './CountyMap';
 
 interface StatsViewProps {
@@ -506,6 +507,102 @@ function YearOnYear({ ytd }: { ytd: YearToDate }) {
   );
 }
 
+/**
+ * Sweden by county, with a control to narrow it to one type of notice.
+ *
+ * The unfiltered map is close to a population map and says so in its own note:
+ * Stockholm is darkest because Stockholm is where the people are, which is
+ * true and is not a finding. Narrowing to one type is where the block earns
+ * its place, because a type whose map does not follow the population is a
+ * pattern, and that comparison is the thing markers cannot show.
+ *
+ * The whole cube ships with the page, so changing the selection re-renders and
+ * makes no request. That is what makes flicking through the list viable, which
+ * is how this control is actually used.
+ */
+function RegionBlock({
+  stats,
+  onCountyClick,
+  trendWindow,
+}: {
+  stats: Statistics;
+  onCountyClick?: (county: string) => void;
+  trendWindow: string | null;
+}) {
+  const [type, setType] = useState('');
+
+  const regions = useMemo(
+    () => (type ? regionsForType(stats.regionTypes, type) : stats.regions),
+    [type, stats.regionTypes, stats.regions]
+  );
+
+  // Falls back to the whole record rather than showing an empty map: a type
+  // with nothing behind it should not be in the list, but a stale selection
+  // after a reload should not blank the block either.
+  const showing = regions.rows.length > 1 ? regions : stats.regions;
+  const filtered = showing === regions && type !== '';
+
+  return (
+    <Block
+      title="Län för län"
+      lede="Var i landet notiserna skrivs, och åt vilket håll det har gått det senaste året."
+    >
+      <div className="card">
+        {stats.regionTypes.types.length > 0 && (
+          <div className="region-filter">
+            <label className="region-filter-label" htmlFor="region-type">
+              Händelsetyp
+            </label>
+            <select
+              id="region-type"
+              className="field region-filter-select"
+              value={type}
+              onChange={(event) => setType(event.target.value)}
+            >
+              <option value="">Alla händelser</option>
+              {stats.regionTypes.types.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            {/* Just the count. The selection is in the control an inch to the
+                left and the caption below names the type again, so a chip
+                repeating it is the same sentence three times. */}
+            <span className="region-filter-count">{sv(showing.placed)} notiser på kartan</span>
+          </div>
+        )}
+
+        {/* The overview first, then the numbers. The map answers "where in
+            the country" at a glance and answers nothing precisely; the
+            table under it is where every value actually lives. */}
+        <CountyMap regions={showing} />
+        <RegionTable regions={showing} onSelect={onCountyClick} />
+        <p className="chart-caption">
+          {/* "notiser om X" rather than a plural of the type itself: the names
+              run from "Rån" to "Stöld/inbrott, försök" and there is no rule
+              that pluralises all of them. */}
+          Andelen är av de {sv(showing.placed)} notiser
+          {filtered ? ` om ${type.toLowerCase()}` : ''} som går att placera i ett län.
+          {showing.unplaced > 0 && (
+            <>
+              {' '}
+              {sv(showing.unplaced)} till saknar en plats som går att placera och räknas inte med
+              här.
+            </>
+          )}
+          {trendWindow && showing.trendFrom && (
+            <>
+              {' '}
+              Jämförelsen är de tolv månaderna från {trendWindow} mot de tolv närmast före.
+            </>
+          )}
+        </p>
+      </div>
+    </Block>
+  );
+}
+
 function StatsView({ stats, onTypeClick, onLocationClick, onCountyClick }: StatsViewProps) {
   const mounted = useMounted();
   const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '–');
@@ -675,34 +772,7 @@ function StatsView({ stats, onTypeClick, onLocationClick, onCountyClick }: Stats
           which is the question the page exists for and the one it could not
           previously answer at all. */}
       {stats.regions.rows.length > 1 && (
-        <Block
-          title="Län för län"
-          lede="Var i landet notiserna skrivs, och åt vilket håll det har gått det senaste året."
-        >
-          <div className="card">
-            {/* The overview first, then the numbers. The map answers "where in
-                the country" at a glance and answers nothing precisely; the
-                table under it is where every value actually lives. */}
-            <CountyMap regions={stats.regions} />
-            <RegionTable regions={stats.regions} onSelect={onCountyClick} />
-            <p className="chart-caption">
-              Andelen är av de {sv(stats.regions.placed)} notiser som går att placera i ett län.
-              {stats.regions.unplaced > 0 && (
-                <>
-                  {' '}
-                  {sv(stats.regions.unplaced)} till saknar en plats som går att placera och räknas
-                  inte med här.
-                </>
-              )}
-              {trendWindow && (
-                <>
-                  {' '}
-                  Jämförelsen är de tolv månaderna från {trendWindow} mot de tolv närmast före.
-                </>
-              )}
-            </p>
-          </div>
-        </Block>
+        <RegionBlock stats={stats} onCountyClick={onCountyClick} trendWindow={trendWindow} />
       )}
 
       {/* The long view, which is where nearly all of the data is once an

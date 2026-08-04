@@ -151,6 +151,86 @@ describe('what the filter offers', () => {
   });
 });
 
+/*
+ * The county breakdown, per type.
+ *
+ * Counted off the county column in SQL rather than folded out of the place
+ * names in JavaScript, so what the filtered map shows for a county is what
+ * clicking that county returns from the feed.
+ */
+describe('the per-type county cube', () => {
+  const seed = (county: string, town: string, type: string, times: number) => {
+    for (let i = 0; i < times; i++) notice(county, town, type);
+  };
+
+  // Enough of a type to clear TYPE_MAP_MIN_TOTAL, split across two counties so
+  // the breakdown has something to break down.
+  const seedMappableType = (type: string, skane: number, stockholm: number) => {
+    seed('Skåne län', 'Malmö', type, skane);
+    seed('Stockholms län', 'Stockholm', type, stockholm);
+  };
+
+  it('splits each county by type', () => {
+    seedMappableType('Stöld', 120, 90);
+    seedMappableType('Brand', 60, 150);
+
+    const { cells } = db.getStatsSummary().regionTypes;
+    expect(cells['Skåne län']['Stöld'][0]).toBe(120);
+    expect(cells['Skåne län']['Brand'][0]).toBe(60);
+    expect(cells['Stockholms län']['Stöld'][0]).toBe(90);
+    expect(cells['Stockholms län']['Brand'][0]).toBe(150);
+  });
+
+  // The one invariant that ties the block together: the filtered map and the
+  // unfiltered one must be counting the same rows.
+  it('sums back to what the unfiltered breakdown counted', () => {
+    seedMappableType('Stöld', 120, 90);
+    seedMappableType('Brand', 60, 150);
+
+    const stats = db.getStatsSummary();
+    expect(stats.regions.rows.length).toBeGreaterThan(1);
+    for (const row of stats.regions.rows) {
+      const byType = stats.regionTypes.cells[row.county] ?? {};
+      const summed = Object.values(byType).reduce((total, cell) => total + cell[0], 0);
+      expect(summed).toBe(row.total);
+    }
+  });
+
+  it('keeps notices with no county out of the cells and in unplaced', () => {
+    seedMappableType('Stöld', 120, 90);
+    seed('Nationellt', 'Hela landet', 'Stöld', 30);
+
+    const { cells, unplaced } = db.getStatsSummary().regionTypes;
+    expect(cells['Skåne län']['Stöld'][0]).toBe(120);
+    expect(cells['Stockholms län']['Stöld'][0]).toBe(90);
+    expect(unplaced['Stöld']).toBe(30);
+  });
+
+  it('leaves a county with none of a type out of that type entirely', () => {
+    seedMappableType('Stöld', 120, 90);
+    seed('Skåne län', 'Lund', 'Brand', 210);
+
+    const { cells } = db.getStatsSummary().regionTypes;
+    expect(cells['Skåne län']['Brand'][0]).toBe(210);
+    expect(cells['Stockholms län']['Brand']).toBeUndefined();
+  });
+
+  /*
+   * Spread over twenty-one counties, a type with a handful of notices is single
+   * digits per county, and a choropleth of single digits is four shades of
+   * noise with Stockholm on top because Stockholm is where the people are.
+   * Offering it in the filter is offering a finding that is not there.
+   */
+  it('offers no type too thin to shade a map with', () => {
+    seedMappableType('Stöld', 120, 90);
+    seed('Skåne län', 'Lund', 'Brand', db.TYPE_MAP_MIN_TOTAL - 1);
+
+    const { types } = db.getStatsSummary().regionTypes;
+    expect(types).toContain('Stöld');
+    expect(types).not.toContain('Brand');
+  });
+});
+
 describe('how much of the record could be placed', () => {
   // Previously derivable only by folding the whole location breakdown in
   // JavaScript, which is why the number lived in a caption and nowhere an
