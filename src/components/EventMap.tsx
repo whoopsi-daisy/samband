@@ -16,6 +16,7 @@ import {
   groupByPosition,
   summariseCluster,
 } from '@/lib/markerGroups';
+import { formatRelativeTime } from '@/lib/utils';
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
@@ -219,16 +220,6 @@ function escapeHtml(str: string): string {
 /** How a position is named, taken from one of the incidents filed at it. */
 function placeLabel(event: MapEvent): string {
   return event.place ? `${event.place}, ${event.location}` : event.location || 'Okänd plats';
-}
-
-function relativeTime(ageMs: number): string {
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 2) return 'Just nu';
-  if (minutes < 60) return `${minutes} min sedan`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} tim sedan`;
-  const days = Math.floor(hours / 24);
-  return `${days} ${days === 1 ? 'dygn' : 'dygn'} sedan`;
 }
 
 function EventMapInner({
@@ -754,7 +745,11 @@ function buildPopup(group: MarkerGroup, now: number): string {
     .map((e) => {
       const style = getTypeStyle(e.type);
       const ts = new Date(e.iso).getTime();
-      const when = isNaN(ts) ? '' : relativeTime(now - ts);
+      // The same words the feed uses for the same age. The map had its own
+      // implementation that said "3 dygn sedan" where a card said "3 dagar
+      // sedan", and stopped at days, so a marker near the end of the month-long
+      // window read "29 dygn sedan" against the feed's "4 veckor sedan".
+      const when = isNaN(ts) ? '' : formatRelativeTime(new Date(ts), new Date(now));
       const link = e.url
         ? `<a href="https://polisen.se${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(e.type)}</a>`
         : escapeHtml(e.type);
