@@ -549,10 +549,21 @@ function RegionBlock({
     [type, stats.regionTypes, stats.regions]
   );
 
-  // Falls back to the whole record rather than showing an empty map: a type
-  // with nothing behind it should not be in the list, but a stale selection
-  // after a reload should not blank the block either.
-  const showing = regions.rows.length > 1 ? regions : stats.regions;
+  /*
+   * Falls back to the whole record only when the selection has nothing at all.
+   *
+   * This tested for more than one county, which silently swapped a filtered map
+   * for the unfiltered one whenever a type turned out to be concentrated in a
+   * single county — while the select carried on showing the type, so the reader
+   * was told they were looking at one thing and shown another. That case is not
+   * an edge case worth degrading: a type that clears two hundred notices and
+   * lands in one county is the strongest finding this control can produce, and
+   * one county shaded against twenty greyed is exactly the right picture of it.
+   *
+   * Nothing at all is still worth guarding, for a ?lantyp= the breakdown does
+   * not carry: blanking the block on a stale link is worse than ignoring it.
+   */
+  const showing = type && regions.rows.length > 0 ? regions : stats.regions;
   const filtered = showing === regions && type !== '';
 
   return (

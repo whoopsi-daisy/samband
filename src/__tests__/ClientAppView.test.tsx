@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import ClientApp from '@/components/ClientApp';
 import type { Statistics } from '@/types';
 
@@ -26,7 +26,14 @@ jest.mock('next/navigation', () => ({
 // a decade of statistics out of a test about navigation.
 jest.mock('@/components/EventList', () => ({
   __esModule: true,
-  default: () => <div>feed</div>,
+  default: ({ onClearFilters }: { onClearFilters?: () => void }) => (
+    <div>
+      feed
+      <button type="button" onClick={onClearFilters}>
+        clear filters
+      </button>
+    </div>
+  ),
 }));
 jest.mock('@/components/EventMap', () => ({
   __esModule: true,
@@ -142,5 +149,33 @@ describe('what a link carries', () => {
     renderApp('map');
 
     expect(screen.getByText('map')).toBeInTheDocument();
+  });
+});
+
+describe('clearing the filters', () => {
+  /*
+   * "Rensa alla" sits under an empty feed and offers to widen the search. It
+   * built a fresh query from nothing, so it also threw away the map's period
+   * and the county map's type: it cleared the filters and silently reset what
+   * the reader was looking at as well. The same control inside Filters already
+   * deleted only the four filter parameters.
+   */
+  it('clears the filters and keeps the rest of the context', () => {
+    searchParams = new URLSearchParams(
+      'vy=lista&lan=Skåne län&plats=Malmö&typ=Rån&sok=cykel&dagar=30&lantyp=Stöld'
+    );
+    renderApp('list');
+
+    fireEvent.click(screen.getByText('clear filters'));
+
+    const url = new URL(push.mock.calls.at(-1)![0], 'http://localhost');
+    expect(url.searchParams.get('lan')).toBeNull();
+    expect(url.searchParams.get('plats')).toBeNull();
+    expect(url.searchParams.get('typ')).toBeNull();
+    expect(url.searchParams.get('sok')).toBeNull();
+
+    expect(url.searchParams.get('dagar')).toBe('30');
+    expect(url.searchParams.get('lantyp')).toBe('Stöld');
+    expect(url.searchParams.get('vy')).toBe('lista');
   });
 });

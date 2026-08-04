@@ -231,6 +231,57 @@ describe('the per-type county cube', () => {
   });
 });
 
+/*
+ * "Vanligaste platser" answers "is my own town in here".
+ *
+ * A county cannot answer it, and county rows there were actively wrong once the
+ * rows became filters: the row counted the notices whose location string was
+ * literally "Skåne län", while clicking it filters by county and returns every
+ * notice in Skåne. The number shown and the number returned disagreed.
+ */
+describe('the most common places', () => {
+  // The list is built from the location field on the notice, so this seeds that
+  // field directly rather than going through the municipality in the title.
+  const at = (location: string, times: number) => {
+    for (let i = 0; i < times; i++) notice(location, location);
+  };
+
+  it('leaves the counties to the block that resolves them', () => {
+    at('Skåne län', 5);
+    at('Ljungby', 3);
+
+    const labels = db.getStatsSummary().topLocations.map((row) => row.label);
+
+    // "Skåne län" is the location on five of these and the most common string
+    // in the data, and it is not a place a reader looks for themselves in.
+    expect(labels).not.toContain('Skåne län');
+    expect(labels).toContain('Ljungby');
+  });
+
+  // Filtered before the top eight are taken, so the card keeps its length
+  // rather than losing however many of its rows were counties.
+  it('still fills the list when counties are among the most common', () => {
+    at('Skåne län', 20);
+    at('Stockholms län', 18);
+    for (const town of ['Lund', 'Helsingborg', 'Ystad', 'Kristianstad']) at(town, 2);
+
+    const labels = db.getStatsSummary().topLocations.map((row) => row.label);
+    expect(labels).toEqual(expect.arrayContaining(['Lund', 'Helsingborg', 'Ystad', 'Kristianstad']));
+  });
+
+  // What the row says is what clicking it returns, which is the whole point of
+  // taking the counties out: a county row counted the notices labelled with the
+  // county, while clicking it filters by county and returns every notice in it.
+  it('agrees with what filtering on the row returns', () => {
+    at('Ljungby', 4);
+    at('Skåne län', 2);
+
+    for (const row of db.getStatsSummary().topLocations) {
+      expect(row.total).toBe(db.countEventsInDb({ location: row.label }));
+    }
+  });
+});
+
 describe('how much of the record could be placed', () => {
   // Previously derivable only by folding the whole location breakdown in
   // JavaScript, which is why the number lived in a caption and nowhere an
