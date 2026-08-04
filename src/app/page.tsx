@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
-import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getCountiesWithEvents, getStatsSummary } from '@/lib/db';
+import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
-import { countyOf } from '@/lib/regions';
+import { COUNTIES, countyOf } from '@/lib/regions';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
 import { parseView, readParam } from '@/lib/urlParams';
@@ -56,7 +56,21 @@ async function HomeContent({ searchParams }: PageProps) {
   const formattedEvents = events.map(formatEventForUi);
 
   // Get filter options and stats
-  const counties = getCountiesWithEvents();
+  /*
+   * All twenty-one, always.
+   *
+   * The place dropdown beside it is derived from the data because there is no
+   * canonical list of place names: the feed invents them, and only the database
+   * knows which exist. Counties are not that. They are a fixed administrative
+   * taxonomy, and querying which ones happen to have a row costs 117 ms over a
+   * 338,000-row archive to return, every time, all twenty-one.
+   *
+   * It would also make the control less predictable rather than more: a list
+   * that grows as data arrives means "why is Jämtland missing today" — a harder
+   * question than "why does Jämtland show nothing", which the empty state
+   * already answers with a way out.
+   */
+  const counties = [...COUNTIES];
   const locations = getFilterOptions('location_name');
   const types = getFilterOptions('type');
   const stats = getStatsSummary();

@@ -5,6 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { RawEvent } from '@/types';
+import { COUNTIES } from '@/lib/regions';
 
 let tempDir: string;
 let db: typeof import('@/lib/db');
@@ -123,26 +124,30 @@ describe('filtering by county', () => {
 });
 
 describe('what the filter offers', () => {
-  // All twenty-one would be simpler and would offer dead ends: a select whose
-  // options return nothing is a select that lies about what is there.
-  it('lists only counties that have notices', () => {
-    notice('Skåne län', 'Malmö');
-    notice('Nationellt', 'Ljungby');
-
-    expect(db.getCountiesWithEvents()).toEqual(['Kronobergs län', 'Skåne län']);
+  /*
+   * All twenty-one, from the constant, not from the data.
+   *
+   * The place dropdown beside it is derived from the database because there is
+   * no canonical list of place names — the feed invents them. Counties are a
+   * fixed administrative taxonomy, so asking the database which ones exist
+   * costs a scan to return, every time, the list we already had.
+   */
+  it('is the full set of counties, in Swedish order', () => {
+    expect(COUNTIES).toHaveLength(21);
+    expect(COUNTIES[0]).toBe('Blekinge län');
+    // Ö sorts after Z in Swedish, so Östergötland is last and not near O.
+    expect(COUNTIES[COUNTIES.length - 1]).toBe('Östergötlands län');
+    expect([...COUNTIES]).toEqual([...COUNTIES].sort((a, b) => a.localeCompare(b, 'sv')));
   });
 
-  it('sorts them the way a Swedish reader expects', () => {
-    notice('Örebro län', 'Örebro');
+  // Picking one with nothing in it is a dead end the empty state already
+  // handles, and a far smaller surprise than a list that changes size as the
+  // feed fills up.
+  it('leaves a county with no notices selectable, and answering honestly', () => {
     notice('Skåne län', 'Malmö');
-    notice('Ångermanland' /* not a county */, 'Sundsvall');
 
-    // Ö sorts last in Swedish, not with O.
-    expect(db.getCountiesWithEvents()).toEqual([
-      'Skåne län',
-      'Västernorrlands län',
-      'Örebro län',
-    ]);
+    expect(COUNTIES).toContain('Jämtlands län');
+    expect(db.countEventsInDb({ county: 'Jämtlands län' })).toBe(0);
   });
 });
 

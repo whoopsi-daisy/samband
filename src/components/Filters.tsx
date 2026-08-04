@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
 
 interface FiltersProps {
-  /** Counties that actually have notices, so the list offers no dead ends. */
+  /**
+   * All twenty-one, from the constant rather than from the data. Unlike the
+   * place list beside it, this is a fixed administrative taxonomy: there is
+   * nothing to discover by asking the database.
+   */
   counties: string[];
   locations: string[];
   types: string[];
