@@ -209,11 +209,24 @@ function ClientAppContent({
 
   useKeyboardShortcuts(shortcutHandlers);
 
+  /*
+   * Clears the filters, and only the filters.
+   *
+   * This built a fresh query from nothing, which also threw away the map's
+   * period and the county map's type: "Rensa alla" sits under an empty feed and
+   * offers to widen the search, and it was silently resetting what the reader
+   * was looking at as well. The same control inside Filters already deleted
+   * only the four filter parameters; these two now agree.
+   */
   const clearFilters = useCallback(() => {
-    const params = new URLSearchParams();
+    const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
     params.set(QUERY.view, viewSlug(currentView as ViewId));
+    params.delete(QUERY.county);
+    params.delete(QUERY.location);
+    params.delete(QUERY.type);
+    params.delete(QUERY.search);
     router.push(`/?${params.toString()}`, { scroll: false });
-  }, [currentView, router]);
+  }, [currentView, router, searchParams]);
 
   /*
    * How far back the map is looking, and which type the county map is showing.

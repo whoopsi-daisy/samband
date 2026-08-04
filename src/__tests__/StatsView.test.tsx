@@ -338,6 +338,40 @@ describe('StatsView', () => {
       expect(screen.getByText(/92 notiser om narkotikabrott/)).toBeInTheDocument();
     });
 
+    /*
+     * A type concentrated in one county is the strongest thing this control can
+     * show, and it was the one case that silently did not work.
+     *
+     * The block tested for more than one county before falling back to the
+     * whole record, so a type that landed in a single county swapped the map
+     * for the unfiltered one while the select carried on naming the type: the
+     * reader was told they were looking at one thing and shown another.
+     */
+    it('maps a type that is concentrated in a single county', () => {
+      render(
+        <StatsView
+          stats={createStats({
+            regionTypes: {
+              types: ['Rån'],
+              cells: { 'Stockholms län': { Rån: [400, 200, 180] } },
+              unplaced: {},
+              recentStart: '2025-08',
+            },
+          })}
+          regionType="Rån"
+        />
+      );
+
+      // Scoped to the county table: the month grid downpage has rowheaders too.
+      const table = document.querySelector('.region-table') as HTMLElement;
+      const rows = [...table.querySelectorAll('tbody th[scope="row"]')];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent('Stockholms');
+      expect(screen.getByText(/400 notiser om rån/)).toBeInTheDocument();
+      // Not the unfiltered denominator, which is what the fallback showed.
+      expect(screen.queryByText(/560 notiser/)).not.toBeInTheDocument();
+    });
+
     // A hand-typed or stale one would otherwise leave the select showing a
     // value it has no option for, which renders as blank.
     it('falls back to the whole record on a type it does not offer', () => {
