@@ -1921,43 +1921,6 @@ function computeStatsSummary(): Statistics {
 }
 
 /**
- * Counties that actually have notices, for the filter's own list.
- *
- * All twenty-one would be simpler and would offer dead ends: a fresh
- * deployment has a few days of data and not every county in it, and a select
- * whose options return nothing is a select that lies about what is there.
- */
-function computeCountiesWithEvents(): string[] {
-  const pdo = getDatabase();
-  const found = new Set<string>();
-
-  for (const row of pdo
-    .prepare("SELECT DISTINCT county FROM events WHERE county IS NOT NULL AND county != ''")
-    .all() as Array<{ county: string }>) {
-    found.add(row.county);
-  }
-
-  if (hasArchiveEvents()) {
-    for (const row of pdo
-      .prepare(
-        "SELECT DISTINCT county FROM bpk_events WHERE county IS NOT NULL AND county != '' AND pubdate < ?"
-      )
-      .all(getArchiveCutoff()) as Array<{ county: string }>) {
-      found.add(row.county);
-    }
-  }
-
-  // Sorted the way a Swedish reader expects a list of counties, not by code.
-  return [...found].sort((a, b) => a.localeCompare(b, 'sv'));
-}
-
-export const getCountiesWithEvents = memoizeWithTtl(
-  computeCountiesWithEvents,
-  AGGREGATE_CACHE_TTL_MS,
-  () => 'counties'
-);
-
-/**
  * How many notices could be placed in a county and how many could not.
  *
  * A straight query now that the county is a column. It used to be derivable
