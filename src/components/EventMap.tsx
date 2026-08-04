@@ -60,6 +60,15 @@ const WINDOWS: { days: number; label: string; phrase: string }[] = [
   { days: 30, label: 'Senaste månaden', phrase: 'den senaste månaden' },
 ];
 
+/**
+ * The periods that are allowed in the URL.
+ *
+ * Exported from here rather than restated where the parameter is read, so a
+ * window added to the control above is accepted in a link without a second
+ * edit, and one removed stops being accepted.
+ */
+export const MAP_WINDOW_DAYS: number[] = WINDOWS.map((window) => window.days);
+
 // CartoDB ships the same basemap in two styles. Picking the one that matches
 // the theme is what the stylesheet's invert(1) filter was standing in for, and
 // it gets the water and the labels right, which inverting never could.

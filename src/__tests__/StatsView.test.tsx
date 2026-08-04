@@ -1,6 +1,19 @@
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import StatsView from '@/components/StatsView';
 import { Statistics } from '@/types';
+
+/**
+ * The county map's type selection lives in the URL, not in the component, so
+ * that it survives a refresh, the back button and a shared link. This stands in
+ * for the part of ClientApp that reads and writes it.
+ */
+function StatefulStatsView({ stats }: { stats: Statistics }) {
+  const [regionType, setRegionType] = useState('');
+  return (
+    <StatsView stats={stats} regionType={regionType} onRegionTypeChange={setRegionType} />
+  );
+}
 
 function createStats(overrides: Partial<Statistics> = {}): Statistics {
   const thisYear = new Date().getFullYear();
@@ -259,7 +272,7 @@ describe('StatsView', () => {
      * predict, which is the thing markers on the incident map cannot show.
      */
     it('narrows the map and the table to one type of notice', () => {
-      render(<StatsView stats={createStats()} />);
+      render(<StatefulStatsView stats={createStats()} />);
 
       // Stockholm leads the whole record.
       expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('Stockholms');
@@ -275,7 +288,7 @@ describe('StatsView', () => {
     // Shares of the whole record would leave a filtered table summing to a few
     // per cent, with every county at the bottom of the colour scale.
     it('restates the shares against the selected type', () => {
-      render(<StatsView stats={createStats()} />);
+      render(<StatefulStatsView stats={createStats()} />);
 
       fireEvent.change(screen.getByLabelText('Händelsetyp'), {
         target: { value: 'Narkotikabrott' },
@@ -288,7 +301,7 @@ describe('StatsView', () => {
     });
 
     it('goes back to the whole record', () => {
-      render(<StatsView stats={createStats()} />);
+      render(<StatefulStatsView stats={createStats()} />);
       const select = screen.getByLabelText('Händelsetyp');
 
       fireEvent.change(select, { target: { value: 'Narkotikabrott' } });
@@ -307,6 +320,30 @@ describe('StatsView', () => {
         .getAllByRole('option')
         .map((option) => (option as HTMLOptionElement).value);
       expect(options).toEqual(['', 'Trafikolycka', 'Narkotikabrott']);
+    });
+
+    /*
+     * The selection is context, so it has to survive being restored.
+     *
+     * It lives in the URL rather than in the component precisely so a refresh,
+     * the back button and a shared link all land on what was being looked at.
+     * This is the arriving half of that: given the type, the block renders
+     * narrowed without anyone touching the control.
+     */
+    it('renders narrowed when the type arrives from the URL', () => {
+      render(<StatsView stats={createStats()} regionType="Narkotikabrott" />);
+
+      expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('Kronobergs');
+      expect(screen.getByLabelText('Händelsetyp')).toHaveValue('Narkotikabrott');
+      expect(screen.getByText(/92 notiser om narkotikabrott/)).toBeInTheDocument();
+    });
+
+    // A hand-typed or stale one would otherwise leave the select showing a
+    // value it has no option for, which renders as blank.
+    it('falls back to the whole record on a type it does not offer', () => {
+      render(<StatsView stats={createStats()} regionType="Mordbrand" />);
+
+      expect(screen.getByText(/560 notiser som går att placera/)).toBeInTheDocument();
     });
 
     it('leaves the control out entirely when no type has enough behind it', () => {

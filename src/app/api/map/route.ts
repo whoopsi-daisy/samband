@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMapEvents } from '@/lib/db';
 import { formatEventForMap, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
-import { countyOf } from '@/lib/regions';
+import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
@@ -30,11 +30,19 @@ export async function GET(request: NextRequest) {
   const windowDays = Number.isFinite(days) ? Math.min(Math.max(Math.round(days), 1), MAX_WINDOW_DAYS) : 1;
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
+  // countyOf is the sanitiser for the county: only ever one of the twenty-one
+  // canonical names, and forgiving of the spellings a shared link may carry.
+  // resolveRegionFilters also folds a place that is really a county into the
+  // county filter, so this endpoint and the page it feeds agree on what a
+  // request for one means.
+  const region = resolveRegionFilters(
+    searchParams.get('county'),
+    searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : ''
+  );
+
   const filters = {
-    // countyOf is the sanitiser: only ever one of the twenty-one canonical
-    // names, and forgiving of the spellings a shared link may carry.
-    county: countyOf(searchParams.get('county')) ?? undefined,
-    location: searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : undefined,
+    county: region.county || undefined,
+    location: region.location || undefined,
     type: searchParams.get('type') ? sanitizeType(searchParams.get('type')!) : undefined,
     search: searchParams.get('search') ? sanitizeSearch(searchParams.get('search')!) : undefined,
   };

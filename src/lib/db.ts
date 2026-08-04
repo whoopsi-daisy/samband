@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventFilters, EventWithMetadata, RawEvent, Statistics, DailyStats, YearlyStats, MonthGridRow, SeasonProfile, YearToDate, FamilyYear, DailyPeak, TopItem, RegionBreakdown, RegionTypeCube, OperationalStats, FetchLogEntry, DatabaseHealth, SystemSnapshot, TypeFamilyKey, TYPE_FAMILIES, getTypeStyle } from '@/types';
 import { escapeLikeWildcards, placeFromTitle } from './utils';
-import { countyOf } from './regions';
+import { countyOf, isCountyName } from './regions';
 import { buildRegionBreakdown } from './regionRows';
 import { memoizeWithTtl } from './cache';
 
@@ -2005,7 +2005,24 @@ function computeStatsSummary(): Statistics {
     last30d,
     avgPerDay,
     topTypes: topItems(typeCounts),
-    topLocations: topItems(locationCounts),
+    /*
+     * Places, with the counties left to the block that counts them properly.
+     *
+     * The feed labels a great many notices with the county alone, so this list
+     * carried rows like "Skåne län" beside "Malmö". Two things were wrong with
+     * that. The row counted only the notices whose location string was
+     * literally "Skåne län", while clicking it filters by county and returns
+     * every notice in Skåne, so the number shown and the number returned
+     * disagreed. And the question this list answers is "is my own town in
+     * here", which a county cannot answer; "Län för län" below answers the
+     * other one, off the resolved column rather than off the string.
+     *
+     * Filtered before the top eight are taken, so the card keeps its length
+     * rather than losing however many rows were counties.
+     */
+    topLocations: topItems(
+      new Map([...locationCounts].filter(([label]) => !isCountyName(label)))
+    ),
     regions: regionBreakdown(
       locationCounts,
       [...live.regionMonths, ...(archive?.regionMonths ?? [])],

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState, ReactNode } from 'react';
+import { memo, useMemo, ReactNode } from 'react';
 import {
   Statistics,
   TYPE_FAMILIES,
@@ -21,6 +21,16 @@ interface StatsViewProps {
   onTypeClick?: (type: string) => void;
   onLocationClick?: (location: string) => void;
   onCountyClick?: (county: string) => void;
+  /**
+   * Which type the county map is narrowed to, and how to change it.
+   *
+   * Lifted out of this component so it can live in the URL: as local state it
+   * survived neither a refresh nor a shared link, which for a control whose
+   * whole purpose is "look at this one type" is the state worth keeping. The
+   * empty string is the whole record.
+   */
+  regionType?: string;
+  onRegionTypeChange?: (type: string) => void;
 }
 
 const WEEKDAY_NAMES = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -524,12 +534,15 @@ function RegionBlock({
   stats,
   onCountyClick,
   trendWindow,
+  type,
+  onTypeChange,
 }: {
   stats: Statistics;
   onCountyClick?: (county: string) => void;
   trendWindow: string | null;
+  type: string;
+  onTypeChange: (type: string) => void;
 }) {
-  const [type, setType] = useState('');
 
   const regions = useMemo(
     () => (type ? regionsForType(stats.regionTypes, type) : stats.regions),
@@ -557,7 +570,7 @@ function RegionBlock({
               id="region-type"
               className="field region-filter-select"
               value={type}
-              onChange={(event) => setType(event.target.value)}
+              onChange={(event) => onTypeChange(event.target.value)}
             >
               <option value="">Alla händelser</option>
               {stats.regionTypes.types.map((label) => (
@@ -603,7 +616,14 @@ function RegionBlock({
   );
 }
 
-function StatsView({ stats, onTypeClick, onLocationClick, onCountyClick }: StatsViewProps) {
+function StatsView({
+  stats,
+  onTypeClick,
+  onLocationClick,
+  onCountyClick,
+  regionType = '',
+  onRegionTypeChange,
+}: StatsViewProps) {
   const mounted = useMounted();
   const coverageDay = (iso: string) => (mounted ? formatDay(iso) : '–');
 
@@ -772,7 +792,13 @@ function StatsView({ stats, onTypeClick, onLocationClick, onCountyClick }: Stats
           which is the question the page exists for and the one it could not
           previously answer at all. */}
       {stats.regions.rows.length > 1 && (
-        <RegionBlock stats={stats} onCountyClick={onCountyClick} trendWindow={trendWindow} />
+        <RegionBlock
+          stats={stats}
+          onCountyClick={onCountyClick}
+          trendWindow={trendWindow}
+          type={regionType}
+          onTypeChange={onRegionTypeChange ?? (() => {})}
+        />
       )}
 
       {/* The long view, which is where nearly all of the data is once an

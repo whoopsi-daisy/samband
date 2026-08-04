@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEventsFromDb, countEventsInDb } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
-import { countyOf } from '@/lib/regions';
+import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 
@@ -44,11 +44,19 @@ export async function GET(request: NextRequest) {
   const page = Math.min(requested, MAX_PAGE);
   const offset = (page - 1) * EVENTS_PER_PAGE;
 
+  // countyOf is the sanitiser for the county: only ever one of the twenty-one
+  // canonical names, and forgiving of the spellings a shared link may carry.
+  // resolveRegionFilters also folds a place that is really a county into the
+  // county filter, so this endpoint and the page it feeds agree on what a
+  // request for one means.
+  const region = resolveRegionFilters(
+    searchParams.get('county'),
+    searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : ''
+  );
+
   const filters = {
-    // countyOf is the sanitiser: only ever one of the twenty-one canonical
-    // names, and forgiving of the spellings a shared link may carry.
-    county: countyOf(searchParams.get('county')) ?? undefined,
-    location: searchParams.get('location') ? sanitizeLocation(searchParams.get('location')!) : undefined,
+    county: region.county || undefined,
+    location: region.location || undefined,
     type: searchParams.get('type') ? sanitizeType(searchParams.get('type')!) : undefined,
     search: searchParams.get('search') ? sanitizeSearch(searchParams.get('search')!) : undefined,
   };
