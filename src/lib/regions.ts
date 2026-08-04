@@ -208,6 +208,54 @@ const ALIASES: Record<string, County> = {
  * and empty locations, and a notice filed against the whole country did not
  * happen in any county.
  */
+/**
+ * County and place, with a place that is really a county folded into the one
+ * filter that handles counties properly.
+ *
+ * Applied wherever filters are parsed, so every route in reaches the same
+ * state: the two dropdowns, a row on the statistics page, and a link shared
+ * before the county filter existed, when `?plats=Skåne län` was the only way to
+ * ask for a county at all.
+ *
+ * Widening rather than narrowing is the point. A place filter matches the
+ * string an officer typed, so `?plats=Skåne län` returns the notices labelled
+ * with the county and silently drops the ones labelled "Malmö", which are in it.
+ * The county column resolves both, so the answer stops depending on how the
+ * notice happened to be written.
+ */
+export function resolveRegionFilters(
+  county: string | null | undefined,
+  location: string | null | undefined
+): { county: string; location: string } {
+  if (isCountyName(location)) {
+    // An explicit county wins; the place was only ever standing in for one.
+    return { county: countyOf(county) ?? countyOf(location) ?? '', location: '' };
+  }
+  return { county: countyOf(county) ?? '', location: location ?? '' };
+}
+
+/**
+ * Whether a name is a county rather than somewhere inside one.
+ *
+ * `countyOf` deliberately answers for both: "Malmö" resolves to Skåne län,
+ * which is what places a pin and fills the breakdown. This asks the narrower
+ * question, and the difference matters wherever a county and a place are two
+ * separate filters. The feed labels a great many notices with the county alone,
+ * so "Blekinge län" is a value in the place column as well as a county, and
+ * without this the two controls can both be set to it: the chips read
+ * "Län: Blekinge län" beside "Plats: Blekinge län", and what comes back is the
+ * intersection, meaning only the notices where an officer typed the county
+ * rather than every notice in it.
+ *
+ * The suffix test is the same one the feed's own title parsing uses, so the app
+ * has one idea of what a county name looks like. Paired with `countyOf` so a
+ * hand-typed "Mordor län" is not mistaken for an administrative area.
+ */
+export function isCountyName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return /\slän$/i.test(name.trim()) && countyOf(name) !== null;
+}
+
 export function countyOf(name: string | null | undefined): County | null {
   if (!name) return null;
   const key = normalise(name);

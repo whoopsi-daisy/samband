@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { getEventsFromDb, getEventById, countEventsInDb, getFilterOptions, getStatsSummary } from '@/lib/db';
 import { refreshEventsIfNeeded } from '@/lib/policeApi';
-import { COUNTIES, countyOf } from '@/lib/regions';
+import { COUNTIES, resolveRegionFilters } from '@/lib/regions';
 import { formatEventForUi, sanitizeLocation, sanitizeType, sanitizeSearch } from '@/lib/utils';
 import ClientApp from '@/components/ClientApp';
 import { parseView, readParam } from '@/lib/urlParams';
@@ -30,12 +30,20 @@ async function HomeContent({ searchParams }: PageProps) {
     return Array.isArray(value) ? value[0] : value;
   };
 
+  // countyOf is the sanitiser for the county: it only ever returns one of the
+  // twenty-one canonical names, and it forgives the spellings a hand-typed or
+  // shared link might carry ("Skåne", "skane län", a municipality inside it).
+  // resolveRegionFilters additionally folds a place that is really a county
+  // into the county filter, so the two controls cannot both be set to the same
+  // area and return the intersection.
+  const region = resolveRegionFilters(
+    readParam(get, 'county'),
+    sanitizeLocation(readParam(get, 'location'))
+  );
+
   const filters = {
-    // countyOf is the sanitiser: it only ever returns one of the twenty-one
-    // canonical names, and it forgives the spellings a hand-typed or shared
-    // link might carry ("Skåne", "skane län", a municipality inside it).
-    county: countyOf(readParam(get, 'county')) ?? '',
-    location: sanitizeLocation(readParam(get, 'location')),
+    county: region.county,
+    location: region.location,
     type: sanitizeType(readParam(get, 'type')),
     search: sanitizeSearch(readParam(get, 'search')),
   };

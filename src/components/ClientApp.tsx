@@ -20,6 +20,7 @@ import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
 import { FormattedEvent, Statistics } from '@/types';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { isCountyName } from '@/lib/regions';
 
 interface ClientAppProps {
   initialEvents: FormattedEvent[];
@@ -126,7 +127,19 @@ function ClientAppContent({
       setCurrentView('list');
       const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
       params.set(QUERY.view, viewSlug('list'));
-      params.set(QUERY[key], value);
+
+      /*
+       * "Vanligaste platser" lists the location strings the notices carry, and
+       * a great many of them are the county alone, so a row there can read
+       * "Blekinge län". Sent as a place it would set a second filter beside the
+       * county one and return only the notices where an officer typed the
+       * county. The filters collapse it on read either way; doing it here means
+       * the URL that gets shared says what was actually applied.
+       */
+      const facet = key === 'location' && isCountyName(value) ? 'county' : key;
+      if (facet === 'county') params.delete(QUERY.location);
+      params.set(QUERY[facet], value);
+
       router.push(`/?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]

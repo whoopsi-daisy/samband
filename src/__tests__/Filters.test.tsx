@@ -10,11 +10,16 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }));
 
-function renderFilters(filters = { county: '', location: '', type: '', search: '' }) {
+function renderFilters(
+  filters = { county: '', location: '', type: '', search: '' },
+  // Counties among them on purpose: this is what getFilterOptions returns,
+  // because the feed labels a great many notices with the county alone.
+  locations = ['Stockholm', 'Borås', 'Blekinge län', 'Skåne län']
+) {
   return render(
     <Filters
       counties={['Skåne län', 'Stockholms län']}
-      locations={['Stockholm', 'Borås']}
+      locations={locations}
       types={['Trafikolycka', 'Rån']}
       currentView="list"
       filters={filters}
@@ -32,6 +37,47 @@ beforeEach(() => {
 });
 
 describe('Filters', () => {
+  /*
+   * A county is one filter, not two.
+   *
+   * The place list comes from the location strings on the notices, and polisen
+   * labels a great many of them with the county alone, so "Blekinge län" was an
+   * option in the place select as well as in the county select beside it.
+   * Choosing it set a second filter that looked like the first: the chips read
+   * "Län: Blekinge län" next to "Plats: Blekinge län", and what came back was
+   * the intersection, which is only the notices where an officer typed the
+   * county and none of the ones that named a town in it.
+   */
+  it('keeps counties out of the place dropdown', () => {
+    renderFilters();
+
+    const places = screen.getByLabelText('Välj plats');
+    const options = [...places.querySelectorAll('option')].map((o) => o.value);
+
+    expect(options).toEqual(['', 'Stockholm', 'Borås']);
+    expect(options).not.toContain('Blekinge län');
+  });
+
+  // Nothing becomes unreachable by being removed above: the county select
+  // offers all twenty-one, and what it returns is a superset of what the place
+  // filter did, because it resolves the notices that named a town as well.
+  it('still offers every county in the county dropdown', () => {
+    renderFilters();
+
+    const counties = [...screen.getByLabelText('Välj län').querySelectorAll('option')];
+    expect(counties.map((o) => o.value)).toContain('Skåne län');
+  });
+
+  // A ?plats= from a link shared before any of this can still name something
+  // the list does not carry, and the control has to show what is applied
+  // rather than sit blank beside an active chip.
+  it('carries an applied place the list does not have', () => {
+    renderFilters({ county: '', location: 'Ljungby', type: '', search: '' });
+
+    const options = [...screen.getByLabelText('Välj plats').querySelectorAll('option')];
+    expect(options.map((o) => o.value)).toContain('Ljungby');
+  });
+
   // The search box and both selects share one grid, so they can sit on a
   // single row on a wide screen instead of costing two.
   it('puts every control in one group', () => {

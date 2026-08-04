@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { isCountyName } from '@/lib/regions';
 
 interface FiltersProps {
   /**
@@ -87,13 +88,29 @@ export default function Filters({ counties, locations, types, currentView, filte
     }
   }, [debouncedSearch, filters.search, replaceParams]);
 
-  // A ?plats= from a shared link can name a place the dropdown does not
+  /*
+   * Places, with the counties taken out.
+   *
+   * The list is built from the location strings the notices carry, and the feed
+   * labels a great many of them with the county alone, so "Blekinge län" was an
+   * option here as well as in the county select beside it. Picking it set a
+   * second filter that looked like the first, read as a contradiction in the
+   * chips, and returned less than either: a place filter matches the string an
+   * officer typed, so it dropped every notice in Blekinge that named a town.
+   * Counties belong to the control next door, which resolves them properly.
+   *
+   * Nothing becomes unreachable. A county removed from here is selectable in
+   * the county select, and what that returns is a superset of what this offered.
+   */
+  const places = useMemo(() => locations.filter((name) => !isCountyName(name)), [locations]);
+
+  // A ?plats= from a shared link can still name a place the dropdown does not
   // list. Carry it as an option so the control shows what is actually applied
   // instead of sitting blank next to an active filter chip.
   const locationOptions =
-    filters.location && !locations.includes(filters.location)
-      ? [filters.location, ...locations]
-      : locations;
+    filters.location && !places.includes(filters.location)
+      ? [filters.location, ...places]
+      : places;
 
   const hasActiveFilters = Boolean(
     filters.county || filters.location || filters.type || filters.search
