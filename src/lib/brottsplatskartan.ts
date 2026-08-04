@@ -6,6 +6,7 @@ import {
   getNewestStoredPubdateUnix,
   type BpkEventInput,
 } from './brottsplatskartanDb';
+import { isRetryableStatus, retryDelayMs, sleep } from './retry';
 
 // Importer for the public brottsplatskartan.se events API.
 //
@@ -125,20 +126,6 @@ export class BrottsplatskartanError extends Error {
   }
 }
 
-const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(new DOMException('Aborted', 'AbortError'));
-      },
-      { once: true }
-    );
-  });
-
 // AbortError arrives as a DOMException, which is NOT an instance of Error in
 // Node or the browser: an `instanceof Error` guard silently misses every
 // cancellation and reports it as a failure instead.
@@ -244,13 +231,15 @@ async function fetchPage(page: number, perPage: number, signal?: AbortSignal): P
         signal: controller.signal,
       });
 
-      if (response.status === 429 || response.status >= 500) {
+      if (isRetryableStatus(response.status)) {
         // Respect Retry-After when the server sends it, otherwise back off
-        // exponentially. This is the branch that keeps us a good citizen.
-        const retryAfter = toNumber(response.headers.get('retry-after'));
-        const delay = retryAfter
-          ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
-          : Math.min(RETRY_BASE_DELAY_MS * 2 ** attempt, MAX_RETRY_DELAY_MS);
+        // exponentially. This is the branch that keeps us a good citizen, and
+        // it now lives in lib/retry so the polisen.se fetcher obeys the same
+        // rule rather than its own flat 200ms.
+        const delay = retryDelayMs(attempt, response.headers.get('retry-after'), {
+          baseMs: RETRY_BASE_DELAY_MS,
+          maxMs: MAX_RETRY_DELAY_MS,
+        });
         lastError = new BrottsplatskartanError(`HTTP ${response.status} on page ${page}`, response.status);
         if (attempt < MAX_RETRIES - 1) {
           await sleep(delay, signal);
@@ -276,7 +265,10 @@ async function fetchPage(page: number, perPage: number, signal?: AbortSignal): P
         throw error;
       }
       if (attempt < MAX_RETRIES - 1) {
-        await sleep(Math.min(RETRY_BASE_DELAY_MS * 2 ** attempt, MAX_RETRY_DELAY_MS), signal);
+        await sleep(
+          retryDelayMs(attempt, null, { baseMs: RETRY_BASE_DELAY_MS, maxMs: MAX_RETRY_DELAY_MS }),
+          signal
+        );
       }
     } finally {
       clearTimeout(timeout);

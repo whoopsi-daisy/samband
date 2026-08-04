@@ -1,5 +1,6 @@
 import { RawEvent } from '@/types';
 import { insertEvents, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
+import { isRetryableStatus, retryDelayMs, sleep } from './retry';
 
 const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
@@ -25,10 +26,13 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+    // How long to wait before trying again, decided while the response (and its
+    // Retry-After header) is still in hand.
+    let delayMs: number | null = null;
 
+    try {
       const response = await fetch(secureUrl, {
         headers: {
           'User-Agent': USER_AGENT,
@@ -36,17 +40,24 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
         const err = new Error(`HTTP error ${response.status}`);
-        // Client errors (4xx) won't succeed on retry: only 429 is worth retrying.
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        if (isRetryableStatus(response.status)) {
+          // The server said "not now". It gets to say how long: this used to
+          // retry a 429 after a flat 200ms, which is the opposite of what a
+          // rate-limited server is asking for.
+          delayMs = retryDelayMs(attempt, response.headers.get('retry-after'), { jitter: true });
+        } else {
+          // Every other 4xx will answer the same way next time.
           (err as Error & { retryable?: boolean }).retryable = false;
         }
         throw err;
       }
 
+      // Inside the try, so the abort above is still armed while the body is
+      // read. clearTimeout used to run the moment the headers arrived, which
+      // left this parse with no timeout at all: a server that sent headers and
+      // then stalled the stream hung here until the socket died.
       const data = await response.json();
       if (!Array.isArray(data)) {
         throw new Error('Invalid JSON response');
@@ -59,8 +70,14 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
         break;
       }
       if (attempt < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // A transport failure carries no Retry-After, so it backs off on the
+        // exponential schedule.
+        await sleep(delayMs ?? retryDelayMs(attempt, null, { jitter: true }));
       }
+    } finally {
+      // Always, including on the paths that used to skip it and leave a live
+      // 30-second timer pointed at a controller nobody was listening to.
+      clearTimeout(timeoutId);
     }
   }
 
@@ -307,10 +324,10 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
     return null;
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
 
+  try {
     const response = await fetch(enforceHttps(absoluteUrl), {
       headers: {
         'User-Agent': USER_AGENT,
@@ -318,12 +335,14 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       return null;
     }
 
+    // Read inside the try, with the abort still armed. clearTimeout used to run
+    // as soon as the headers arrived, so this read had no timeout: a page that
+    // sent headers and then stalled held the request open until the socket
+    // died, and this is called once per card a reader expands.
     const html = await response.text();
 
     // Simple HTML parsing to extract article content
@@ -336,5 +355,7 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
     return paragraphsToText(content);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

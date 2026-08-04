@@ -73,6 +73,60 @@ describe('resolveImportSource', () => {
   });
 });
 
+/**
+ * A URL arriving over HTTP is attacker-controlled the moment the dashboard
+ * credentials leak, which is exactly the reasoning that confined file paths to
+ * the data directory. Any http(s) URL was accepted and fetched by the server
+ * regardless: metadata endpoints, loopback, anything else the container could
+ * reach.
+ */
+describe('resolveImportSource, on URLs arriving over HTTP', () => {
+  const refused = [
+    ['the cloud metadata endpoint', 'http://169.254.169.254/latest/meta-data/'],
+    ['another metadata endpoint', 'http://100.100.100.200/latest/meta-data/'],
+    ['loopback by address', 'http://127.0.0.1:3000/dump.ndjson'],
+    ['loopback by name', 'http://localhost:3000/dump.ndjson'],
+    ['IPv6 loopback', 'http://[::1]:3000/dump.ndjson'],
+    ['a private class A host', 'http://10.0.0.5/dump.ndjson'],
+    ['a private class B host', 'http://172.20.1.1/dump.ndjson'],
+    ['a private class C host', 'http://192.168.1.5/dump.ndjson'],
+    ['an IPv6 link-local host', 'http://[fe80::1]/dump.ndjson'],
+    ['an IPv6 unique-local host', 'http://[fd00::1]/dump.ndjson'],
+    ['an IPv4-mapped loopback', 'http://[::ffff:127.0.0.1]/dump.ndjson'],
+  ] as const;
+
+  it.each(refused)('refuses %s', (_label, url) => {
+    expect(() => importSource.resolveImportSource(url)).toThrow(importSource.ImportSourceError);
+  });
+
+  it('still accepts an ordinary public URL', () => {
+    expect(importSource.resolveImportSource('https://example.com/dump.ndjson')).toEqual({
+      kind: 'url',
+      value: 'https://example.com/dump.ndjson',
+      label: 'https://example.com/dump.ndjson',
+    });
+  });
+
+  it('still refuses a non-http scheme', () => {
+    expect(() => importSource.resolveImportSource('file:///etc/passwd')).toThrow(
+      /Only http\(s\) URLs/
+    );
+  });
+
+  // The operator paths (the CLI, BPK_IMPORT_SOURCE) may point anywhere: an
+  // operator serving a dump off their own LAN is an ordinary thing to do, and
+  // this is the same split that already governs file paths.
+  it('lets an operator-controlled source reach a private host', () => {
+    expect(
+      importSource.resolveImportSource('http://192.168.1.5/dump.ndjson', { allowAnyPath: true })
+    ).toEqual({
+      kind: 'url',
+      value: 'http://192.168.1.5/dump.ndjson',
+      label: 'http://192.168.1.5/dump.ndjson',
+    });
+  });
+});
+
 describe('listLocalDumps', () => {
   it('lists dumps in the data directory, newest first', () => {
     fs.writeFileSync(path.join(tempDir, 'old.ndjson'), 'a');

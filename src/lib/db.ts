@@ -1148,6 +1148,36 @@ export function getLastFetchTime(): Date | null {
   return result ? new Date(result.fetched_at) : null;
 }
 
+/**
+ * How many of the most recent successful fetches came back with nothing in them.
+ *
+ * polisen.se answering `[]` is a valid JSON array, so it counts as a success:
+ * the fetch worked, the parse worked, zero rows were written. Nothing anywhere
+ * distinguished that from a healthy quiet period, so an upstream that silently
+ * stopped returning events produced a green healthcheck, a 100% success rate,
+ * a freshness of zero minutes, and a feed that had quietly stopped moving. That
+ * is the shape of failure nobody notices until someone happens to look.
+ *
+ * Counting the trailing run of empties rather than a ratio, because the
+ * question is "has it been empty *since* some point", and a single quiet fetch
+ * says nothing at all.
+ */
+export function countTrailingEmptyFetches(limit = 24): number {
+  const pdo = getDatabase();
+  const rows = pdo
+    .prepare(
+      'SELECT events_fetched FROM fetch_log WHERE success = 1 ORDER BY fetched_at DESC LIMIT ?'
+    )
+    .all(limit) as Array<{ events_fetched: number | null }>;
+
+  let run = 0;
+  for (const row of rows) {
+    if ((row.events_fetched ?? 0) > 0) break;
+    run++;
+  }
+  return run;
+}
+
 // Count fetches in the last 24 hours for daily limit enforcement
 export function getDailyFetchCount(): number {
   const pdo = getDatabase();

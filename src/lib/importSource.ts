@@ -27,10 +27,100 @@ export interface ResolvedImportSource {
 
 export interface ResolveOptions {
   /**
-   * Allow absolute paths outside the data directory. True for the CLI and for
-   * BPK_IMPORT_SOURCE, false for anything arriving over HTTP.
+   * The source is operator-controlled, so it may point anywhere: an absolute
+   * path outside the data directory, or a URL on the operator's own network.
+   * True for the CLI and for BPK_IMPORT_SOURCE, false for anything arriving
+   * over HTTP, where the value is attacker-controlled the moment the dashboard
+   * credentials leak.
    */
   allowAnyPath?: boolean;
+}
+
+/** Hostnames that always mean "this machine", whatever DNS says. */
+const LOCAL_HOSTNAMES = new Set(['localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback']);
+
+/** Whether a dotted-quad address is in a range that is never the open internet. */
+function isPrivateIpv4(address: string): boolean {
+  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(address);
+  if (!parts) return false;
+
+  const [a, b] = [Number(parts[1]), Number(parts[2])];
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true; // link-local: 169.254.169.254 and friends
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT, incl. 100.100.100.200
+  return false;
+}
+
+/**
+ * The IPv4 address inside an IPv4-mapped IPv6 one, as dotted quad.
+ *
+ * `new URL()` normalises these to hex, so `[::ffff:127.0.0.1]` arrives here as
+ * `::ffff:7f00:1`. Reading only the dotted form would have let every mapped
+ * address through the check below, which is a tidy way to reach loopback.
+ */
+function mappedIpv4(address: string): string | null {
+  const mapped = /^::ffff:(.+)$/i.exec(address);
+  if (!mapped) return null;
+
+  const rest = mapped[1];
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(rest)) return rest;
+
+  const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(rest);
+  if (!hex) return null;
+
+  const high = parseInt(hex[1], 16);
+  const low = parseInt(hex[2], 16);
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
+/**
+ * Whether a literal address belongs to a range that is never the public
+ * internet: loopback, link-local (which is where every cloud metadata service
+ * lives), and the private ranges.
+ */
+function isPrivateAddress(host: string): boolean {
+  const address = (host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host).toLowerCase();
+
+  if (isPrivateIpv4(address)) return true;
+
+  const mapped = mappedIpv4(address);
+  if (mapped) return isPrivateIpv4(mapped);
+
+  if (address === '::' || address === '::1') return true;
+  if (address.startsWith('fe80:')) return true; // link-local
+  if (/^f[cd][0-9a-f]{2}:/.test(address)) return true; // unique local
+  return false;
+}
+
+/**
+ * Refuse a URL that points back inside the network the container sits in.
+ *
+ * This is a literal-address check. A hostname that *resolves* to an internal
+ * address still gets through, and pinning that properly means resolving DNS
+ * ourselves and carrying the address into the request so it cannot change
+ * underneath us. What it does stop is the whole realistic shape of the attack:
+ * metadata services are reached at fixed literal addresses, and so is anything
+ * else on the host.
+ */
+function assertPublicHost(url: URL): void {
+  const hostname = url.hostname.toLowerCase();
+
+  if (LOCAL_HOSTNAMES.has(hostname) || hostname.endsWith('.localhost')) {
+    throw new ImportSourceError(
+      `Refusing to import from ${url.hostname}: it points at the server itself. ` +
+        'Use a public URL, or put the dump in the data directory and pass its name.'
+    );
+  }
+
+  if (isPrivateAddress(url.hostname)) {
+    throw new ImportSourceError(
+      `Refusing to import from ${url.hostname}: it is a private or link-local address, ` +
+        'not something this import should be reaching. Use a public URL, or put the dump ' +
+        'in the data directory and pass its name.'
+    );
+  }
 }
 
 export function resolveImportSource(input: string, options: ResolveOptions = {}): ResolvedImportSource {
@@ -48,6 +138,16 @@ export function resolveImportSource(input: string, options: ResolveOptions = {})
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new ImportSourceError(`Only http(s) URLs can be imported, got ${url.protocol}//`);
+    }
+    // Same threat as the path check below, under the same rule. A file path
+    // arriving over HTTP was carefully confined to the data directory *because*
+    // it is attacker-controlled if the dashboard credentials leak, and then any
+    // URL at all was accepted and fetched by the server: link-local metadata
+    // endpoints, loopback, anything else the container can reach. The operator
+    // paths (the CLI, BPK_IMPORT_SOURCE) keep their freedom, which is what
+    // allowAnyPath has always meant.
+    if (!options.allowAnyPath) {
+      assertPublicHost(url);
     }
     return { kind: 'url', value: url.toString(), label: url.toString() };
   }
