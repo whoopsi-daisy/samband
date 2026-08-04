@@ -63,4 +63,43 @@ describe('urlParams', () => {
     const params = toSwedishParams(new URLSearchParams('vy=karta&plats=Borås'));
     expect(params.toString()).toBe(new URLSearchParams('vy=karta&plats=Borås').toString());
   });
+
+  /*
+   * Context that has to survive a refresh, the back button and a shared link.
+   *
+   * The map's period and the county map's type were component state, on the
+   * reasoning that they are ways of looking at the filters rather than part of
+   * what is being looked at. A reader does not draw that line: a map set to the
+   * last month reverted to the last day on reload, and a link to what someone
+   * was looking at did not show it. Both are parameters now, so all four routes
+   * back in restore them.
+   */
+  it('carries the map window and the county map type', () => {
+    const params = toSwedishParams(
+      new URLSearchParams('vy=karta&lan=Skåne län&dagar=30&lantyp=Rån')
+    );
+
+    expect(params.get(QUERY.mapDays)).toBe('30');
+    expect(params.get(QUERY.regionType)).toBe('Rån');
+    // Alongside the filters, not instead of them: a shared link is the whole
+    // context or it is not worth sharing.
+    expect(params.get(QUERY.county)).toBe('Skåne län');
+    expect(params.get(QUERY.view)).toBe('karta');
+  });
+
+  // Both are new in the same release as the parameters themselves, so there is
+  // no older spelling to accept and nothing to rewrite.
+  it('does not invent an English spelling for the two new ones', () => {
+    const params = toSwedishParams(new URLSearchParams('dagar=7&lantyp=Stöld'));
+
+    expect(params.toString()).toBe(new URLSearchParams('dagar=7&lantyp=Stöld').toString());
+  });
+
+  it('reads them back under their own names', () => {
+    const get = from('dagar=7&lantyp=Stöld');
+
+    expect(readParam(get, 'mapDays')).toBe('7');
+    expect(readParam(get, 'regionType')).toBe('Stöld');
+    expect(readParam(get, 'county')).toBe('');
+  });
 });

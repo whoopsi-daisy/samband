@@ -6,7 +6,7 @@ import Header from './Header';
 import BottomNav from './BottomNav';
 import Filters from './Filters';
 import EventList from './EventList';
-import EventMap from './EventMap';
+import EventMap, { MAP_WINDOW_DAYS } from './EventMap';
 import StatsView from './StatsView';
 import VmaView from './VmaView';
 import VmaRibbon from './VmaRibbon';
@@ -19,7 +19,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
 import { FormattedEvent, Statistics } from '@/types';
-import { QUERY, ViewId, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { QUERY, ViewId, readParam, toSwedishParams, viewSlug } from '@/lib/urlParams';
 import { isCountyName } from '@/lib/regions';
 
 interface ClientAppProps {
@@ -94,6 +94,22 @@ function ClientAppContent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentView, setCurrentView] = useState(initialView);
+
+  /*
+   * Follow the URL when something other than a click changes it.
+   *
+   * Kept as state rather than read from the URL directly so that pressing a
+   * view button switches immediately instead of after the server round trip
+   * that navigation starts. The cost of that is this effect: every view is the
+   * same route with a different query, so the component never unmounts, and
+   * seeding the state once from the prop meant it was seeded on first load and
+   * never again. Back out of the statistics and the URL said the feed while the
+   * page still showed the statistics, which is the browser's own control
+   * appearing not to work.
+   *
+   * Same pattern, and the same reason, as the filter selects in Filters.tsx.
+   */
+  useEffect(() => setCurrentView(initialView), [initialView]);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [mapModal, setMapModal] = useState<{
     isOpen: boolean;
@@ -199,9 +215,53 @@ function ClientAppContent({
     router.push(`/?${params.toString()}`, { scroll: false });
   }, [currentView, router]);
 
-  // How far back the map is looking. Not in the URL: it is a way of looking at
-  // the current filters rather than part of what is being looked at.
-  const [mapWindowDays, setMapWindowDays] = useState(1);
+  /*
+   * How far back the map is looking, and which type the county map is showing.
+   *
+   * Both read from the URL rather than from component state. They were state,
+   * on the reasoning that they are ways of looking at the filters rather than
+   * part of what is being looked at, and that distinction is not one a reader
+   * makes: neither survived a refresh, the back button or a shared link, so a
+   * map set to the last month snapped back to the last day and a link to what
+   * someone was looking at did not show it.
+   *
+   * Reading them straight from `searchParams` rather than mirroring them into
+   * state is what makes back and forward work: the URL is the only copy, so
+   * history navigation cannot leave a control disagreeing with it.
+   */
+  const mapWindowDays = useMemo(() => {
+    const days = Number(readParam((name) => searchParams.get(name), 'mapDays'));
+    return MAP_WINDOW_DAYS.includes(days) ? days : 1;
+  }, [searchParams]);
+
+  const regionType = useMemo(() => {
+    const value = readParam((name) => searchParams.get(name), 'regionType');
+    // Only a type the breakdown actually offers. A stale or hand-typed one
+    // would otherwise leave the select showing a value it has no option for.
+    return stats.regionTypes.types.includes(value) ? value : '';
+  }, [searchParams, stats.regionTypes.types]);
+
+  // Narrowing a view is not navigation, so neither of these gets its own
+  // history entry: `replace`, as the filter controls already do.
+  const setMapWindowDays = useCallback(
+    (days: number) => {
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      if (days === 1) params.delete(QUERY.mapDays);
+      else params.set(QUERY.mapDays, String(days));
+      router.replace(`/?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
+
+  const handleRegionTypeChange = useCallback(
+    (type: string) => {
+      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
+      if (type) params.set(QUERY.regionType, type);
+      else params.delete(QUERY.regionType);
+      router.replace(`/?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   // Map data loads on demand the first time the map view is opened.
   const map = useMapEvents(filters, currentView === 'map', mapWindowDays);
@@ -303,6 +363,8 @@ function ClientAppContent({
             onTypeClick={handleTypeClick}
             onLocationClick={handleLocationClick}
             onCountyClick={handleCountyClick}
+            regionType={regionType}
+            onRegionTypeChange={handleRegionTypeChange}
           />
         )}
       </main>
