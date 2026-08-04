@@ -119,9 +119,21 @@ describe('map attribution', () => {
   // body text under the canvas, which was the largest thing in the block that
   // explains the map. Leaflet's own corner control is the answer to both.
   it('is rendered, not just handed to Leaflet', () => {
-    expect(map).toContain('attributionControl: true');
+    // Leaflet's own control is off; the credit is a collapsed control of our
+    // own, which is what OpenStreetMap's attribution guidelines allow for a
+    // constrained interactive map. What must never happen is the string being
+    // set on a layer and rendered nowhere, which is where this started.
+    expect(map).toContain('addCreditControl');
+    expect(map).toContain('map-credit-panel');
     expect(map).toContain('openstreetmap.org/copyright');
     expect(map).toContain('carto.com/attributions');
+  });
+
+  it('is reachable rather than merely present', () => {
+    // Behind a button, so it has to be operable and named. A div nobody can
+    // open is not attribution.
+    expect(map).toContain("aria-label', 'Om kartan och dess källor'");
+    expect(map).toContain("aria-expanded");
   });
 
   // Both layers need it: the fallback swaps the whole tile source when CARTO

@@ -1402,6 +1402,36 @@ main {
   text-wrap: pretty;
 }
 
+/* ── The resting state ────────────────────────────────────────
+   No warning is what this page says almost every day, and it was styled the
+   same as everything else: a solid card that a reader has to read before they
+   can tell nothing is happening. Recessed instead — the page's own canvas
+   rather than a raised surface, a dashed edge, and a grey dot where a live
+   warning has a red one. Enough to read as "off" at a glance without becoming
+   a second thing to interpret. */
+.vma-clear--quiet {
+  border-style: dashed;
+  background: var(--bg);
+}
+
+.vma-clear--quiet .vma-clear-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--fg-secondary);
+}
+
+.vma-clear--quiet .vma-clear-title .dot {
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.vma-clear--quiet .vma-clear-text {
+  padding-left: calc(var(--space-3) + 8px);
+}
+
 /* Not the alert red: this is "we do not know", which is a different thing from
    "there is a warning" and must not be mistaken for one at a glance. */
 .vma-clear--failed {
@@ -2329,27 +2359,96 @@ main {
    instead (see basemapUrl in EventMap): this inverted a basemap that was
    already dark, so dark mode produced a glowing white map. */
 
-/* The credit, in the map's own bottom corner, which is where a reader of any
-   other map looks for it and where it costs the page nothing. Quiet, but not
-   hidden: ODbL and CARTO both require it to be legible, so it keeps a solid
-   backing rather than being washed into the tiles. */
-.leaflet-control-attribution {
-  padding: 1px 6px !important;
-  background: color-mix(in srgb, var(--bg) 82%, transparent) !important;
-  color: var(--muted) !important;
-  font-size: 10px !important;
-  line-height: 1.5 !important;
-  border-radius: var(--radius-sm) 0 0 0;
+/* ── The tile credit ──────────────────────────────────────────
+   Behind one character, which is what OpenStreetMap's own attribution
+   guidelines allow for a constrained interactive map and what every other map
+   on the web does. Small and quiet, but a real button: reachable by keyboard,
+   and it opens on focus as well as on click. */
+.map-credit {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 0 !important;
 }
 
-.leaflet-control-attribution a {
-  color: var(--fg-secondary) !important;
+.map-credit-toggle {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: var(--weight-semi);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-credit-toggle:hover { color: var(--fg); }
+
+.map-credit-panel {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.map-credit-panel a {
+  color: var(--fg-secondary);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--fg-secondary) 40%, transparent);
 }
 
-.leaflet-control-attribution a:hover { color: var(--fg) !important; }
-.leaflet-control-attribution svg { display: none; }
+.map-credit-panel a:hover { color: var(--fg); }
+
+/* ── Fullscreen ───────────────────────────────────────────────
+   Added only where the Fullscreen API exists and the pointer is fine, so it
+   never appears on a phone. Styled as one of Leaflet's own bar buttons so it
+   sits under the zoom control as though it shipped with it. */
+.map-fullscreen-button {
+  display: grid !important;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 0;
+}
+
+.map-fullscreen-button::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  /* Four corner brackets, drawn with borders and a couple of gradients so the
+     button needs no image and inherits the control's own colour. */
+  border: 2px solid currentColor;
+  border-radius: 1px;
+  clip-path: polygon(
+    0 0, 40% 0, 40% 100%, 60% 100%, 60% 0, 100% 0, 100% 100%, 60% 100%,
+    60% 40%, 40% 40%, 40% 100%, 0 100%
+  );
+}
+
+/* Brackets pointing inward once fullscreen is on: the same mark, reversed. */
+.map-fullscreen--on .map-fullscreen-button::before {
+  clip-path: polygon(
+    0 40%, 40% 40%, 40% 0, 60% 0, 60% 40%, 100% 40%, 100% 60%, 60% 60%,
+    60% 100%, 40% 100%, 40% 60%, 0 60%
+  );
+}
+
+/* Going fullscreen makes the canvas the whole screen; without this the map
+   keeps the height the stylesheet gave it and sits in a black band. */
+.map-canvas:fullscreen {
+  height: 100% !important;
+  width: 100%;
+}
 
 .leaflet-bar a {
   background: var(--bg) !important;
@@ -3450,7 +3549,13 @@ main {
   max-width: var(--max-w);
   margin: 0 auto;
   padding: var(--space-5) var(--gutter) var(--space-8);
-  border-top: 1px solid var(--border);
+  /* The rule is inset by the gutter rather than drawn on the border box.
+     `main` carries the same gutter as padding, so every card on the page is
+     that much narrower than the footer's box: a border-top here ran wider than
+     the panel above it by a gutter on each side, and the overhang is the sort
+     of misalignment that reads as "something is off" before it is identifiable
+     as anything in particular. */
+  position: relative;
   font-size: var(--text-xs);
   color: var(--muted);
   /* Centred and stacked. Spread across a row, two unrelated things sat at
@@ -3460,6 +3565,15 @@ main {
   align-items: center;
   gap: var(--space-2);
   text-align: center;
+}
+
+.site-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--gutter);
+  right: var(--gutter);
+  border-top: 1px solid var(--border);
 }
 
 .footer-status {

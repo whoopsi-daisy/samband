@@ -78,6 +78,119 @@ const OSM_CREDIT =
 const CARTO_CREDIT =
   `${OSM_CREDIT} &middot; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>`;
 
+/**
+ * The tile credit, folded behind a single character.
+ *
+ * ODbL requires OpenStreetMap to be named wherever its data is shown and
+ * CARTO's terms say the same about the rendered tiles, so this cannot simply
+ * go. OpenStreetMap's own attribution guidelines allow it to sit behind an
+ * "i" on a constrained interactive map, which is what Google and Mapbox do,
+ * and it is the only version of "remove it" that does not put the deployment
+ * in breach of the licence its basemap is under.
+ *
+ * Expands on click and on focus, so a keyboard reaches it as easily as a
+ * pointer, and it is a real button rather than a hover trick.
+ */
+function addCreditControl(L: typeof import('leaflet'), map: L.Map): void {
+  const Credit = L.Control.extend({
+    options: { position: 'bottomright' as L.ControlPosition },
+    onAdd(): HTMLElement {
+      const wrap = L.DomUtil.create('div', 'leaflet-control map-credit');
+
+      const panel = L.DomUtil.create('div', 'map-credit-panel', wrap);
+      panel.innerHTML = CARTO_CREDIT;
+      panel.hidden = true;
+
+      const toggle = L.DomUtil.create('button', 'map-credit-toggle', wrap);
+      toggle.type = 'button';
+      toggle.textContent = 'i';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-label', 'Om kartan och dess källor');
+      toggle.title = 'Om kartan och dess källor';
+
+      // Tracked here rather than read back off the element: `hidden` is typed
+      // as boolean | "until-found" now, and negating that is not a toggle.
+      let open = false;
+      const setOpen = (next: boolean) => {
+        open = next;
+        panel.hidden = !next;
+        toggle.setAttribute('aria-expanded', String(next));
+      };
+
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.on(toggle, 'click', () => setOpen(!open));
+      // Focus opens it too, so tabbing to the button reveals what it is for.
+      L.DomEvent.on(toggle, 'focus', () => setOpen(true));
+      L.DomEvent.on(wrap, 'focusout', (event) => {
+        const next = (event as FocusEvent).relatedTarget as Node | null;
+        if (!next || !wrap.contains(next)) setOpen(false);
+      });
+
+      return wrap;
+    },
+  });
+
+  new Credit().addTo(map);
+}
+
+/**
+ * A fullscreen toggle, where fullscreen is a thing that exists.
+ *
+ * Leaflet has no such control and the plugins for it predate the Fullscreen
+ * API being universal, so this is the API plus a button.
+ *
+ * Not offered on a touch device: iOS Safari does not implement fullscreen for
+ * anything but a video, and on a phone the map already fills the screen, so
+ * the control would be a button that either does nothing or does nothing
+ * useful. Gated on a fine pointer rather than on width, because that is the
+ * actual question being asked.
+ */
+function addFullscreenControl(L: typeof import('leaflet'), map: L.Map): void {
+  if (typeof document === 'undefined' || !document.fullscreenEnabled) return;
+  if (!window.matchMedia('(pointer: fine)').matches) return;
+
+  const target = map.getContainer();
+
+  const Fullscreen = L.Control.extend({
+    options: { position: 'topleft' as L.ControlPosition },
+    onAdd(): HTMLElement {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control map-fullscreen');
+      const button = L.DomUtil.create('a', 'map-fullscreen-button', wrap);
+      button.href = '#';
+      button.setAttribute('role', 'button');
+
+      const label = () => (document.fullscreenElement === target ? 'Avsluta helskärm' : 'Helskärm');
+      const paint = () => {
+        const on = document.fullscreenElement === target;
+        wrap.classList.toggle('map-fullscreen--on', on);
+        button.setAttribute('aria-label', label());
+        button.title = label();
+        // Leaflet caches the map size, and going fullscreen changes it without
+        // firing a window resize the map listens to.
+        map.invalidateSize();
+      };
+
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.on(button, 'click', (event) => {
+        L.DomEvent.preventDefault(event);
+        if (document.fullscreenElement === target) {
+          void document.exitFullscreen();
+        } else {
+          // Rejected when the gesture is not trusted, which is not worth an
+          // error to a reader who can simply click again.
+          void target.requestFullscreen().catch(() => {});
+        }
+      });
+
+      document.addEventListener('fullscreenchange', paint);
+      paint();
+      return wrap;
+    },
+  });
+
+  new Fullscreen().addTo(map);
+}
+
 /** Incidents this fresh get a ring, whatever window is selected. */
 const RECENT_MS = 60 * 60 * 1000;
 
@@ -179,7 +292,9 @@ function EventMapInner({
         // the block that explains the map. Switched off, the string handed to
         // the tile layer was never rendered at all, which ODbL and CARTO's
         // terms both require it to be.
-        attributionControl: true,
+        // Off: the credit is rendered by the collapsed control added below,
+        // which keeps it reachable without a band of text across the map.
+        attributionControl: false,
         // Leaflet's default is whole zoom steps, and fitBounds always rounds
         // down to fit. Sweden's markers need about z5.5 in this canvas, so
         // every fit landed on z5 and drew the country at two thirds of the
@@ -188,9 +303,8 @@ function EventMapInner({
         zoomSnap: 0.25,
       });
 
-      // No "Leaflet" prefix: the library is not a data source, and the strip is
-      // narrow enough on a phone without it.
-      map.attributionControl.setPrefix(false);
+      addCreditControl(L, map);
+      addFullscreenControl(L, map);
 
       const tileLayer = L.tileLayer(basemapUrl(isDarkRef.current), {
         attribution: CARTO_CREDIT,

@@ -532,7 +532,7 @@ export default function EventList({
                 ) : failure ? (
                   'Försök igen'
                 ) : (
-                  'Visa fler'
+                  'Visa fler händelser'
                 )}
               </button>
             )}

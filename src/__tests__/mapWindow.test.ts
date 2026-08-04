@@ -103,3 +103,53 @@ describe('what the map is given for a window', () => {
     expect(day.total).toBe(day.rows.length);
   });
 });
+
+/**
+ * Whether an import shows up on the map.
+ *
+ * Asked directly, and the answer is "it depends", so it is pinned here. The
+ * archive is served strictly below the cutoff, and the cutoff is the oldest
+ * live event. A container that has only been collecting for a few days has a
+ * cutoff a few days back, which leaves the rest of the map's thirty-day window
+ * open for imported notices to fill. Once the live feed reaches past thirty
+ * days the window is entirely live and an import cannot change the map at all,
+ * however much it adds to the statistics.
+ */
+describe('whether importing fills the map', () => {
+  function archive(count: number, fromDaysAgo: number, toDaysAgo: number): void {
+    const insert = db.getDatabase().prepare(
+      `INSERT INTO bpk_events (id, pubdate, pubdate_unix, title_type, title_location,
+       headline, description, content, location_string, county, lat, lng,
+       external_source_link, permalink, imported_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    for (let i = 0; i < count; i++) {
+      const days = fromDaysAgo + ((toDaysAgo - fromDaysAgo) * i) / count;
+      const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      insert.run(i + 1, at, 0, 'Stöld', 'Lund', 'Stöld, Lund', `Notis ${i}`, '', 'Lund',
+        'Skåne län', 55.7, 13.19, '', '', new Date().toISOString());
+    }
+    db.invalidateAggregateCaches();
+  }
+
+  it('fills the older part of the window while the live feed is still young', () => {
+    seed(100, 4); // four days of live notices, as after a fresh boot
+    const before = db.getMapEvents({}, monthAgo()).rows.length;
+
+    archive(600, 30, 5); // imported notices covering days 5-30
+    const after = db.getMapEvents({}, monthAgo()).rows.length;
+
+    expect(before).toBe(100);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('changes nothing once the live feed already reaches past the window', () => {
+    seed(900, 40); // forty days of live notices
+    const before = db.getMapEvents({}, monthAgo()).rows.length;
+
+    archive(600, 30, 5); // the same import, now entirely above the cutoff
+    const after = db.getMapEvents({}, monthAgo()).rows.length;
+
+    expect(after).toBe(before);
+  });
+});
