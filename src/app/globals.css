@@ -1084,11 +1084,21 @@ main {
    rules it narrows, not before them: these carry the same specificity, so the
    later declaration is the one that lands. */
 @media (min-width: 601px) {
-  /* The search takes twice a select's width: it is the only one of the three
-     holding a full sentence of placeholder, and at an even split that sentence
-     came out clipped mid-word. */
-  .filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .filters > .search-form { grid-column: auto; }
+  /*
+   * The search on its own line, then the three selects across.
+   *
+   * This was `2fr 1fr 1fr` with the search sitting in the first column, which
+   * fitted exactly while there were two selects beside it. A third (län) was
+   * added and the grid was not revisited, so the fourth item wrapped: one lone
+   * select on a second row with two empty columns beside it, which reads as a
+   * control that failed to load rather than as a layout.
+   *
+   * It costs no height — the strip was already two rows once it wrapped — and
+   * the selects gain room rather than lose it: an equal third of the column is
+   * wider than the 1fr of a 2+1+1 split, which matters for the county names,
+   * since a select clips rather than ellipsises.
+   */
+  .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
   /* Chrome, not content. At 15-16px the strip was set larger than the incident
      summaries underneath it and read as the loudest thing on the page, which is
@@ -4382,6 +4392,19 @@ main {
 
   /* Actions go full width rather than wrapping into a ragged two-and-one. */
   .event-actions .btn-ghost { flex: 1 1 auto; justify-content: center; height: var(--control-lg); }
+
+  /*
+   * An odd select takes the whole row rather than sitting beside a hole.
+   *
+   * Three selects in two columns leaves the third one alone with a gap next to
+   * it, which reads as a control that failed to load. Shortening the labels
+   * does not help: the count is what orphans it, not the width.
+   *
+   * Conditional on the count being odd, so a fourth filter fills the second row
+   * evenly and this stops applying by itself. Same rule, and the same reason, as
+   * the stats tiles below.
+   */
+  .filters > select.field:last-of-type:nth-of-type(odd) { grid-column: 1 / -1; }
 
   /* Two per row at every count: at 320px a third track leaves no room for the
      numbers themselves. */
