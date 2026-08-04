@@ -162,6 +162,11 @@ export default function ImportPanel() {
   const progress = snapshot?.progress ?? null;
   const running = snapshot?.running ?? false;
   const percent = progress?.percent ?? (running ? null : snapshot?.percentComplete ?? null);
+  const progressLabel = running
+    ? percent !== null
+      ? `${percent.toFixed(1)}%`
+      : 'Pågår…'
+    : 'Ingen körning pågår';
 
   return (
     <section className="ops-section">
@@ -219,15 +224,25 @@ export default function ImportPanel() {
         <div className="card">
           <h3 className="card-title">Pågående körning</h3>
 
-          <div className="ops-progress">
+          {/* The label is a sibling of the bar, not a child of it. Inside, it
+              was clipped away entirely: .ops-progress is a 6px track with
+              overflow:hidden, so the one number telling an operator how far a
+              multi-hour import had got rendered into nothing. */}
+          <div
+            className="ops-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent ?? undefined}
+            aria-valuetext={progressLabel}
+            aria-label="Importens förlopp"
+          >
             <div
               className={`ops-progress-fill ${running ? 'ops-progress-fill--active' : ''}`}
               style={{ width: `${Math.max(0, Math.min(100, percent ?? 0))}%` }}
             />
-            <span className="ops-progress-text">
-              {running ? (percent !== null ? `${percent.toFixed(1)}%` : 'Pågår…') : 'Ingen körning pågår'}
-            </span>
           </div>
+          <p className="ops-progress-text">{progressLabel}</p>
 
           <div className="info-list">
             <div className="info-row">

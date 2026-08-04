@@ -352,7 +352,14 @@ function begin(handle: RunHandle): void {
       if (current === handle) {
         current = null;
         progress = null;
-        publish();
+        // Forced. This is the snapshot that says the run is over, and it is
+        // always emitted within PUBLISH_INTERVAL_MS of the finish/failure line
+        // recorded just above, which publishes with force and so resets the
+        // throttle. Unforced, it was therefore dropped every time: the last
+        // thing a watcher ever received said `running: true`, and the dashboard
+        // sat on "Pågår" with a progress bar that never resolved until the
+        // stream's own idle tick happened to correct it.
+        publish(true);
       }
     });
 }

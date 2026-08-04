@@ -15,6 +15,7 @@ import ScrollToTop from './ScrollToTop';
 import RadioCheck from './RadioCheck';
 import MapModal from './MapModal';
 import ErrorBoundary from './ErrorBoundary';
+import { VIEWS } from './views';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
@@ -195,16 +196,24 @@ function ClientAppContent({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  // The number keys address the nav by position, so they cannot drift out of
+  // step with it the way three hard-coded handlers did.
+  const selectViewByIndex = useCallback(
+    (index: number) => {
+      const view = VIEWS[index];
+      if (view) handleViewChange(view.id);
+    },
+    [handleViewChange]
+  );
+
   const shortcutHandlers = useMemo(
     () => ({
       onSearch: focusSearch,
       onEscape: handleCloseMapModal,
-      onListView: () => handleViewChange('list'),
-      onMapView: () => handleViewChange('map'),
-      onStatsView: () => handleViewChange('stats'),
+      onSelectView: selectViewByIndex,
       onScrollTop: scrollToTop,
     }),
-    [focusSearch, handleCloseMapModal, handleViewChange, scrollToTop]
+    [focusSearch, handleCloseMapModal, selectViewByIndex, scrollToTop]
   );
 
   useKeyboardShortcuts(shortcutHandlers);

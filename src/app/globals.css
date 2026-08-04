@@ -4158,7 +4158,12 @@ main {
 
 @keyframes progress-sheen { to { background-position: -200% 0; } }
 
+/* Sits under the track, not inside it. As a child of .ops-progress it was
+   clipped to nothing by that rule's 6px height and overflow:hidden, so the
+   percentage never appeared at all while an import ran. `display: block` so the
+   margin above applies whatever element carries the class. */
 .ops-progress-text {
+  display: block;
   margin-top: var(--space-2);
   font-size: var(--text-2xs);
   color: var(--muted);

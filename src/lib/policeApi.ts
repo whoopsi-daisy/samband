@@ -1,5 +1,6 @@
 import { RawEvent } from '@/types';
-import { insertEvent, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
+import { insertEvents, logFetch, getLastFetchTime, countEventsInDb, getDailyFetchCount, invalidateAggregateCaches } from './db';
+import { isRetryableStatus, retryDelayMs, sleep } from './retry';
 
 const POLICE_API_URL = 'https://polisen.se/api/events';
 const POLICE_API_TIMEOUT = 30000;
@@ -28,10 +29,13 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+    // How long to wait before trying again, decided while the response (and its
+    // Retry-After header) is still in hand.
+    let delayMs: number | null = null;
 
+    try {
       const response = await fetch(secureUrl, {
         headers: {
           'User-Agent': USER_AGENT,
@@ -39,17 +43,24 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
         const err = new Error(`HTTP error ${response.status}`);
-        // Client errors (4xx) won't succeed on retry: only 429 is worth retrying.
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        if (isRetryableStatus(response.status)) {
+          // The server said "not now". It gets to say how long: this used to
+          // retry a 429 after a flat 200ms, which is the opposite of what a
+          // rate-limited server is asking for.
+          delayMs = retryDelayMs(attempt, response.headers.get('retry-after'), { jitter: true });
+        } else {
+          // Every other 4xx will answer the same way next time.
           (err as Error & { retryable?: boolean }).retryable = false;
         }
         throw err;
       }
 
+      // Inside the try, so the abort above is still armed while the body is
+      // read. clearTimeout used to run the moment the headers arrived, which
+      // left this parse with no timeout at all: a server that sent headers and
+      // then stalled the stream hung here until the socket died.
       const data = await response.json();
       if (!Array.isArray(data)) {
         throw new Error('Invalid JSON response');
@@ -62,8 +73,14 @@ async function fetchWithRetry(url: string, retries = MAX_FETCH_RETRIES): Promise
         break;
       }
       if (attempt < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // A transport failure carries no Retry-After, so it backs off on the
+        // exponential schedule.
+        await sleep(delayMs ?? retryDelayMs(attempt, null, { jitter: true }));
       }
+    } finally {
+      // Always, including on the paths that used to skip it and leave a live
+      // 30-second timer pointed at a controller nobody was listening to.
+      clearTimeout(timeoutId);
     }
   }
 
@@ -118,55 +135,93 @@ async function fetchEventsWithBackfill(): Promise<RawEvent[]> {
   return Array.from(allEvents.values());
 }
 
-export async function refreshEventsIfNeeded(): Promise<RefreshResult> {
+const SKIPPED: RefreshResult = { fetched: 0, new: 0, updated: 0, success: true, error: null };
+
+/**
+ * The refresh currently in flight, shared by every caller that asks for one.
+ *
+ * refreshEventsIfNeeded is awaited at the top of every home-page render and
+ * every /api/events request, as well as on a ten-minute timer. Its only guard
+ * was `getLastFetchTime()`, read from the database, and the row that moves that
+ * timestamp is written *after* the fetch completes. So for the whole duration of
+ * a fetch, every concurrent caller read the same stale timestamp, decided a
+ * refresh was due, and started its own.
+ *
+ * On a warm database that meant up to 90 seconds (a 30s timeout, three
+ * attempts) during which every arriving request duplicated the work. On a cold
+ * one it was far worse: below BACKFILL_THRESHOLD events, each of those callers
+ * ran fetchEventsWithBackfill, which is eight sequential requests with sleeps
+ * between them. A single container could put a thundering herd on polisen.se
+ * purely by being popular at the wrong moment, and each duplicate also wrote its
+ * own fetch_log row, which is what the dashboard computes the fetch interval
+ * and the daily count from.
+ *
+ * One promise, awaited by everyone. Callers block for exactly as long as they
+ * did before; they just no longer each pay for it.
+ */
+let inFlight: Promise<RefreshResult> | null = null;
+
+export function refreshEventsIfNeeded(): Promise<RefreshResult> {
+  // Someone is already doing this. Their answer is the answer.
+  if (inFlight) return inFlight;
+
   const lastFetch = getLastFetchTime();
   const shouldFetch = !lastFetch || (Date.now() - lastFetch.getTime()) > CACHE_TIME * 1000;
 
   if (!shouldFetch) {
-    return { fetched: 0, new: 0, updated: 0, success: true, error: null };
+    return Promise.resolve(SKIPPED);
   }
 
   // Check daily fetch limit (max 1440 calls per 24h)
   const dailyFetchCount = getDailyFetchCount();
   if (dailyFetchCount >= MAX_DAILY_FETCHES) {
     console.warn(`Daily fetch limit reached (${dailyFetchCount}/${MAX_DAILY_FETCHES}). Skipping fetch.`);
-    return { fetched: 0, new: 0, updated: 0, success: true, error: null };
+    return Promise.resolve(SKIPPED);
   }
 
+  const run = performRefresh().finally(() => {
+    // Cleared before the promise this returns settles, so the next caller
+    // after a completed refresh starts a fresh one rather than joining a dead
+    // handle.
+    if (inFlight === run) inFlight = null;
+  });
+  inFlight = run;
+  return run;
+}
+
+async function performRefresh(): Promise<RefreshResult> {
   // Check if we need initial backfill (database has few events)
   const dbEventCount = countEventsInDb();
   const needsBackfill = dbEventCount < BACKFILL_THRESHOLD;
 
   let eventsFetched = 0;
-  let eventsNew = 0;
-  let eventsUpdated = 0;
 
   try {
     const events = needsBackfill
       ? await fetchEventsWithBackfill()
       : await fetchWithRetry(POLICE_API_URL);
 
-    for (const event of events) {
-      eventsFetched++;
-      const status = insertEvent(event);
-      if (status === 'new') {
-        eventsNew++;
-      } else if (status === 'updated') {
-        eventsUpdated++;
-      }
-    }
+    eventsFetched = events.length;
 
-    logFetch(eventsFetched, eventsNew, true);
+    // One transaction for the whole page of events, against statements compiled
+    // once. This was a bare loop calling insertEvent per event, which compiled
+    // two statements and committed a transaction for every one of them.
+    const counts = insertEvents(events);
+
+    logFetch(eventsFetched, counts.new, true);
     // Stats and filter options are cached; drop them so the data that just
     // landed shows up on the next request instead of after the TTL.
-    if (eventsNew > 0 || eventsUpdated > 0) {
+    if (counts.new > 0 || counts.updated > 0) {
       invalidateAggregateCaches();
     }
-    return { fetched: eventsFetched, new: eventsNew, updated: eventsUpdated, success: true, error: null };
+    return { fetched: eventsFetched, new: counts.new, updated: counts.updated, success: true, error: null };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logFetch(eventsFetched, eventsNew, false, errorMessage);
-    return { fetched: eventsFetched, new: eventsNew, updated: eventsUpdated, success: false, error: errorMessage };
+    // Nothing was written: insertEvents is all-or-nothing, and a throw before it
+    // never reached the database. Reporting a partial count here would put
+    // numbers in the fetch log for rows that do not exist.
+    logFetch(eventsFetched, 0, false, errorMessage);
+    return { fetched: eventsFetched, new: 0, updated: 0, success: false, error: errorMessage };
   }
 }
 
@@ -272,10 +327,10 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
     return null;
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), POLICE_API_TIMEOUT);
 
+  try {
     const response = await fetch(enforceHttps(absoluteUrl), {
       headers: {
         'User-Agent': USER_AGENT,
@@ -283,12 +338,14 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       return null;
     }
 
+    // Read inside the try, with the abort still armed. clearTimeout used to run
+    // as soon as the headers arrived, so this read had no timeout: a page that
+    // sent headers and then stalled held the request open until the socket
+    // died, and this is called once per card a reader expands.
     const html = await response.text();
 
     // Simple HTML parsing to extract article content
@@ -301,5 +358,7 @@ export async function fetchDetailsText(url: string): Promise<string | null> {
     return paragraphsToText(content);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

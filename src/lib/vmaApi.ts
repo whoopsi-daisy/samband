@@ -1,5 +1,4 @@
 import { VmaAlert, VmaSeverity } from '@/types';
-import { memoizeWithTtl } from './cache';
 
 /**
  * Viktigt meddelande till allmänheten, from Sveriges Radio's VMA API.
@@ -235,25 +234,80 @@ async function loadAlerts(): Promise<VmaAlert[]> {
   );
 }
 
+export interface VmaResult {
+  alerts: VmaAlert[];
+  failed: boolean;
+}
+
+/**
+ * How long a failure is held.
+ *
+ * A success is worth a minute: the answer is unlikely to have changed and SR
+ * should not be asked more often than that. A *failure* is not an answer at all,
+ * and caching it for the same minute was the bug: one refused connection or one
+ * slow response pinned "vi vet inte just nu" in front of every reader for sixty
+ * seconds, and the browser polls on the same minute, so a warning could arrive
+ * as much as two minutes after SR had recovered.
+ *
+ * Long enough that a hard outage is not retried on every single request, short
+ * enough that a blip costs a few seconds. On the one feature here whose whole
+ * justification is immediacy, that is the trade worth making.
+ */
+const VMA_FAILURE_TTL_MS = 5_000;
+
+interface CacheEntry {
+  storedAt: number;
+  ttlMs: number;
+  value: VmaResult;
+}
+
+let cached: CacheEntry | null = null;
+/** The request currently in flight, so concurrent readers share one call. */
+let inFlight: Promise<VmaResult> | null = null;
+
+async function loadWithFallback(): Promise<VmaResult> {
+  try {
+    const value: VmaResult = { alerts: await loadAlerts(), failed: false };
+    cached = { storedAt: Date.now(), ttlMs: VMA_CACHE_TTL_MS, value };
+    return value;
+  } catch (error) {
+    console.error('[vma] could not reach the VMA API:', error);
+    const value: VmaResult = { alerts: [], failed: true };
+    cached = { storedAt: Date.now(), ttlMs: VMA_FAILURE_TTL_MS, value };
+    return value;
+  }
+}
+
 /**
  * Every alert the API currently returns, cancellations and tests included.
  *
  * Returns an empty list rather than throwing when SR is unreachable: a warning
  * service that takes the site down with it when it has an outage is worse than
- * one that quietly says it has nothing.
+ * one that quietly says it has nothing. The `failed` flag is what lets the page
+ * tell "there is no warning" apart from "we could not ask", which are very
+ * different things to put in front of someone.
  */
-export const getVmaAlerts = memoizeWithTtl(
-  async (): Promise<{ alerts: VmaAlert[]; failed: boolean }> => {
-    try {
-      return { alerts: await loadAlerts(), failed: false };
-    } catch (error) {
-      console.error('[vma] could not reach the VMA API:', error);
-      return { alerts: [], failed: true };
-    }
-  },
-  VMA_CACHE_TTL_MS,
-  () => 'vma'
-);
+export function getVmaAlerts(): Promise<VmaResult> {
+  const now = Date.now();
+  if (cached && now - cached.storedAt < cached.ttlMs) {
+    return Promise.resolve(cached.value);
+  }
+  // Whoever got here first is already asking; everyone else takes their answer
+  // rather than opening a second connection to SR.
+  if (inFlight) return inFlight;
+
+  const run = loadWithFallback();
+  inFlight = run;
+  void run.finally(() => {
+    if (inFlight === run) inFlight = null;
+  });
+  return run;
+}
+
+/** Drop the cached answer. For tests, and for an explicit refresh. */
+getVmaAlerts.invalidate = (): void => {
+  cached = null;
+};
 
 /** Only the ones a reader should be warned about right now. */
 export function liveAlerts(alerts: VmaAlert[], now = Date.now()): VmaAlert[] {

@@ -199,7 +199,17 @@ describe('cancelImport', () => {
     const { port } = server.address() as AddressInfo;
 
     try {
-      runner.startImport({ mode: 'ndjson', source: `http://127.0.0.1:${port}/dump.ndjson` });
+      // allowAnyPath marks this as an operator-initiated import, which is what
+      // this stands in for: the CLI and BPK_IMPORT_SOURCE may point anywhere,
+      // while a source arriving over HTTP may not reach loopback or a private
+      // address. Without it the guard in resolveImportSource refuses 127.0.0.1,
+      // correctly, and this test never gets as far as the cancellation it is
+      // actually about.
+      runner.startImport({
+        mode: 'ndjson',
+        source: `http://127.0.0.1:${port}/dump.ndjson`,
+        allowAnyPath: true,
+      });
 
       // Wait for rows to actually land, so this cancels a run with work to keep.
       while (bpkDb.countBpkEvents() === 0) {
