@@ -992,7 +992,14 @@ const ARCHIVE_COLUMNS = `NULL AS raw_data, -b.id AS id, b.pubdate AS event_time,
        THEN SUBSTR(b.external_source_link, 19) ELSE '' END AS url,
   COALESCE(b.title_type, '') AS type,
   COALESCE(b.title_location, b.location_string, '') AS location_name,
-  CASE WHEN b.lat IS NOT NULL AND b.lng IS NOT NULL
+  -- Zero is not a position. Brottsplatskartan writes 0/0 for a notice it could
+  -- not geocode rather than leaving the columns null, and 10.7% of the imported
+  -- record carries it: about 29,000 notices. Passed through as "0.0,0.0" those
+  -- are markers in the Gulf of Guinea, and because the map fits its bounds to
+  -- what it is given, one of them stretches the viewport from Sweden to the
+  -- equator. Empty here means the same as a missing position, which every
+  -- reader of this column already handles.
+  CASE WHEN b.lat IS NOT NULL AND b.lng IS NOT NULL AND NOT (b.lat = 0 AND b.lng = 0)
        THEN CAST(b.lat AS TEXT) || ',' || CAST(b.lng AS TEXT) ELSE '' END AS location_gps`;
 
 // The location the app groups and filters archive rows by. title_location is
@@ -1562,7 +1569,10 @@ function archiveStatsSource(): StatsSource {
     typeLabel: 'b.title_type',
     location: ARCHIVE_LOCATION,
     county: 'b.county',
-    hasGps: 'b.lat IS NOT NULL AND b.lng IS NOT NULL',
+    // Same 0/0 exclusion as ARCHIVE_COLUMNS: counting the ungeocoded rows as
+    // positioned overstated "har koordinater" on the statistics page by about
+    // ten points, and the figure is there to say how much of the map to trust.
+    hasGps: 'b.lat IS NOT NULL AND b.lng IS NOT NULL AND NOT (b.lat = 0 AND b.lng = 0)',
     // Brottsplatskartan does not republish corrections, so nothing here is
     // ever a revision of something already stored.
     wasUpdated: '0',

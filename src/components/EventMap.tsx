@@ -12,6 +12,7 @@ import { markerInk } from '@/lib/markerInk';
 import {
   MarkerGroup,
   bubbleSize,
+  hasPosition,
   familyOfGroup,
   groupByPosition,
   summariseCluster,
@@ -249,7 +250,7 @@ function EventMapInner({
   isDarkRef.current = isDark;
 
   const groups = useMemo(() => groupByPosition(events), [events]);
-  const mappable = useMemo(() => events.filter((e) => e.gps).length, [events]);
+  const mappable = useMemo(() => events.filter(hasPosition).length, [events]);
   /*
    * Notices in this period that carry no position at all.
    *
@@ -548,7 +549,7 @@ function EventMapInner({
   const legend = useMemo(() => {
     const counts = new Map<TypeFamilyKey, number>();
     for (const e of events) {
-      if (!e.gps) continue;
+      if (!hasPosition(e)) continue;
       const family = getTypeStyle(e.type).family;
       counts.set(family, (counts.get(family) ?? 0) + 1);
     }

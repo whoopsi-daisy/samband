@@ -31,13 +31,52 @@ export function timeOf(event: MapEvent): number {
   return isNaN(ts) ? 0 : ts;
 }
 
+/**
+ * Whether a pair of numbers is somewhere a notice could have happened.
+ *
+ * `isNaN` was the whole test, and 0/0 is not a NaN. Brottsplatskartan writes
+ * zeroes for a notice it could not geocode rather than leaving the columns
+ * empty, and that is 10.7% of the imported record, so a month-long map view
+ * reaching back past the live feed drew a cluster of them in the Gulf of
+ * Guinea. The map fits its bounds to the markers it is given, so a single one
+ * of those stretched the viewport from Sweden to the equator and left the
+ * country a smudge in the corner.
+ *
+ * The source of those rows is fixed where they are read out of the database.
+ * This stays as well, because it is the last point before a coordinate becomes
+ * a viewport: anything that reaches here wrong should cost a missing pin, never
+ * the whole map.
+ *
+ * Deliberately not a Sweden bounding box. The one thing being excluded is data
+ * that cannot be a position at all; a notice genuinely filed just over a border
+ * should still draw.
+ */
+export function isPlottable(lat: number, lng: number): boolean {
+  if (isNaN(lat) || isNaN(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
+/**
+ * Whether a notice can be drawn at all.
+ *
+ * The counts beside the map — how many notices it is showing, and the tallies
+ * in the key — have to agree with the pins, so they ask the same question the
+ * grouping does rather than testing the string for emptiness.
+ */
+export function hasPosition(event: MapEvent): boolean {
+  if (!event.gps) return false;
+  const [lat, lng] = event.gps.split(',').map(Number);
+  return isPlottable(lat, lng);
+}
+
 export function groupByPosition(events: MapEvent[]): MarkerGroup[] {
   const groups = new Map<string, MarkerGroup>();
 
   for (const e of events) {
     if (!e.gps) continue;
     const [lat, lng] = e.gps.split(',').map(Number);
-    if (isNaN(lat) || isNaN(lng)) continue;
+    if (!isPlottable(lat, lng)) continue;
 
     // Rounded to about ten metres, so two notices filed at the same spot with
     // different float noise still count as the same spot.

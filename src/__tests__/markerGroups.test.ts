@@ -5,6 +5,8 @@ import {
   bubbleSize,
   familyOfGroup,
   groupByPosition,
+  hasPosition,
+  isPlottable,
   summariseCluster,
   type MarkerGroup,
 } from '@/lib/markerGroups';
@@ -139,5 +141,67 @@ describe('how big a bubble gets', () => {
     expect(bubbleSize(9)).toBeLessThan(bubbleSize(10));
     expect(bubbleSize(99)).toBeLessThan(bubbleSize(100));
     expect(bubbleSize(1000)).toBe(bubbleSize(50_000));
+  });
+});
+
+/*
+ * Coordinates that are not positions.
+ *
+ * `isNaN` was the whole guard, and 0/0 is not a NaN. Brottsplatskartan writes
+ * zeroes for a notice it could not geocode rather than leaving the columns
+ * empty, and that is 10.7% of the imported record — around 29,000 notices. The
+ * archive is reachable from the map whenever the window reaches back past the
+ * live feed, which a month-long view does, so those drew as a cluster in the
+ * Gulf of Guinea. Because the map fits its bounds to the markers it is handed,
+ * one of them was enough to stretch the viewport from Sweden to the equator.
+ */
+describe('coordinates that cannot be plotted', () => {
+  const at = (gps: string): MapEvent => ({
+    gps,
+    type: 'Stöld',
+    place: '',
+    location: 'Skåne län',
+    url: '/e/1/',
+    iso: new Date().toISOString(),
+  });
+
+  it('refuses the ungeocoded zero pair', () => {
+    expect(isPlottable(0, 0)).toBe(false);
+    expect(hasPosition(at('0.0,0.0'))).toBe(false);
+    expect(hasPosition(at('0,0'))).toBe(false);
+  });
+
+  it('still accepts a real position', () => {
+    expect(isPlottable(55.5110494, 13.2397277)).toBe(true);
+    expect(hasPosition(at('55.5110494,13.2397277'))).toBe(true);
+  });
+
+  // A zero on one axis only is somewhere off the coast of Africa too, but it is
+  // a real point on the globe, so only the pair is rejected.
+  it('keeps a genuine zero on one axis', () => {
+    expect(isPlottable(0, 13.2)).toBe(true);
+  });
+
+  it('refuses what is not a number or not on the globe', () => {
+    expect(hasPosition(at('inte,ett,tal'))).toBe(false);
+    expect(hasPosition(at(''))).toBe(false);
+    expect(isPlottable(91, 10)).toBe(false);
+    expect(isPlottable(60, 181)).toBe(false);
+  });
+
+  // The consequence that mattered: one bad row must not reach the grouping,
+  // because everything downstream of it sets the viewport.
+  it('keeps them out of the marker groups entirely', () => {
+    const groups = groupByPosition([at('0.0,0.0'), at('55.6,13.0'), at('0.0,0.0')]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].lat).toBeCloseTo(55.6);
+  });
+
+  // Not a Sweden bounding box: a notice genuinely filed just over a border
+  // should still draw, and silently dropping it would be its own bug.
+  it('does not fence the map to Sweden', () => {
+    expect(isPlottable(59.91, 10.75)).toBe(true); // Oslo
+    expect(isPlottable(55.68, 12.57)).toBe(true); // Copenhagen
   });
 });
