@@ -165,6 +165,27 @@ function normalise(value: string): string {
 const BY_MUNICIPALITY = new Map<string, County>();
 for (const county of COUNTIES) {
   BY_MUNICIPALITY.set(normalise(county), county);
+
+  /*
+   * The county name without its genitive s, which is how the archive writes
+   * some of them.
+   *
+   * Sweden's counties are named possessively — "Västernorrlands län", the län
+   * of Västernorrland — and brottsplatskartan drops the s on a subset of them.
+   * "Västernorrland län" is 1.2% of the imported record and resolved to
+   * nothing, so those notices carried no county: absent from the regional
+   * breakdown, counted as unplaceable in its caption, and unreachable through
+   * the county filter. Two of these spellings were already in the alias table
+   * below, added one at a time as they turned up; deriving the whole set means
+   * the thirteen nobody had hit yet cannot each be their own later bug.
+   *
+   * Unlike a place-name alias this cannot put a notice in the wrong county:
+   * every form here ends in " län" and differs from the administrative name by
+   * one letter, so there is nothing else it could plausibly mean.
+   */
+  const bare = `${county.replace(/ län$/, '').replace(/s$/, '')} län`;
+  if (bare !== county) BY_MUNICIPALITY.set(normalise(bare), county);
+
   for (const municipality of MUNICIPALITIES[county]) {
     BY_MUNICIPALITY.set(normalise(municipality), county);
   }
