@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { COUNTIES, MUNICIPALITIES, countyOf } from '@/lib/regions';
+import { COUNTIES, MUNICIPALITIES, countyOf, isCountyName, resolveRegionFilters } from '@/lib/regions';
 
 /**
  * The county table is the only thing standing between "three hundred labels of
@@ -154,5 +154,54 @@ describe('the municipality table against Valmyndigheten', () => {
     );
 
     expect(invented).toEqual([]);
+  });
+});
+
+/*
+ * The county name without its genitive s.
+ *
+ * Sweden's counties are named possessively — "Västernorrlands län", the län of
+ * Västernorrland — and brottsplatskartan drops the s on a subset of them.
+ * "Västernorrland län" is 1.2% of the imported record and resolved to nothing,
+ * so those notices carried no county at all: absent from the regional
+ * breakdown, counted as unplaceable in its own caption, and unreachable
+ * through the county filter. Two of these spellings were already handled as
+ * one-off aliases, added as they turned up; the set is derived now so the
+ * remaining thirteen cannot each become their own later bug.
+ */
+describe('counties written without the genitive s', () => {
+  const bare = (county: string) => `${county.replace(/ län$/, '').replace(/s$/, '')} län`;
+
+  it('resolves every one of the twenty-one', () => {
+    for (const county of COUNTIES) {
+      expect(countyOf(bare(county))).toBe(county);
+    }
+  });
+
+  // The form actually seen in the data, named so the test says what it is for.
+  it('resolves the one the archive actually writes', () => {
+    expect(countyOf('Västernorrland län')).toBe('Västernorrlands län');
+    expect(countyOf('Västerbotten län')).toBe('Västerbottens län');
+    expect(countyOf('Västra Götaland län')).toBe('Västra Götalands län');
+  });
+
+  // These keys go into the same map the municipalities live in, so the one
+  // thing that could go wrong is a county shadowing a place inside it.
+  it('shadows none of the two hundred and ninety municipalities', () => {
+    for (const county of COUNTIES) {
+      for (const municipality of MUNICIPALITIES[county]) {
+        expect(countyOf(municipality)).toBe(county);
+      }
+    }
+  });
+
+  // Otherwise it stays in the place dropdown as a place, which is the thing
+  // county names were taken out of that list to prevent.
+  it('lets the filter treat it as a county', () => {
+    expect(isCountyName('Västernorrland län')).toBe(true);
+    expect(resolveRegionFilters('', 'Västernorrland län')).toEqual({
+      county: 'Västernorrlands län',
+      location: '',
+    });
   });
 });
