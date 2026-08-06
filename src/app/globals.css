@@ -242,8 +242,37 @@ html {
   color-scheme: light;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
-  scroll-behavior: smooth;
+
+  /*
+   * Anything scrolled to lands below the header rather than under it.
+   *
+   * The header is 52px of sticky opaque background, and nothing accounted for
+   * it: following the skip link put the top of the feed behind the header, and
+   * so did every in-page anchor.
+   */
+  scroll-padding-top: calc(var(--header-h) + var(--space-3));
 }
+
+/*
+ * Smooth scrolling is asked for, never imposed.
+ *
+ * `scroll-behavior: smooth` used to sit on the root, which is a much wider
+ * instruction than it looks: it does not only apply to the app's own
+ * scrollTo calls, it takes over *every* scroll the browser performs that is not
+ * a direct gesture. Page Down, the space bar, Home and End, arrow keys,
+ * find-in-page, and the scroll position the browser restores on back all
+ * stopped being instant and started animating on a 300-odd millisecond curve
+ * the reader never asked for. That is the "choppy, not quite standard" feel: it
+ * is not dropped frames, it is the platform's own scrolling replaced by
+ * something slower than the gesture that started it.
+ *
+ * Every place the app genuinely wants a glide already passes
+ * `behavior: 'smooth'` itself — the scroll-to-top control, the logo, the
+ * refresh, the deep-linked row — so nothing that was smooth on purpose stops
+ * being smooth. What comes back is the native fling, the native keyboard paging
+ * and the native scroll restoration, and an anchor jump that arrives where it
+ * was aimed instead of gliding there.
+ */
 
 [data-theme="dark"] { color-scheme: dark; }
 
@@ -1625,6 +1654,44 @@ main {
   position: relative;
   border-bottom: 1px solid var(--border);
   transition: background var(--t-fast) var(--ease);
+
+  /*
+   * Rows that are not on screen are not laid out or painted.
+   *
+   * The feed scroll-loads to about a hundred and twenty rows before the button
+   * returns, and readers go a good deal further than that. Every one of those
+   * rows was a full layout and paint on each frame that invalidated them —
+   * a row opening, the minute ticking over in every relative timestamp, the
+   * theme changing — and the further you scrolled the more it cost, which is
+   * exactly the shape of "it gets choppy as you go down".
+   *
+   * `auto` in contain-intrinsic-size is what makes this safe: the browser
+   * remembers each row's real height once it has been rendered, so the
+   * scrollbar and the scroll position stay put instead of jittering as rows are
+   * skipped and un-skipped. The 88px is only the guess for a row that has never
+   * been on screen, and it is about what a collapsed one measures.
+   *
+   * Rows stay findable: content-visibility: auto content is searched by
+   * find-in-page, reachable by tab, and revealed by scrollIntoView, which is
+   * what the ?handelse= deep link relies on.
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 88px;
+}
+
+/*
+ * Except the two that are open.
+ *
+ * content-visibility brings paint containment with it, and an expanded row is
+ * the one place in the feed that grows past its own box while it is being
+ * measured: the detail text arrives from a fetch, and containing a subtree
+ * whose height is changing under it is how you get a row that clips its last
+ * paragraph. They are on screen by definition, so there is nothing to skip.
+ */
+.event-row--expanded,
+.event-row--highlighted {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 
 .event-row:last-child { border-bottom: none; }
@@ -1983,17 +2050,34 @@ main {
   padding: var(--space-4);
 }
 
+/*
+ * The sweep moves a layer, it does not repaint a gradient.
+ *
+ * This animated `background-position` on the element itself, which the compositor
+ * cannot do: every frame of it was a repaint, on twelve elements, running the
+ * whole time a page was in flight — which is precisely while the reader is
+ * scrolling toward it. Translating a pseudo-element instead is a transform, so
+ * it runs off the main thread and costs the scroll nothing.
+ */
 .skeleton {
+  position: relative;
   display: block;
   height: 10px;
+  overflow: hidden;
   border-radius: var(--radius-xs);
+  background: var(--subtle);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
-    var(--subtle) 0%,
+    transparent 0%,
     var(--surface-hover) 50%,
-    var(--subtle) 100%
+    transparent 100%
   );
-  background-size: 200% 100%;
   animation: skeleton-sweep 1.4s linear infinite;
 }
 
@@ -2001,12 +2085,16 @@ main {
 .skeleton--meta { width: 22%; height: 9px; }
 .skeleton--text { width: 84%; }
 
-@keyframes skeleton-sweep { to { background-position: -200% 0; } }
+@keyframes skeleton-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
 
 /* The sweep is the only thing saying "working"; with motion off, a steady fill
    still marks the space the rows will occupy. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton { background: var(--surface-hover); }
+  .skeleton::after { content: none; }
 }
 
 /* New-incidents banner, sticky under the header so it stays reachable. */
@@ -3721,6 +3809,18 @@ main {
 }
 
 /* ── Scroll to top ────────────────────────────────────────── */
+
+/* What the control watches instead of the scroll event. Against the initial
+   containing block, so it stays at the very top of the document however far the
+   reader has scrolled; its height comes from the component, because that number
+   is the threshold itself. */
+.scroll-top-sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  pointer-events: none;
+}
 
 .scroll-top {
   position: fixed;
