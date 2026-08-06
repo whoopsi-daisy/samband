@@ -4952,7 +4952,10 @@ main {
 
 .radio-log {
   margin-top: var(--space-3);
-  min-height: 6.4em;
+  /* Six lines at the line-height below, so the card is its final size from the
+     first line and the Kvittera button does not walk down the screen as the
+     transmission prints. */
+  min-height: 9.6em;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.6;

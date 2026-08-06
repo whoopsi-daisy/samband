@@ -347,7 +347,9 @@ function ClientAppContent({
       {/* Above the header, so it is the first thing on the page whatever view
           the reader is on and wherever they navigate next. */}
       <VmaRibbon alerts={vma.live} onOpen={showVma} />
-      <RadioCheck />
+      {/* Given the size of the record so the transmission can report something
+          true. Unfiltered on purpose: see the note on the props. */}
+      <RadioCheck watching={stats.total} coverageDays={stats.coverageDays} />
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
