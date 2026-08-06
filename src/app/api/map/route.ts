@@ -5,6 +5,7 @@ import { resolveRegionFilters } from '@/lib/regions';
 import { jsonResponse } from '@/lib/apiResponse';
 import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rateLimit';
 import { logger } from '@/lib/log';
+import { DEFAULT_MAP_WINDOW_DAYS, MAX_MAP_WINDOW_DAYS } from '@/lib/mapWindows';
 
 const log = logger('api:map');
 
@@ -15,9 +16,10 @@ const log = logger('api:map');
 // left the list view. The query behind getMapEvents is cached per filter set
 // and dropped whenever a fetch changes the rows.
 
-// The longest window the map offers. Anything further back belongs to the list
-// and the statistics, which are built to hold a decade.
-const MAX_WINDOW_DAYS = 30;
+// The longest window the map offers is MAX_MAP_WINDOW_DAYS, derived from the
+// control itself in lib/mapWindows. It used to be a 30 restated here with its
+// own copy of the reasoning, which is a thing that drifts the first time the
+// control gains a period.
 
 export async function GET(request: NextRequest) {
   const rateLimitResult = checkRateLimit(request);
@@ -30,7 +32,9 @@ export async function GET(request: NextRequest) {
   // How far back the map is looking. Bounded so a runaway or hand-typed value
   // cannot ask the database for the whole archive.
   const days = Number(searchParams.get('dagar'));
-  const windowDays = Number.isFinite(days) ? Math.min(Math.max(Math.round(days), 1), MAX_WINDOW_DAYS) : 1;
+  const windowDays = Number.isFinite(days)
+    ? Math.min(Math.max(Math.round(days), 1), MAX_MAP_WINDOW_DAYS)
+    : DEFAULT_MAP_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
   // countyOf is the sanitiser for the county: only ever one of the twenty-one

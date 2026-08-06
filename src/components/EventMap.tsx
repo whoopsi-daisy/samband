@@ -18,6 +18,7 @@ import {
   summariseCluster,
 } from '@/lib/markerGroups';
 import { formatRelativeTime } from '@/lib/utils';
+import { MAP_WINDOWS, mapWindowFor } from '@/lib/mapWindows';
 import { useDarkTheme } from '@/hooks/useDarkTheme';
 
 interface EventMapProps {
@@ -44,32 +45,9 @@ interface EventMapProps {
   isFiltered?: boolean;
 }
 
-/**
- * The periods the map offers.
- *
- * A month is the far end, deliberately. The database holds a decade, but a map
- * of a decade is a map of Sweden with a dot on every town: it answers nothing,
- * and every marker on it is a report filed years ago at a position that was
- * approximate when it was new. The long view belongs to the statistics page,
- * which is built for it. This view answers "what is going on around here", and
- * that question has a short horizon.
- */
-const WINDOWS: { days: number; label: string; phrase: string }[] = [
-  // `phrase` carries the article, so it reads as Swedish inside a sentence
-  // rather than as a button label dropped into one.
-  { days: 1, label: 'Senaste dygnet', phrase: 'det senaste dygnet' },
-  { days: 7, label: 'Senaste veckan', phrase: 'den senaste veckan' },
-  { days: 30, label: 'Senaste månaden', phrase: 'den senaste månaden' },
-];
-
-/**
- * The periods that are allowed in the URL.
- *
- * Exported from here rather than restated where the parameter is read, so a
- * window added to the control above is accepted in a link without a second
- * edit, and one removed stops being accepted.
- */
-export const MAP_WINDOW_DAYS: number[] = WINDOWS.map((window) => window.days);
+// The periods on offer, and which days a URL may name, live in lib/mapWindows:
+// the API route bounds its own query by the same list and the hook prefetches
+// from it, neither of which should have to import a Leaflet component to do so.
 
 // CartoDB ships the same basemap in two styles. Picking the one that matches
 // the theme is what the stylesheet's invert(1) filter was standing in for, and
@@ -263,7 +241,7 @@ function EventMapInner({
   const missing = events.length - mappable;
   // Only when the server actually reported more than it sent.
   const truncated = typeof total === 'number' && total > events.length;
-  const activeWindow = WINDOWS.find((w) => w.days === windowDays) ?? WINDOWS[0];
+  const activeWindow = mapWindowFor(windowDays);
 
   // --- Build the map once, when the view is first opened ---
   useEffect(() => {
@@ -394,6 +372,21 @@ function EventMapInner({
         showCoverageOnHover: false,
         spiderfyOnMaxZoom: true,
         zoomToBoundsOnClick: true,
+        /*
+         * Build the cluster tree in slices, yielding to the browser between
+         * them.
+         *
+         * addLayers is one long synchronous task otherwise, and at the month
+         * window that is a few thousand positions inserted into the tree in a
+         * single frame: nothing on the page responds until it finishes, which is
+         * most of what "switching to Senaste månaden feels heavy" was. Chunked,
+         * the markers appear in waves and the window buttons, the zoom and the
+         * scroll stay live throughout.
+         */
+        chunkedLoading: true,
+        // Roughly a frame of work per slice.
+        chunkInterval: 16,
+        chunkDelay: 8,
         // Leaflet's own reduced-motion story is nothing, so this is it.
         animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         iconCreateFunction: (cluster) => {
@@ -481,7 +474,20 @@ function EventMapInner({
       // What the cluster icon reads to work out its own colour and count.
       (marker as L.Marker & { sambandGroup?: MarkerGroup }).sambandGroup = group;
 
-      marker.bindPopup(buildPopup(group, now), { maxWidth: 300 });
+      /*
+       * The popup's HTML is built when it is opened, not when it is drawn.
+       *
+       * Passing a string meant sorting every group's incidents, formatting a
+       * relative time for each and escaping the lot, once per position, for
+       * three thousand popups of which a reader opens one or two. It was the
+       * single most expensive thing in this loop and nearly all of it was
+       * thrown away.
+       *
+       * Leaflet accepts a function for exactly this. It also fixes a staleness
+       * nobody had noticed: `now` was captured when the markers were drawn, so
+       * a popup opened twenty minutes later still said "3 minuter sedan".
+       */
+      marker.bindPopup(() => buildPopup(group, Date.now()), { maxWidth: 300 });
       pins.push(marker);
     }
 
@@ -498,7 +504,17 @@ function EventMapInner({
     // Frame the markers once per selection, then leave the reader's own
     // panning and zooming alone.
     if (!hasFittedBoundsRef.current && groups.length > 0) {
-      const bounds = layer.getBounds();
+      /*
+       * Measured from the groups, not from `layer.getBounds()`.
+       *
+       * chunkedLoading above makes addLayers finish over several frames, so the
+       * layer's own bounds a line later cover only the first slice: the map
+       * would frame whatever corner of the country happened to load first and
+       * then sit there while the rest appeared outside the viewport. The
+       * coordinates are already in hand, and this is also the cheaper of the
+       * two.
+       */
+      const bounds = L.latLngBounds(groups.map((group) => [group.lat, group.lng]));
       if (bounds.isValid()) {
         // Measure the container first. Leaflet caches the map size, and the
         // invalidateSize calls that correct it run on timers after init, so a
@@ -568,7 +584,7 @@ function EventMapInner({
       {/* The window sits above the map, not below it: it decides what the map
           is showing, and a control that decides has to be read before it. */}
       <div className="map-windows" role="group" aria-label="Visa händelser från">
-        {WINDOWS.map((w) => (
+        {MAP_WINDOWS.map((w) => (
           <button
             key={w.days}
             type="button"

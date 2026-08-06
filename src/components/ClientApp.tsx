@@ -6,7 +6,7 @@ import Header from './Header';
 import BottomNav from './BottomNav';
 import Filters from './Filters';
 import EventList from './EventList';
-import EventMap, { MAP_WINDOW_DAYS } from './EventMap';
+import EventMap from './EventMap';
 import StatsView from './StatsView';
 import VmaView from './VmaView';
 import VmaRibbon from './VmaRibbon';
@@ -21,6 +21,7 @@ import { useMapEvents } from '@/hooks/useMapEvents';
 import { useVma } from '@/hooks/useVma';
 import { FeedFilters, FormattedEvent, Statistics } from '@/types';
 import { QUERY, ViewId, readParam, toSwedishParams, viewSlug } from '@/lib/urlParams';
+import { DEFAULT_MAP_WINDOW_DAYS, MAP_WINDOW_DAYS } from '@/lib/mapWindows';
 import { isCountyName } from '@/lib/regions';
 
 interface ClientAppProps {
@@ -235,49 +236,84 @@ function ClientAppContent({
   /*
    * How far back the map is looking, and which type the county map is showing.
    *
-   * Both read from the URL rather than from component state. They were state,
-   * on the reasoning that they are ways of looking at the filters rather than
-   * part of what is being looked at, and that distinction is not one a reader
-   * makes: neither survived a refresh, the back button or a shared link, so a
-   * map set to the last month snapped back to the last day and a link to what
-   * someone was looking at did not show it.
+   * Both belong in the URL. They were component state, on the reasoning that
+   * they are ways of looking at the filters rather than part of what is being
+   * looked at, and that distinction is not one a reader makes: neither survived
+   * a refresh, the back button or a shared link, so a map set to the last month
+   * snapped back to the last day and a link to what someone was looking at did
+   * not show it.
    *
-   * Reading them straight from `searchParams` rather than mirroring them into
-   * state is what makes back and forward work: the URL is the only copy, so
-   * history navigation cannot leave a control disagreeing with it.
+   * The URL stays the copy that history and a shared link read. What each
+   * control shows is mirrored into state beside it, for the same reason
+   * `currentView` above is: a mirror flips in the frame the button was pressed,
+   * where anything derived from the address bar waits for the write to come
+   * back. The effect under each is what keeps back and forward working — a URL
+   * changed by anything other than these two setters is followed.
    */
-  const mapWindowDays = useMemo(() => {
+  const urlMapWindowDays = useMemo(() => {
     const days = Number(readParam((name) => searchParams.get(name), 'mapDays'));
-    return MAP_WINDOW_DAYS.includes(days) ? days : 1;
+    return MAP_WINDOW_DAYS.includes(days) ? days : DEFAULT_MAP_WINDOW_DAYS;
   }, [searchParams]);
 
-  const regionType = useMemo(() => {
+  const urlRegionType = useMemo(() => {
     const value = readParam((name) => searchParams.get(name), 'regionType');
     // Only a type the breakdown actually offers. A stale or hand-typed one
     // would otherwise leave the select showing a value it has no option for.
     return stats.regionTypes.types.includes(value) ? value : '';
   }, [searchParams, stats.regionTypes.types]);
 
-  // Narrowing a view is not navigation, so neither of these gets its own
-  // history entry: `replace`, as the filter controls already do.
+  const [mapWindowDays, setMapWindowDaysState] = useState(urlMapWindowDays);
+  const [regionType, setRegionTypeState] = useState(urlRegionType);
+
+  useEffect(() => setMapWindowDaysState(urlMapWindowDays), [urlMapWindowDays]);
+  useEffect(() => setRegionTypeState(urlRegionType), [urlRegionType]);
+
+  /*
+   * Write one of these to the address bar, and nothing else.
+   *
+   * `router.replace` was doing far more than replacing a query parameter. Every
+   * view is the same route, so it re-ran the whole page on the server:
+   * refreshEventsIfNeeded, the first page of the feed, a COUNT over a
+   * 338,000-row archive, both filter-option lists and the entire statistics
+   * summary — none of which any server component reads `dagar` or `lantyp` to
+   * produce. Then the map's own fetch could not even start until that landed,
+   * because the period it asks for was derived from the address bar. Two round
+   * trips in series to change which rows are drawn, one of them pure waste.
+   *
+   * The native history call is the App Router's supported way to say "the URL
+   * changed, the server has nothing to add": it updates the entry in place,
+   * `useSearchParams` follows it, and no request is made. Not `pushState`, for
+   * the same reason this was `replace` and not `push` — narrowing a view is not
+   * navigation and should not put an entry between the reader and the page they
+   * arrived from.
+   */
+  const replaceQuery = useCallback((mutate: (params: URLSearchParams) => void) => {
+    const params = toSwedishParams(new URLSearchParams(window.location.search));
+    mutate(params);
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `/?${query}` : '/');
+  }, []);
+
   const setMapWindowDays = useCallback(
     (days: number) => {
-      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
-      if (days === 1) params.delete(QUERY.mapDays);
-      else params.set(QUERY.mapDays, String(days));
-      router.replace(`/?${params.toString()}`, { scroll: false });
+      setMapWindowDaysState(days);
+      replaceQuery((params) => {
+        if (days === DEFAULT_MAP_WINDOW_DAYS) params.delete(QUERY.mapDays);
+        else params.set(QUERY.mapDays, String(days));
+      });
     },
-    [router, searchParams]
+    [replaceQuery]
   );
 
   const handleRegionTypeChange = useCallback(
     (type: string) => {
-      const params = toSwedishParams(new URLSearchParams(searchParams.toString()));
-      if (type) params.set(QUERY.regionType, type);
-      else params.delete(QUERY.regionType);
-      router.replace(`/?${params.toString()}`, { scroll: false });
+      setRegionTypeState(type);
+      replaceQuery((params) => {
+        if (type) params.set(QUERY.regionType, type);
+        else params.delete(QUERY.regionType);
+      });
     },
-    [router, searchParams]
+    [replaceQuery]
   );
 
   // Map data loads on demand the first time the map view is opened.
@@ -311,7 +347,9 @@ function ClientAppContent({
       {/* Above the header, so it is the first thing on the page whatever view
           the reader is on and wherever they navigate next. */}
       <VmaRibbon alerts={vma.live} onOpen={showVma} />
-      <RadioCheck />
+      {/* Given the size of the record so the transmission can report something
+          true. Unfiltered on purpose: see the note on the props. */}
+      <RadioCheck watching={stats.total} coverageDays={stats.coverageDays} />
       <Header currentView={currentView} onViewChange={handleViewChange} onLogoClick={handleLogoClick} />
 
       <main id="main-content" tabIndex={-1}>
