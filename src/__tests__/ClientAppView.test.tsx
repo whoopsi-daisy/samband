@@ -37,12 +37,44 @@ jest.mock('@/components/EventList', () => ({
 }));
 jest.mock('@/components/EventMap', () => ({
   __esModule: true,
-  default: () => <div>map</div>,
-  MAP_WINDOW_DAYS: [1, 7, 30],
+  // The period control is stood in for, so a test can press it without a
+  // Leaflet instance: it reports which period the map thinks it is showing and
+  // offers one button per period.
+  default: ({
+    windowDays,
+    onWindowChange,
+  }: {
+    windowDays: number;
+    onWindowChange: (days: number) => void;
+  }) => (
+    <div>
+      map
+      <span data-testid="map-window">{windowDays}</span>
+      {[1, 7, 30].map((days) => (
+        <button key={days} type="button" onClick={() => onWindowChange(days)}>
+          {`period ${days}`}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 jest.mock('@/components/StatsView', () => ({
   __esModule: true,
-  default: () => <div>statistics</div>,
+  default: ({
+    regionType,
+    onRegionTypeChange,
+  }: {
+    regionType: string;
+    onRegionTypeChange: (type: string) => void;
+  }) => (
+    <div>
+      statistics
+      <span data-testid="region-type">{regionType}</span>
+      <button type="button" onClick={() => onRegionTypeChange('Stöld')}>
+        narrow to Stöld
+      </button>
+    </div>
+  ),
 }));
 jest.mock('@/components/VmaView', () => ({
   __esModule: true,
@@ -56,8 +88,10 @@ jest.mock('@/hooks/useMapEvents', () => ({
 }));
 
 const stats = {
+  total: 0,
+  coverageDays: 0,
   regions: { rows: [], unplaced: 0, placed: 0, trendFrom: null },
-  regionTypes: { types: [], cells: {}, unplaced: {}, recentStart: '2025-08' },
+  regionTypes: { types: ['Stöld'], cells: {}, unplaced: {}, recentStart: '2025-08' },
 } as unknown as Statistics;
 
 function renderApp(initialView: string) {
@@ -83,6 +117,7 @@ beforeEach(() => {
   push.mockClear();
   replace.mockClear();
   searchParams = new URLSearchParams();
+  window.history.replaceState(null, '', '/');
 });
 
 describe('which view is on screen', () => {
@@ -149,6 +184,87 @@ describe('what a link carries', () => {
     renderApp('map');
 
     expect(screen.getByText('map')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Narrowing a view, as opposed to navigating.
+ *
+ * The map's period and the county map's type are in the URL so a link carries
+ * them, and they used to get there through `router.replace`. Every view is the
+ * same route, so that re-ran the whole page on the server: a refresh check, the
+ * first page of the feed, a COUNT over a 338,000-row archive, both filter-option
+ * lists and the entire statistics summary — for a parameter no server component
+ * reads. Worse, the map's own fetch could not start until that landed, because
+ * the period it asked for was derived from the address bar, so changing period
+ * cost two round trips in series and one of them produced nothing.
+ *
+ * The native history call is the App Router's supported way to say the URL
+ * changed and the server has nothing to add.
+ */
+describe('changing the map period', () => {
+  it('shows the new period in the frame it was pressed', () => {
+    searchParams = new URLSearchParams('vy=karta');
+    renderApp('map');
+
+    fireEvent.click(screen.getByText('period 30'));
+
+    expect(screen.getByTestId('map-window')).toHaveTextContent('30');
+  });
+
+  it('writes it to the URL without asking the server for the page again', () => {
+    searchParams = new URLSearchParams('vy=karta');
+    renderApp('map');
+
+    fireEvent.click(screen.getByText('period 7'));
+
+    expect(new URLSearchParams(window.location.search).get('dagar')).toBe('7');
+    expect(replace).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('keeps the rest of the query, and leaves the default out of it', () => {
+    searchParams = new URLSearchParams('vy=karta&lan=Skåne län&sok=cykel');
+    window.history.replaceState(null, '', '/?vy=karta&lan=Sk%C3%A5ne+l%C3%A4n&sok=cykel');
+    renderApp('map');
+
+    fireEvent.click(screen.getByText('period 30'));
+    let written = new URLSearchParams(window.location.search);
+    expect(written.get('lan')).toBe('Skåne län');
+    expect(written.get('sok')).toBe('cykel');
+    expect(written.get('vy')).toBe('karta');
+    expect(written.get('dagar')).toBe('30');
+
+    // Back to the default period, which is what no parameter means: a shared
+    // link should not carry `dagar=1` to say "the usual".
+    fireEvent.click(screen.getByText('period 1'));
+    written = new URLSearchParams(window.location.search);
+    expect(written.get('dagar')).toBeNull();
+    expect(written.get('lan')).toBe('Skåne län');
+  });
+
+  it('does not put an entry between the reader and where they came from', () => {
+    const before = window.history.length;
+    searchParams = new URLSearchParams('vy=karta');
+    renderApp('map');
+
+    fireEvent.click(screen.getByText('period 7'));
+    fireEvent.click(screen.getByText('period 30'));
+
+    expect(window.history.length).toBe(before);
+  });
+});
+
+describe('narrowing the county map to one type', () => {
+  it('applies at once and lands in the URL, with no page request', () => {
+    searchParams = new URLSearchParams('vy=statistik');
+    renderApp('stats');
+
+    fireEvent.click(screen.getByText('narrow to Stöld'));
+
+    expect(screen.getByTestId('region-type')).toHaveTextContent('Stöld');
+    expect(new URLSearchParams(window.location.search).get('lantyp')).toBe('Stöld');
+    expect(replace).not.toHaveBeenCalled();
   });
 });
 
